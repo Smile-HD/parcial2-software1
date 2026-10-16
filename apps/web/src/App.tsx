@@ -38,7 +38,9 @@ import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { CanvasErrorBoundary } from './canvas/CanvasErrorBoundary';
 import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
-import { PresenceBar } from './canvas/PresenceBar';
+import { PresenceBar, type PresenceUser } from './canvas/PresenceBar';
+import { UserNameModal, USERNAME_STORAGE_KEY } from './presence/UserNameModal';
+import { pickUserColor } from './presence/palette';
 import { LanguageToggle, t, useT } from './i18n';
 import { GenerateSpringButton } from './codegen/GenerateSpringButton';
 import { ExportToolbarButtons } from './canvas/imageExport';
@@ -142,7 +144,25 @@ type InterpreterState =
   | { phase: 'pending'; deltaId: string; delta: import('@app/core').Delta };
 
 interface AwarenessUser {
-  user?: { name?: string };
+  user?: {
+    name?: string;
+    color?: string;
+  };
+}
+
+function getInitialUserName(): { name: string; isPromptNeeded: boolean } {
+  try {
+    const stored = localStorage.getItem(USERNAME_STORAGE_KEY);
+    if (stored && stored.trim().length > 0) {
+      return { name: stored.trim(), isPromptNeeded: false };
+    }
+  } catch {
+    // Ignorar errores de acceso a almacenamiento
+  }
+  return {
+    name: `User-${Math.random().toString(16).slice(2, 6)}`,
+    isPromptNeeded: import.meta.env.MODE !== 'test',
+  };
 }
 
 function resolveCollabUrl(collabUrl: AppProps['collabUrl']): string | null {
@@ -186,7 +206,10 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   // StrictMode (dev) ejecuta los efectos dos veces por montaje — la guarda didInit mantiene
   // create/load idempotente para que una sesión nunca haga POST de dos diagramas.
   const didInit = useRef(false);
-  const userName = useRef(`User-${Math.random().toString(16).slice(2, 6)}`);
+  const initialUser = useRef(getInitialUserName());
+  const [userName, setUserName] = useState(initialUser.current.name);
+  const [isNameModalOpen, setIsNameModalOpen] = useState(initialUser.current.isPromptNeeded);
+  const [peerUsers, setPeerUsers] = useState<readonly PresenceUser[]>([]);
   const providerRef = useRef<WebsocketProvider | null>(null);
 
   useEffect(() => {
@@ -227,6 +250,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       .catch(fail);
   }, [doc]);
 
+  // Actualizar awareness cuando cambia el nombre de usuario
+  useEffect(() => {
+    if (providerRef.current !== null) {
+      providerRef.current.awareness.setLocalStateField('user', {
+        name: userName,
+        color: pickUserColor(userName),
+      });
+    }
+  }, [userName]);
+
   // 6b.1 — vincular el Y.Doc cargado al servidor de colaboración (sala = diagrams/<id>).
   const resolvedCollabUrl = resolveCollabUrl(collabUrl);
   useEffect(() => {
@@ -243,14 +276,30 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     // setLocalStateField(fieldName, value) — el nombre del campo y el valor son
     // argumentos separados; pasar un objeto como nombre de campo produce silenciosamente
     // un estado de awareness vacío (descubierto mediante la prueba de integración 6b.3).
-    provider.awareness.setLocalStateField('user', { name: userName.current });
+    provider.awareness.setLocalStateField('user', {
+      name: userName,
+      color: pickUserColor(userName),
+    });
 
     const syncPresence = (): void => {
       const states = provider.awareness.getStates();
-      const names = [...states.values()]
-        .map((state) => (state as AwarenessUser).user?.name)
-        .filter((name): name is string => typeof name === 'string');
+      const localClientId = provider.awareness.clientID;
+      const currentUsers: PresenceUser[] = [];
+      const names: string[] = [];
+
+      for (const [clientId, state] of states.entries()) {
+        const u = (state as AwarenessUser).user;
+        if (typeof u?.name === 'string') {
+          names.push(u.name);
+          currentUsers.push({
+            name: u.name,
+            color: u.color ?? pickUserColor(u.name),
+            isSelf: clientId === localClientId,
+          });
+        }
+      }
       setPeers(names);
+      setPeerUsers(currentUsers);
     };
     provider.awareness.on('change', syncPresence);
     syncPresence();
@@ -260,7 +309,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       provider.destroy();
       providerRef.current = null;
     };
-  }, [status, roomId, doc, resolvedCollabUrl]);
+  }, [status, roomId, doc, resolvedCollabUrl, userName]);
 
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -474,8 +523,11 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             {/* unidad 16b: exportación PNG/JPEG del lado del cliente — solo lectura, cero llamadas a la API. */}
             <ExportToolbarButtons doc={doc} />
             {/* PR 16c: importación de foto a UML. */}
-            <ImportPhotoButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
-            <PresenceBar names={peers} />
+            <PresenceBar
+              names={peers}
+              users={peerUsers}
+              onEditSelf={() => setIsNameModalOpen(true)}
+            />
             {/* unidad 13e.9 — el control segmentado EN/ES reside en la barra de herramientas. */}
             <LanguageToggle />
           </div>
@@ -524,6 +576,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               <DiagramCanvas doc={doc} />
             </CanvasErrorBoundary>
           </div>
+          <UserNameModal
+            isOpen={isNameModalOpen}
+            initialName={userName.startsWith('User-') ? '' : userName}
+            canClose={!initialUser.current.isPromptNeeded || userName.length > 0}
+            onClose={() => setIsNameModalOpen(false)}
+            onSave={(newName) => {
+              setUserName(newName);
+              setIsNameModalOpen(false);
+            }}
+          />
         </>
       )}
     </main>
