@@ -23,6 +23,10 @@ import { DependencyEdge } from './DependencyEdge';
 import { NaryEndEdge } from './NaryEndEdge';
 import { Palette, PALETTE_DND_MIME, type PaletteEdgeTool, type PaletteNodeKind } from './Palette';
 import { QuickLinkerMenu } from './QuickLinkerMenu';
+import type { WebsocketProvider } from 'y-websocket';
+import { useRemoteCursors } from './useRemoteCursors';
+import { RemoteCursors } from './RemoteCursors';
+import { getRemoteNodeSelections } from './selectionHalos';
 import { EdgeCrossingProvider } from './EdgeCrossingContext';
 import {
   elementMenuOptions,
@@ -78,6 +82,7 @@ function isEditorEdgeType(type: string | undefined): type is EditorEdgeType {
 
 export interface DiagramCanvasProps {
   doc: Y.Doc;
+  provider?: WebsocketProvider | null;
 }
 
 /**
@@ -923,7 +928,7 @@ export function getOptimalHandles(
   }
 }
 
-export function DiagramCanvas({ doc }: DiagramCanvasProps) {
+export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
   // unidad 13e.10 — accesor reactivo: cada cadena JSX a continuación se re-renderiza en vivo
   // cuando cambia el alternador de idioma (`t` a nivel de módulo atiende los controladores).
   const { t: tr } = useT();
@@ -956,6 +961,17 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
   const [edgeMessage, setEdgeMessage] = useState<string | null>(null);
   // Instancia de React Flow (vía onInit) — provee screenToFlowPosition para soltados.
   const rfRef = useRef<ReactFlowInstance | null>(null);
+
+  // Unidad 21: sincronización de cursores remotos y halos de selección en tiempo real
+  const { remotePeers, updateCursor, clearCursor, broadcastSelection } = useRemoteCursors({
+    provider,
+    screenToFlowPosition: (pos) => rfRef.current?.screenToFlowPosition(pos) ?? pos,
+  });
+  const remoteSelections = useMemo(() => getRemoteNodeSelections(remotePeers), [remotePeers]);
+
+  useEffect(() => {
+    broadcastSelection(selectedClassId ? [selectedClassId] : []);
+  }, [selectedClassId, broadcastSelection]);
   // Último punto donde se hizo clic en el lienzo (en coordenadas de flujo de React Flow)
   const lastClickedPointRef = useRef<{ x: number; y: number } | null>(null);
   const [currentZoom, setCurrentZoom] = useState<number>(1);
@@ -1571,6 +1587,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           // seleccionado; pointer-down sobre ella inicia el arrastre de enlace rápido.
           selected: selectedClassId === cls.id,
           onQuickLinkStart: (clientX: number, clientY: number) => startQuickLink(cls.id, clientX, clientY),
+          remoteSelection: remoteSelections.get(cls.id),
         } satisfies ClassNodeData,
       })),
       // Unidad 13.2 — un nodo diamante por asociación n-aria, posicionado en el
@@ -1597,8 +1614,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
     ],
     // unidad 13c — edgeTool se une a las dependencias: armar/desarmar conmuta las
     // superposiciones de conexión en todo el nodo. unidad 13d — selectedClassId conmuta la
-    // flecha de la esquina de Quick Linker.
-    [diagram, edgeTool, selectedClassId],
+    // flecha de la esquina de Quick Linker. unidad 21 — remoteSelections actualiza los halos.
+    [diagram, edgeTool, selectedClassId, remoteSelections],
   );
 
   // unidad 13e.19 — transmisión colaborativa en vivo de arrastre (60/120 FPS).
@@ -2474,6 +2491,8 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
             setEdgeTool(null);
             setEdgeMessage(null);
           }}
+          onPaneMouseMove={(event) => updateCursor(event.clientX, event.clientY)}
+          onPaneMouseLeave={clearCursor}
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           snapToGrid={true}
@@ -2484,6 +2503,7 @@ export function DiagramCanvas({ doc }: DiagramCanvasProps) {
           <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="#94a3b8" />
           {/* Límite visual del lienzo: hoja de diagrama con bordes definidos y sombreado exterior */}
           <ViewportPortal>
+            <RemoteCursors peers={remotePeers} />
             <div
               className="diagram-canvas-boundary"
               data-testid="diagram-canvas-boundary"

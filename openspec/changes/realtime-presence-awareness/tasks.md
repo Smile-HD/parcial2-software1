@@ -26,12 +26,12 @@ Límite de revisión: PRs encadenados <= 400 líneas modificadas por unidad.
 
 ## Fase 2: Unidad 21 — Cursores Remotos en Vivo y Halos de Selección (PR 2)
 
-- [ ] 21.1 TDD RED `apps/web/src/canvas/RemoteCursors.test.tsx`: Probar renderizado de cursores remotos desde el awareness: puntero SVG, etiqueta flotante con nombre, color correspondiente y ocultar cuando cursor es null o es el usuario local.
-- [ ] 21.2 TDD GREEN `apps/web/src/canvas/RemoteCursors.tsx`: Implementar overlay SVG de cursores con `pointer-events: none`, etiqueta flotante con sombra suave y transiciones CSS fluidas.
-- [ ] 21.3 TDD RED `apps/web/src/canvas/useRemoteCursors.test.ts`: Probar conversión de coordenadas con `screenToFlowPosition`, limitación de tasa con `requestAnimationFrame` y evento `onMouseLeave` enviando cursor null.
-- [ ] 21.4 TDD GREEN `apps/web/src/canvas/DiagramCanvas.tsx`: Integrar despachador de coordenadas en awareness y montar `RemoteCursors` dentro del contenedor del viewport de React Flow.
-- [ ] 21.5 TDD RED `apps/web/src/canvas/selectionHalos.test.ts`: Probar difusión de IDs de nodos seleccionados en awareness y aplicación de anillos/halos con el color del usuario en las clases remotas.
-- [ ] 21.6 TDD GREEN `apps/web/src/canvas/DiagramCanvas.tsx` y CSS: Aplicar contornos/sombras dinámicas (`box-shadow` / `outline`) con el color del usuario remoto seleccionado.
+- [x] 21.1 TDD RED `apps/web/src/canvas/RemoteCursors.test.tsx`: Probar renderizado de cursores remotos desde el awareness: puntero SVG, etiqueta flotante con nombre, color correspondiente y ocultar cuando cursor es null o es el usuario local.
+- [x] 21.2 TDD GREEN `apps/web/src/canvas/RemoteCursors.tsx`: Implementar overlay SVG de cursores con `pointer-events: none`, etiqueta flotante con sombra suave y transiciones CSS fluidas.
+- [x] 21.3 TDD RED `apps/web/src/canvas/useRemoteCursors.test.ts`: Probar conversión de coordenadas con `screenToFlowPosition`, limitación de tasa con `requestAnimationFrame` y evento `onMouseLeave` enviando cursor null.
+- [x] 21.4 TDD GREEN `apps/web/src/canvas/DiagramCanvas.tsx`: Integrar despachador de coordenadas en awareness y montar `RemoteCursors` dentro del contenedor del viewport de React Flow.
+- [x] 21.5 TDD RED `apps/web/src/canvas/selectionHalos.test.ts`: Probar difusión de IDs de nodos seleccionados en awareness y aplicación de anillos/halos con el color del usuario en las clases remotas.
+- [x] 21.6 TDD GREEN `apps/web/src/canvas/DiagramCanvas.tsx` y CSS: Aplicar contornos/sombras dinámicas (`box-shadow` / `outline`) con el color del usuario remoto seleccionado.
 
 ---
 

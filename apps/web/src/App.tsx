@@ -573,7 +573,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
           )}
           <div className="app-canvas">
             <CanvasErrorBoundary>
-              <DiagramCanvas doc={doc} />
+              <DiagramCanvas doc={doc} provider={providerRef.current} />
             </CanvasErrorBoundary>
           </div>
           <UserNameModal
