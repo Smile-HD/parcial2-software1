@@ -38,7 +38,7 @@ import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { CanvasErrorBoundary } from './canvas/CanvasErrorBoundary';
 import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
-import { PresenceBar, type PresenceUser } from './canvas/PresenceBar';
+import { PresenceBar, type PresenceUser, type BotStatus } from './canvas/PresenceBar';
 import { UserNameModal, USERNAME_STORAGE_KEY } from './presence/UserNameModal';
 import { pickUserColor } from './presence/palette';
 import { LanguageToggle, t, useT } from './i18n';
@@ -527,6 +527,14 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               names={peers}
               users={peerUsers}
               onEditSelf={() => setIsNameModalOpen(true)}
+              bot={{
+                status:
+                  interpreter.phase === 'thinking'
+                    ? 'thinking'
+                    : interpreter.phase === 'pending'
+                      ? 'applying'
+                      : 'idle',
+              }}
             />
             {/* unidad 13e.9 — el control segmentado EN/ES reside en la barra de herramientas. */}
             <LanguageToggle />

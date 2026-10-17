@@ -74,13 +74,15 @@ describe('presence over a real collab server (6b.3)', () => {
           const bars = screen.getAllByLabelText('Online users');
           expect(bars.length).toBe(2);
           for (const bar of bars) {
-            const users = bar.querySelectorAll('.presence-bar__user');
-            expect(users.length).toBe(2);
-            for (const user of users) {
+            const humanUsers = bar.querySelectorAll('.presence-bar__user:not(.presence-bar__user--bot)');
+            expect(humanUsers.length).toBe(2);
+            for (const user of humanUsers) {
               const avatar = user.querySelector('.presence-bar__avatar') as HTMLElement;
               expect(avatar).not.toBeNull();
               expect(avatar.style.backgroundColor).toBeTruthy();
             }
+            const botUser = bar.querySelector('.presence-bar__user--bot');
+            expect(botUser).not.toBeNull();
           }
         },
         { timeout: 10_000 },

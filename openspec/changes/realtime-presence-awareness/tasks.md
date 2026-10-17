@@ -37,10 +37,10 @@ Límite de revisión: PRs encadenados <= 400 líneas modificadas por unidad.
 
 ## Fase 3: Unidad 22 — Presencia Virtual del Bot IA y Retroalimentación Reactiva (PR 3)
 
-- [ ] 22.1 TDD RED `apps/web/src/canvas/PresenceBar.bot.test.tsx`: Probar que `PresenceBar` muestre `🤖 Bot IA` con chip dedicado, badge violeta/índigo y tooltip de estado.
-- [ ] 22.2 TDD GREEN `apps/web/src/canvas/PresenceBar.tsx`: Renderizar chip del bot virtual con estilo diferencial y estado conectado.
-- [ ] 22.3 TDD RED `apps/web/src/App.bot-presence.test.tsx`: Probar que el estado del bot cambie a "Pensando..." o "Aplicando cambios..." cuando el intérprete está ocupado (`interpreting` o `pending`), mostrando indicador pulsante.
-- [ ] 22.4 TDD GREEN `apps/web/src/App.tsx` y CSS: Conectar estado del intérprete con la presencia del bot.
+- [x] 22.1 TDD RED `apps/web/src/canvas/PresenceBar.bot.test.tsx`: Probar que `PresenceBar` muestre `🤖 Bot IA` con chip dedicado, badge violeta/índigo y tooltip de estado.
+- [x] 22.2 TDD GREEN `apps/web/src/canvas/PresenceBar.tsx`: Renderizar chip del bot virtual con estilo diferencial y estado conectado.
+- [x] 22.3 TDD RED `apps/web/src/App.bot-presence.test.tsx`: Probar que el estado del bot cambie a "Pensando..." o "Aplicando cambios..." cuando el intérprete está ocupado (`interpreting` o `pending`), mostrando indicador pulsante.
+- [x] 22.4 TDD GREEN `apps/web/src/App.tsx` y CSS: Conectar estado del intérprete con la presencia del bot.
 
 ---
 
