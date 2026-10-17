@@ -7,6 +7,7 @@
  * nombre, dentro del contrato existente `presence-bar__user`.
  */
 import { useT } from '../i18n';
+import { pickUserColor } from '../presence/palette';
 
 /**
  * Iniciales para el avatar del chip: las primeras letras de los dos primeros
@@ -24,23 +25,62 @@ export function presenceInitials(name: string): string {
   return (tokens[0]![0]! + tokens[1]![0]!).toUpperCase();
 }
 
-export function PresenceBar({ names }: { names: readonly string[] }) {
+export interface PresenceUser {
+  name: string;
+  color?: string;
+  isSelf?: boolean;
+}
+
+export interface PresenceBarProps {
+  names?: readonly string[];
+  users?: readonly PresenceUser[];
+  onEditSelf?: () => void;
+}
+
+export function PresenceBar({ names, users, onEditSelf }: PresenceBarProps) {
   const { t } = useT();
-  if (names.length === 0) {
+  const userList: PresenceUser[] = users
+    ? [...users]
+    : names
+      ? names.map((name) => ({ name, color: pickUserColor(name) }))
+      : [];
+
+  if (userList.length === 0) {
     return null;
   }
+
   return (
     <div className="presence-bar" aria-label={t('presence.onlineUsers')}>
-      {names.map((name) => (
-        <span key={name} className="presence-bar__user">
-          {/* Chip estilo EA: avatar con iniciales + punto en línea + nombre completo. */}
-          <span className="presence-bar__avatar" aria-hidden="true">
-            {presenceInitials(name)}
+      {userList.map((user) => {
+        const userColor = user.color ?? pickUserColor(user.name);
+        return (
+          <span
+            key={user.name}
+            className={`presence-bar__user ${user.isSelf && onEditSelf ? 'presence-bar__user--self' : ''}`}
+            onClick={user.isSelf && onEditSelf ? onEditSelf : undefined}
+            style={user.isSelf && onEditSelf ? { cursor: 'pointer' } : undefined}
+            title={user.isSelf && onEditSelf ? 'Hacé clic para cambiar tu nombre' : undefined}
+          >
+            {/* Chip estilo EA / Figma: avatar con iniciales y color determinista + punto en línea + nombre */}
+            <span
+              className="presence-bar__avatar"
+              aria-hidden="true"
+              style={{
+                backgroundColor: userColor,
+                color: '#ffffff',
+              }}
+            >
+              {presenceInitials(user.name)}
+            </span>
+            <span
+              className="presence-bar__dot"
+              aria-hidden="true"
+              style={{ backgroundColor: userColor }}
+            />
+            <span className="presence-bar__name">{user.name}</span>
           </span>
-          <span className="presence-bar__dot" aria-hidden="true" />
-          <span className="presence-bar__name">{name}</span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
