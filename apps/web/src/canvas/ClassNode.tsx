@@ -72,6 +72,8 @@ export type ClassNodeData = Record<string, unknown> & {
    * sobre un elemento, menú de elemento sobre el lienzo vacío).
    */
   onQuickLinkStart?: (clientX: number, clientY: number) => void;
+  /** Unidad 21: halo de selección activa por otro usuario en la sala colaborativa. */
+  remoteSelection?: { name: string; color: string };
 };
 
 export type ClassFlowNode = import('@xyflow/react').Node<ClassNodeData, 'class'>;
@@ -286,10 +288,20 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
 
   const isInterface = data.kind === 'interface';
   const isItalicName = isInterface || data.isAbstract;
+  const remoteSelection = data.remoteSelection as { name: string; color: string } | undefined;
 
   return (
     <div
       className={`uml-class${isInterface ? ' uml-class--interface' : ''}${data.selected === true ? ' uml-class--selected' : ''}`}
+      style={
+        remoteSelection
+          ? {
+              outline: `2px solid ${remoteSelection.color}`,
+              outlineOffset: '2px',
+              boxShadow: `0 0 10px ${remoteSelection.color}55`,
+            }
+          : undefined
+      }
       onClick={data.onSelect}
       onContextMenu={(event) => {
         // editor:R Generalización (unidad 11.4) — clic derecho abre el
@@ -299,6 +311,31 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
         setMenuOpen(true);
       }}
     >
+      {remoteSelection && (
+        <span
+          className="uml-class__remote-badge"
+          data-testid={`remote-selection-badge-${data.name}`}
+          style={{
+            position: 'absolute',
+            top: '-20px',
+            left: '0',
+            backgroundColor: remoteSelection.color,
+            color: '#ffffff',
+            fontSize: '10px',
+            fontWeight: 600,
+            padding: '1px 5px',
+            borderRadius: '3px',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            userSelect: 'none',
+            lineHeight: '1.2',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+            zIndex: 10,
+          }}
+        >
+          {remoteSelection.name}
+        </span>
+      )}
       {menuOpen && (
         <div className="uml-class__context-menu" role="menu" data-testid="class-context-menu">
           {data.otherClasses.length === 0 ? (
