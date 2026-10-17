@@ -49,10 +49,10 @@ describe('App - Presencia y Estados Reactivos del Bot IA (Unidad 22.3)', () => {
     render(<App collabUrl={null} />);
 
     await waitFor(() => {
-      expect(screen.getByText('🤖 Bot IA')).toBeTruthy();
+      expect(screen.getByText('Amongus')).toBeTruthy();
     });
 
-    const botChip = screen.getByText('🤖 Bot IA').closest('.presence-bar__user--bot');
+    const botChip = screen.getByText('Amongus').closest('.presence-bar__user--bot');
     expect(botChip).not.toBeNull();
     expect(botChip?.getAttribute('title')).toContain('disponible');
   });
@@ -87,7 +87,7 @@ describe('App - Presencia y Estados Reactivos del Bot IA (Unidad 22.3)', () => {
     render(<App collabUrl={null} />);
 
     await waitFor(() => {
-      expect(screen.getByText('🤖 Bot IA')).toBeTruthy();
+      expect(screen.getByText('Amongus')).toBeTruthy();
     });
 
     const input = screen.getByRole('textbox', { name: /natural language command/i });

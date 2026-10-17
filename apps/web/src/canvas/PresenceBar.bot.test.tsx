@@ -11,11 +11,12 @@ describe('PresenceBar - Presencia Virtual del Bot IA (Unidad 22.1)', () => {
       />
     );
 
-    const botChip = screen.getByText('🤖 Bot IA');
+    const botChip = screen.getByText('Amongus');
     expect(botChip).toBeTruthy();
     const botUserElement = botChip.closest('.presence-bar__user--bot');
     expect(botUserElement).not.toBeNull();
     expect(botUserElement?.getAttribute('title')).toContain('disponible');
+    expect(botUserElement?.querySelector('.presence-bar__robot-avatar')).not.toBeNull();
   });
 
   it('permite personalizar el nombre del bot', () => {
@@ -65,6 +66,6 @@ describe('PresenceBar - Presencia Virtual del Bot IA (Unidad 22.1)', () => {
       />
     );
 
-    expect(screen.queryByText('🤖 Bot IA')).toBeNull();
+    expect(screen.queryByText('Bot IA')).toBeNull();
   });
 });

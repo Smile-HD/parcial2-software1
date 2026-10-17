@@ -45,18 +45,60 @@ export interface PresenceBarProps {
   bot?: BotPresence | null;
 }
 
-const BOT_DEFAULT_NAME = '🤖 Bot IA';
+export function RobotAvatar({ status = 'idle' }: { status?: BotStatus }) {
+  return (
+    <svg
+      className={`presence-bar__robot-avatar presence-bar__robot-avatar--${status}`}
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      {/* Antena */}
+      <line x1="12" y1="2" x2="12" y2="5" stroke="#c4b5fd" strokeWidth="1.8" strokeLinecap="round" />
+      <circle className="presence-bar__robot-antenna" cx="12" cy="2" r="2" fill="#a855f7" />
+
+      {/* Mochila / Backpack */}
+      <rect x="2" y="8" width="3" height="10" rx="1.5" fill="#6d28d9" stroke="#5b21b6" strokeWidth="1" />
+
+      {/* Traje / Cuerpo Among Us */}
+      <rect x="4.5" y="5.5" width="16" height="15.5" rx="7" fill="#7c3aed" stroke="#5b21b6" strokeWidth="1.2" />
+
+      {/* División de patas */}
+      <path d="M11.5 17V21" stroke="#5b21b6" strokeWidth="1.5" strokeLinecap="round" />
+
+      {/* Visor icónico de Among Us */}
+      <rect
+        className="presence-bar__robot-visor"
+        x="9"
+        y="8.5"
+        width="11"
+        height="6.5"
+        rx="3"
+        fill="#38bdf8"
+        stroke="#1e293b"
+        strokeWidth="1.2"
+      />
+      {/* Reflejo de luz en el visor */}
+      <ellipse cx="14" cy="10" rx="3.5" ry="1.2" fill="#ffffff" opacity="0.8" />
+    </svg>
+  );
+}
+
+const BOT_DEFAULT_NAME = 'Amongus';
 const BOT_COLOR = '#8b5cf6';
 
 function getBotStatusMeta(status: BotStatus): { title: string; badge?: string } {
   switch (status) {
     case 'thinking':
-      return { title: 'Bot IA pensando...', badge: 'Pensando...' };
+      return { title: 'Amongus pensando...', badge: 'Pensando...' };
     case 'applying':
-      return { title: 'Bot IA aplicando cambios...', badge: 'Aplicando...' };
+      return { title: 'Amongus aplicando cambios...', badge: 'Aplicando...' };
     case 'idle':
     default:
-      return { title: 'Bot IA disponible' };
+      return { title: 'Amongus disponible' };
   }
 }
 
@@ -115,12 +157,8 @@ export function PresenceBar({ names, users, onEditSelf, bot }: PresenceBarProps)
           <span
             className="presence-bar__avatar presence-bar__avatar--bot"
             aria-hidden="true"
-            style={{
-              backgroundColor: BOT_COLOR,
-              color: '#ffffff',
-            }}
           >
-            IA
+            <RobotAvatar status={bot.status} />
           </span>
           <span
             className={`presence-bar__dot presence-bar__dot--bot ${
