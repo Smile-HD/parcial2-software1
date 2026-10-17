@@ -31,6 +31,15 @@ import { pathToFileURL } from 'node:url';
 import { generate, createHandlebarsRenderer, DEFAULT_TEMPLATES_DIR, type GeneratedFile } from '@app/codegen';
 import { jobRegistry } from './jobs.js';
 import * as yazl from 'yazl';
+import {
+  ChatChannelTypeSchema,
+  CreateChatMessageSchema,
+  generateAmongusContextualReply,
+  insertBotReply,
+  insertChatMessage,
+  listChatMessages,
+  purgeExpiredChatMessages,
+} from './chat.js';
 
 // Carga apps/api/.env cuando está presente para que la configuración del proveedor
 // compatible con OpenAI (OPENAI_API_KEY / OPENAI_BASE_URL / LLM_MODEL / WHISPER_MODEL)
@@ -62,6 +71,7 @@ export interface AppOptions {
   llm?: LlmPort;
   stt?: SttPort;
   vision?: VisionPort;
+  pool?: Pool;
 }
 
 export const pendingDeltas = new PendingDeltaStore();
@@ -287,6 +297,7 @@ function readMaxAttemptsFromEnv(): number {
 
 /** Construye la aplicación Fastify (rutas registradas, sin escuchar). Exportado para pruebas de humo. */
 export function buildApp(options?: AppOptions): FastifyInstance {
+  const dbPool = options?.pool ?? pool;
   const app = Fastify({
     logger: options?.logger ?? true,
     bodyLimit: 25 * 1024 * 1024, // 25 MB para soportar payloads base64 de fotos e importaciones
@@ -696,6 +707,63 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         .send(job.artifact);
     }
   );
+
+  // ── Chat Colaborativo y Asistente Amongus (PR 23) ──────────────────────
+  // GET /diagrams/:id/messages
+  app.get<{
+    Params: { id: string };
+    Querystring: { channel?: string; deviceId?: string; userName?: string };
+  }>('/diagrams/:id/messages', async (request, reply) => {
+    const { id } = request.params;
+    const { channel, deviceId, userName } = request.query;
+
+    const channelParsed = ChatChannelTypeSchema.safeParse(channel);
+    if (!channelParsed.success) {
+      return reply.status(400).send({ error: 'Valid channel (group | direct_bot) is required' });
+    }
+
+    const exists = await dbPool.query('SELECT id FROM diagrams WHERE id = $1', [id]);
+    if (exists.rows.length === 0) {
+      return reply.status(404).send({ error: 'Diagram not found' });
+    }
+
+    const messages = await listChatMessages(dbPool, id, channelParsed.data, deviceId, userName);
+    return reply.status(200).send(messages);
+  });
+
+  // POST /diagrams/:id/messages
+  app.post<{
+    Params: { id: string };
+    Body: unknown;
+  }>('/diagrams/:id/messages', async (request, reply) => {
+    const { id } = request.params;
+    const parsed = CreateChatMessageSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid message payload', details: parsed.error.issues });
+    }
+
+    const exists = await dbPool.query('SELECT id FROM diagrams WHERE id = $1', [id]);
+    if (exists.rows.length === 0) {
+      return reply.status(404).send({ error: 'Diagram not found' });
+    }
+
+    const message = await insertChatMessage(dbPool, id, parsed.data);
+
+    // Si es canal directo o menciona a Amongus, generamos respuesta contextual del asistente
+    if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus')) {
+      const replyContent = generateAmongusContextualReply(parsed.data.content, parsed.data.senderName);
+      await insertBotReply(
+        dbPool,
+        id,
+        parsed.data.deviceId,
+        parsed.data.senderName,
+        parsed.data.channelType,
+        replyContent
+      );
+    }
+
+    return reply.status(201).send(message);
+  });
 
   return app;
 }
