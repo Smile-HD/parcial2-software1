@@ -1308,6 +1308,55 @@ body {
   line-height: 1.2;
 }
 
+.presence-bar__user--bot {
+  background: #fdfaff;
+  border-color: #d8b4fe;
+}
+
+.presence-bar__user--bot:hover {
+  background: #f5f3ff;
+  border-color: #a855f7;
+}
+
+.presence-bar__avatar--bot {
+  background: #7c3aed !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+
+.presence-bar__dot--bot {
+  background: #8b5cf6;
+}
+
+.presence-bar__dot--pulse {
+  animation: bot-pulse 1.5s infinite ease-in-out;
+}
+
+.presence-bar__bot-status {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6d28d9;
+  background: #ede9fe;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+@keyframes bot-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
+  }
+  70% {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 6px rgba(139, 92, 246, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
 /* ── language toggle (i18n.tsx LanguageToggle): EA segmented control ─────── */
 
 .lang-toggle {
