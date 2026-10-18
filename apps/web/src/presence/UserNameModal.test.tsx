@@ -1,10 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserNameModal, USERNAME_STORAGE_KEY } from './UserNameModal';
+import { setLang } from '../i18n';
 
 describe('Modal de Identidad de Usuario (realtime:R5)', () => {
   beforeEach(() => {
     localStorage.clear();
+    setLang('es');
   });
 
   it('no renderiza nada cuando isOpen es false', () => {

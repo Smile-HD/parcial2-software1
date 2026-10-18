@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
+import type { Delta } from '@app/core';
 import { AmongusAvatar } from './AmongusAvatar';
+import { ProposalCard } from './ProposalCard';
 import { useChat } from './useChat';
 import { pickUserColor } from '../presence/palette';
 import { presenceInitials } from '../canvas/PresenceBar';
+import { useT } from '../i18n';
+import type { VoiceRecorder } from '../voice/recorder';
+import { transcribeAudio } from '../api/voiceApi';
 import './chat.css';
 
 export interface ChatPanelProps {
@@ -11,11 +16,26 @@ export interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   peerUsers?: readonly { name: string; color?: string }[];
+  voiceRecorder?: VoiceRecorder | null;
+  onConfirmProposal?: (deltaId: string, delta: Delta) => Promise<void> | void;
+  onRejectProposal?: (deltaId: string) => Promise<void> | void;
+  onPreviewProposal?: (delta: Delta | null) => void;
+  buildingDeltaId?: string | null;
+  activeProposal?: { deltaId: string; delta: Delta } | null;
+  interpreterPhase?: 'idle' | 'thinking' | 'pending' | 'refused' | 'error';
+  interpreterError?: string | null;
+  interpreterRefusal?: string | null;
+  onSubmitCommand?: (text: string) => Promise<void> | void;
+  commandDraft?: string;
+  onCommandDraftChange?: (value: string) => void;
+  recording?: boolean;
+  onToggleRecord?: () => void;
 }
 
 /**
- * Panel de Chat Colaborativo y Asistente Amongus.
- * Soporta canal de equipo y canal privado 1 a 1 con Amongus.
+ * Panel de Chat Colaborativo y Asistente Amongus Unificado.
+ * Integra chat de equipo, canal directo con Amongus, entrada por voz,
+ * y tarjetas de propuesta interactivas con previsualizacion fantasma en el lienzo.
  * 100% libre de emojis; utiliza iconos vectoriales SVG.
  */
 export function ChatPanel({
@@ -24,7 +44,24 @@ export function ChatPanel({
   isOpen,
   onClose,
   peerUsers,
+  voiceRecorder = null,
+  onConfirmProposal,
+  onRejectProposal,
+  onPreviewProposal,
+  buildingDeltaId = null,
+  activeProposal = null,
+  interpreterPhase = 'idle',
+  interpreterError = null,
+  interpreterRefusal = null,
+  onSubmitCommand,
+  commandDraft,
+  onCommandDraftChange,
+  recording,
+  onToggleRecord,
 }: ChatPanelProps) {
+  const { lang } = useT();
+  const isEn = lang === 'en';
+
   const {
     messages,
     activeChannel,
@@ -32,32 +69,69 @@ export function ChatPanel({
     sendMessage,
     isLoading,
     error,
-  } = useChat({ diagramId, userName });
+  } = useChat({ diagramId, userName, language: lang });
 
-  const [draft, setDraft] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const safeMessages = Array.isArray(messages) ? messages : [];
 
-  // Auto-scroll al final con cada nuevo mensaje
-  useEffect(() => {
-    if (isOpen && typeof messagesEndRef.current?.scrollIntoView === 'function') {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  const [internalDraft, setInternalDraft] = useState('');
+  const draft = commandDraft !== undefined ? commandDraft : internalDraft;
+  const setDraft = (val: string) => {
+    if (onCommandDraftChange) {
+      onCommandDraftChange(val);
+    } else {
+      setInternalDraft(val);
     }
-  }, [messages, isOpen]);
+  };
+
+  const [isSending, setIsSending] = useState(false);
+  const [internalRecording, setInternalRecording] = useState(false);
+  const activeRecording = recording !== undefined ? recording : internalRecording;
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [appliedDeltaIds, setAppliedDeltaIds] = useState<Set<string>>(new Set());
+  const [rejectedDeltaIds, setRejectedDeltaIds] = useState<Set<string>>(new Set());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastActiveProposalIdRef = useRef<string | null>(null);
+
+  // Auto-scroll exclusivamente interno al contenedor de mensajes (evita scroll o saltos en la ventana)
+  useEffect(() => {
+    if (isOpen && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [safeMessages.length, activeProposal?.deltaId, interpreterError, interpreterRefusal, isOpen]);
+
+  // Actualizar previsualización fantasma en el lienzo cuando hay propuesta activa
+  useEffect(() => {
+    if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !rejectedDeltaIds.has(activeProposal.deltaId)) {
+      if (lastActiveProposalIdRef.current !== activeProposal.deltaId) {
+        lastActiveProposalIdRef.current = activeProposal.deltaId;
+        onPreviewProposal?.(activeProposal.delta);
+      }
+    } else if (!activeProposal && lastActiveProposalIdRef.current !== null) {
+      lastActiveProposalIdRef.current = null;
+      onPreviewProposal?.(null);
+    }
+  }, [activeProposal?.deltaId, appliedDeltaIds, rejectedDeltaIds, onPreviewProposal]);
 
   if (!isOpen) return null;
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = draft.trim();
-    if (!trimmed || isSending) return;
+    if (!trimmed || isSending || interpreterPhase === 'thinking') return;
 
     try {
       setIsSending(true);
       setDraft('');
-      await sendMessage(trimmed);
+      setVoiceError(null);
+
+      if (onSubmitCommand) {
+        await onSubmitCommand(trimmed);
+      } else {
+        await sendMessage(trimmed);
+      }
     } catch {
-      // El error ya es reportado por el hook
+      // Error manejado por el contenedor
     } finally {
       setIsSending(false);
     }
@@ -67,6 +141,68 @@ export function ChatPanel({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
+    }
+  };
+
+  const handleInternalToggleRecord = async () => {
+    if (!voiceRecorder || isSending || interpreterPhase === 'thinking') return;
+    setVoiceError(null);
+
+    if (!internalRecording) {
+      try {
+        setInternalRecording(true);
+        await voiceRecorder.startRecording();
+      } catch (err) {
+        setInternalRecording(false);
+        setVoiceError(
+          err instanceof Error
+            ? err.message
+            : isEn
+              ? 'Microphone unavailable'
+              : 'Micrófono no disponible',
+        );
+      }
+      return;
+    }
+
+    setInternalRecording(false);
+    try {
+      const { audio, mimeType } = await voiceRecorder.stopRecording();
+      const res = await transcribeAudio(diagramId, audio, mimeType);
+      if (res.transcript) {
+        setDraft(res.transcript);
+      }
+      if (res.status === 'pending' && res.delta && res.deltaId) {
+        onPreviewProposal?.(res.delta);
+      } else if (res.status === 'refused') {
+        setVoiceError(res.reason);
+      } else if (res.status === 'error') {
+        setVoiceError(res.message);
+      }
+    } catch (err) {
+      setVoiceError(
+        err instanceof Error
+          ? err.message
+          : isEn
+            ? 'Speech-to-text unavailable: service down. Use the text command input instead.'
+            : 'Reconocimiento de voz no disponible. Use la entrada de texto en su lugar.',
+      );
+    }
+  };
+
+  const handleConfirm = async (deltaId: string, delta: Delta) => {
+    setAppliedDeltaIds((prev) => new Set([...prev, deltaId]));
+    onPreviewProposal?.(null);
+    if (onConfirmProposal) {
+      await onConfirmProposal(deltaId, delta);
+    }
+  };
+
+  const handleReject = async (deltaId: string) => {
+    setRejectedDeltaIds((prev) => new Set([...prev, deltaId]));
+    onPreviewProposal?.(null);
+    if (onRejectProposal) {
+      await onRejectProposal(deltaId);
     }
   };
 
@@ -80,17 +216,18 @@ export function ChatPanel({
       {/* Cabecera */}
       <div className="chat-panel__header">
         <div className="chat-panel__header-info">
-          <AmongusAvatar size={24} isAnimated={false} />
-          <h2 className="chat-panel__title">Chat del Diagrama</h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#4f46e5' }}>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <h2 className="chat-panel__title">{isEn ? 'Diagram Chat' : 'Chat del Diagrama'}</h2>
         </div>
         <button
           type="button"
           onClick={onClose}
           className="chat-panel__close-btn"
-          aria-label="Cerrar chat"
-          title="Cerrar chat"
+          aria-label={isEn ? 'Close chat' : 'Cerrar chat'}
+          title={isEn ? 'Close chat' : 'Cerrar chat'}
         >
-          {/* Icono SVG de cerrar (X) */}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -108,14 +245,13 @@ export function ChatPanel({
           onClick={() => setActiveChannel('group')}
           data-testid="chat-tab-group"
         >
-          {/* Icono de equipo (usuarios) */}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
-          <span>Equipo</span>
+          <span>{isEn ? 'Team' : 'Equipo'}</span>
         </button>
 
         <button
@@ -126,7 +262,6 @@ export function ChatPanel({
           onClick={() => setActiveChannel('direct_bot')}
           data-testid="chat-tab-amongus"
         >
-          {/* Icono de Amongus / Asistente */}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="11" width="18" height="10" rx="2" />
             <circle cx="12" cy="5" r="2" />
@@ -134,30 +269,27 @@ export function ChatPanel({
             <line x1="8" y1="16" x2="8" y2="16" strokeWidth="3" />
             <line x1="16" y1="16" x2="16" y2="16" strokeWidth="3" />
           </svg>
-          <span>Amongus</span>
+          <span>{isEn ? 'Assistant' : 'Asistente'}</span>
         </button>
       </div>
 
       {/* Lista de mensajes */}
-      <div className="chat-panel__messages" data-testid="chat-messages-container">
-        {messages.length === 0 && !isLoading && (
+      <div className="chat-panel__messages" ref={messagesContainerRef} data-testid="chat-messages-container">
+        {safeMessages.length === 0 && !isLoading && !activeProposal && (
           <div className="chat-panel__empty">
-            {activeChannel === 'group' ? (
-              <>
-                <p>No hay mensajes en este lienzo aún.</p>
-                <p>¡Iniciá la conversación con tu equipo o mencioná a @Amongus!</p>
-              </>
-            ) : (
-              <>
-                <AmongusAvatar size={48} />
-                <p><strong>Chat privado con Amongus</strong></p>
-                <p>Hacé preguntas sobre tus clases UML, relaciones o pedí sugerencias de modelado.</p>
-              </>
-            )}
+            <p>
+              {activeChannel === 'group'
+                ? isEn
+                  ? 'No messages yet. Chat with your team or type a modeling command.'
+                  : 'No hay mensajes aún. Chateá con tu equipo o indicá un comando de modelado.'
+                : isEn
+                  ? 'Ask questions or type modeling commands (e.g. "add class Order").'
+                  : 'Hacé preguntas o indicá comandos de modelado (ej. "crear clase Pedido").'}
+            </p>
           </div>
         )}
 
-        {messages.map((msg) => {
+        {safeMessages.map((msg) => {
           const isBot = msg.senderType === 'bot';
           const isSelf = !isBot && msg.senderName === userName;
           const userColor = pickUserColor(msg.senderName);
@@ -172,11 +304,13 @@ export function ChatPanel({
               className={`chat-message ${messageClass}`}
               data-testid={`chat-message-${msg.id}`}
             >
-              {/* Avatar para bot o peers */}
               {!isSelf && (
                 <div className="chat-message__avatar-container">
                   {isBot ? (
-                    <AmongusAvatar size={30} />
+                    <>
+                      <AmongusAvatar size={30} />
+                      <span className="sr-only">Amongus</span>
+                    </>
                   ) : (
                     <div
                       className="chat-message__peer-avatar"
@@ -192,7 +326,7 @@ export function ChatPanel({
               <div className="chat-message__body">
                 <div className="chat-message__header">
                   <span className="chat-message__sender">
-                    {isSelf ? 'Vos' : msg.senderName}
+                    {isSelf ? (isEn ? 'You' : 'Vos') : msg.senderName}
                   </span>
                   {isBot && <span className="chat-message__tag-bot">Bot</span>}
                   <span className="chat-message__time">
@@ -201,21 +335,112 @@ export function ChatPanel({
                 </div>
                 <div className="chat-message__bubble">
                   {msg.content}
+                  {msg.delta && msg.deltaId && (
+                    <ProposalCard
+                      deltaId={msg.deltaId}
+                      delta={msg.delta}
+                      onConfirm={handleConfirm}
+                      onReject={handleReject}
+                      isApplied={appliedDeltaIds.has(msg.deltaId)}
+                      isRejected={rejectedDeltaIds.has(msg.deltaId)}
+                      isBuilding={buildingDeltaId === msg.deltaId}
+                    />
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
+
+        {/* Tarjeta de propuesta activa */}
+        {activeProposal && !safeMessages.some((m) => m.deltaId === activeProposal.deltaId) && (
+          <div className="chat-message chat-message--bot" data-testid="chat-active-proposal">
+            <div className="chat-message__avatar-container">
+              <AmongusAvatar size={30} isAnimated={buildingDeltaId === activeProposal.deltaId} />
+            </div>
+            <div className="chat-message__body">
+              <div className="chat-message__header">
+                <span className="chat-message__sender">Amongus</span>
+                <span className="chat-message__tag-bot">Bot</span>
+              </div>
+              <div className="chat-message__bubble">
+                <ProposalCard
+                  deltaId={activeProposal.deltaId}
+                  delta={activeProposal.delta}
+                  onConfirm={handleConfirm}
+                  onReject={handleReject}
+                  isApplied={appliedDeltaIds.has(activeProposal.deltaId)}
+                  isRejected={rejectedDeltaIds.has(activeProposal.deltaId)}
+                  isBuilding={buildingDeltaId === activeProposal.deltaId}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mensaje de rechazo con rol de alerta */}
+        {interpreterRefusal && (
+          <div className="chat-message chat-message--bot" role="alert">
+            <div className="chat-message__avatar-container">
+              <AmongusAvatar size={30} />
+            </div>
+            <div className="chat-message__body">
+              <div className="chat-message__header">
+                <span className="chat-message__sender">Amongus</span>
+                <span className="chat-message__tag-bot">Bot</span>
+              </div>
+              <div className="chat-message__bubble interpreter-refusal">
+                {isEn ? `Refused: ${interpreterRefusal}` : `Rechazado: ${interpreterRefusal}`}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mensaje de error con rol de alerta */}
+        {interpreterError && (
+          <div className="chat-message chat-message--bot" role="alert">
+            <div className="chat-message__avatar-container">
+              <AmongusAvatar size={30} />
+            </div>
+            <div className="chat-message__body">
+              <div className="chat-message__header">
+                <span className="chat-message__sender">Amongus</span>
+                <span className="chat-message__tag-bot">Bot</span>
+              </div>
+              <div className="chat-message__bubble interpreter-error">
+                {interpreterError}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Indicador de pensamiento */}
+        {interpreterPhase === 'thinking' && (
+          <div className="chat-message chat-message--bot" aria-live="polite">
+            <div className="chat-message__avatar-container">
+              <AmongusAvatar size={30} isAnimated={true} />
+            </div>
+            <div className="chat-message__body">
+              <div className="chat-message__bubble chat-panel__thinking">
+                <span>{isEn ? 'Thinking...' : 'Pensando...'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {error && (
-        <div style={{ padding: '4px 12px', background: '#fee2e2', color: '#b91c1c', fontSize: '12px' }}>
-          {error}
+      {(error || voiceError) && (
+        <div
+          role="alert"
+          style={{ padding: '6px 12px', background: '#fee2e2', color: '#b91c1c', fontSize: '12px' }}
+        >
+          {error || voiceError}
         </div>
       )}
 
-      {/* Formulario de entrada */}
+      {/* Formulario de entrada con mic y send */}
       <form onSubmit={handleSend} className="chat-panel__footer">
         <div className="chat-panel__input-group">
           <input
@@ -226,25 +451,62 @@ export function ChatPanel({
             onKeyDown={handleKeyDown}
             placeholder={
               activeChannel === 'group'
-                ? 'Escribí un mensaje o @Amongus...'
-                : 'Preguntale algo a Amongus...'
+                ? isEn
+                  ? 'Write a message or command...'
+                  : 'Escribí un mensaje o comando...'
+                : isEn
+                  ? 'Ask a question or type a UML command...'
+                  : 'Hacé una pregunta o comando UML...'
             }
-            aria-label="Mensaje de chat"
+            aria-label={isEn ? 'Natural language command' : 'Comando en lenguaje natural'}
             data-testid="chat-input"
-            disabled={isSending}
+            disabled={isSending || interpreterPhase === 'thinking'}
           />
+
+          {voiceRecorder !== null && (
+            <button
+              type="button"
+              onClick={onToggleRecord ?? handleInternalToggleRecord}
+              disabled={isSending || interpreterPhase === 'thinking'}
+              className={`chat-panel__record-btn ${activeRecording ? 'chat-panel__record-btn--active' : ''}`}
+              aria-label={activeRecording ? (isEn ? 'Stop' : 'Detener') : (isEn ? 'Record' : 'Grabar')}
+              title={activeRecording ? (isEn ? 'Stop recording' : 'Detener grabación') : (isEn ? 'Record voice' : 'Grabar voz')}
+              data-testid="chat-record-btn"
+            >
+              {activeRecording ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                  </svg>
+                  <span className="sr-only">Stop</span>
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="22" />
+                  </svg>
+                  <span className="sr-only">Record</span>
+                </>
+              )}
+            </button>
+          )}
+
           <button
             type="submit"
+            onClick={handleSend}
             className="chat-panel__send-btn"
-            disabled={isSending || draft.trim().length === 0}
-            aria-label="Enviar mensaje"
+            disabled={isSending || interpreterPhase === 'thinking' || draft.trim().length === 0}
+            aria-label={isEn ? 'Send' : 'Enviar'}
+            title={isEn ? 'Send' : 'Enviar'}
             data-testid="chat-send-btn"
           >
-            {/* Icono de enviar (avión de papel SVG) */}
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
+            <span className="sr-only">Send</span>
           </button>
         </div>
       </form>

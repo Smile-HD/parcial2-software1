@@ -9,12 +9,14 @@ import {
 export interface UseChatOptions {
   diagramId: string;
   userName: string;
+  language?: 'es' | 'en';
   pollIntervalMs?: number;
 }
 
 export function useChat({
   diagramId,
   userName,
+  language = 'es',
   pollIntervalMs = 3000,
 }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -36,7 +38,19 @@ export function useChat({
         deviceIdRef.current,
         userName,
       );
-      setMessages(data);
+      setMessages((prev) => {
+        const next = Array.isArray(data) ? data : [];
+        if (prev.length === next.length) {
+          const isSame = prev.every(
+            (m, idx) =>
+              m.id === next[idx]?.id &&
+              m.content === next[idx]?.content &&
+              m.deltaId === next[idx]?.deltaId,
+          );
+          if (isSame) return prev;
+        }
+        return next;
+      });
       setError(null);
 
       // Si el chat está cerrado y hay nuevos mensajes, incrementar unreadCount
@@ -94,6 +108,7 @@ export function useChat({
           senderName: userName,
           channelType: activeChannel,
           content: trimmed,
+          language,
         });
         // Recargar inmediatamente después de enviar
         await loadMessages();
@@ -102,7 +117,7 @@ export function useChat({
         throw err;
       }
     },
-    [diagramId, userName, activeChannel, loadMessages],
+    [diagramId, userName, activeChannel, language, loadMessages],
   );
 
   return {

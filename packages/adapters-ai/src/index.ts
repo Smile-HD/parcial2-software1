@@ -670,13 +670,51 @@ export class OpenAiLlm implements LlmPort {
   }
 
   static fromEnv(): OpenAiLlm | null {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY || (process.env.OPENAI_BASE_URL ? 'ollama' : undefined);
     if (!apiKey) return null;
     return new OpenAiLlm({
       apiKey,
       baseUrl: process.env.OPENAI_BASE_URL,
       model: process.env.LLM_MODEL,
     });
+  }
+
+  async chat(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    options?: { timeoutMs?: number; temperature?: number }
+  ): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 15000);
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages,
+          temperature: options?.temperature ?? 0.7,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`LLM chat failed with status ${response.status}`);
+      }
+
+      const payload = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const content = payload.choices?.[0]?.message?.content;
+      if (typeof content !== 'string') {
+        throw new Error('LLM chat response had no message content');
+      }
+      return content;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async interpret(utterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {

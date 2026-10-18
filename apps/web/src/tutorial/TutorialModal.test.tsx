@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { TutorialModal, TUTORIAL_STORAGE_KEY } from './TutorialModal';
+import { setLang } from '../i18n';
 
 describe('TutorialModal — Tutorial Interactivo Guiado por Amongus (PR 25)', () => {
   const mockOnClose = vi.fn();
@@ -8,6 +9,7 @@ describe('TutorialModal — Tutorial Interactivo Guiado por Amongus (PR 25)', ()
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    setLang('es');
   });
 
   it('no renderiza nada cuando isOpen es false', () => {
@@ -30,23 +32,25 @@ describe('TutorialModal — Tutorial Interactivo Guiado por Amongus (PR 25)', ()
 
     // Paso 1 -> Paso 2
     fireEvent.click(screen.getByTestId('tutorial-next-btn'));
-    expect(screen.getByText('Caja de Herramientas y Clases')).toBeDefined();
+    expect(screen.getByText('1. Seleccionar y Crear la Clase "Cliente"')).toBeDefined();
     expect(screen.getByText(/Paso 2 de 5/i)).toBeDefined();
     expect(screen.getByTestId('tutorial-prev-btn')).toBeDefined();
+    expect(screen.getByTestId('tutorial-spotlight-badge')).toBeDefined();
+    expect(screen.getByText(/Herramienta: Clase/i)).toBeDefined();
 
     // Paso 2 -> Paso 3
     fireEvent.click(screen.getByTestId('tutorial-next-btn'));
-    expect(screen.getByText('Relaciones UML Estándar')).toBeDefined();
+    expect(screen.getByText('2. Crear la Clase "Pedido"')).toBeDefined();
     expect(screen.getByText(/Paso 3 de 5/i)).toBeDefined();
 
     // Paso 3 -> Paso 4
     fireEvent.click(screen.getByTestId('tutorial-next-btn'));
-    expect(screen.getByText('Colaboración en Vivo y Chat')).toBeDefined();
+    expect(screen.getByText('3. Conectar con Relación (Asociación)')).toBeDefined();
     expect(screen.getByText(/Paso 4 de 5/i)).toBeDefined();
 
     // Paso 4 -> Paso 5
     fireEvent.click(screen.getByTestId('tutorial-next-btn'));
-    expect(screen.getByText('Asistente Amongus y Exportación')).toBeDefined();
+    expect(screen.getByText('4. Asistente IA y Generar Spring Boot')).toBeDefined();
     expect(screen.getByText(/Paso 5 de 5/i)).toBeDefined();
     expect(screen.getByText('Comenzar a modelar')).toBeDefined();
   });
@@ -85,5 +89,15 @@ describe('TutorialModal — Tutorial Interactivo Guiado por Amongus (PR 25)', ()
 
     expect(mockOnClose).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(TUTORIAL_STORAGE_KEY)).toBe('true');
+  });
+
+  it('renderiza el tutorial en inglés cuando lang es en', () => {
+    setLang('en');
+    render(<TutorialModal isOpen={true} onClose={mockOnClose} />);
+
+    expect(screen.getByText('Welcome to UML Studio')).toBeDefined();
+    expect(screen.getByText(/Step 1 of 5/i)).toBeDefined();
+    expect(screen.getByText('Skip')).toBeDefined();
+    expect(screen.getByTestId('tutorial-next-btn').textContent).toContain('Next');
   });
 });

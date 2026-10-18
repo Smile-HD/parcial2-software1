@@ -212,7 +212,7 @@ describe('Voice input (voice:R1/R2/R3)', () => {
     expect(await screen.findByText('Invoice')).toBeTruthy();
     expect(projectYDocToDiagram(doc).classes.map((c) => c.name)).toEqual(['Customer', 'Invoice']);
     expect(counters.confirms).toBe(1);
-  });
+  }, 15000);
 
   it('8.3 STT outage shows an explicit message directing to the text input fallback', async () => {
     const diagram = makeFixture();

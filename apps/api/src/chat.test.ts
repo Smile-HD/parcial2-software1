@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { buildApp } from './index';
 import { purgeExpiredChatMessages } from './chat';
+import { FakeLlm } from '@app/adapters-ai';
 
 const TEST_DATABASE_URL = 'postgres://postgres:postgres@localhost:5433/ai_uml_test';
 const pool = new Pool({ connectionString: TEST_DATABASE_URL, max: 5 });
@@ -12,7 +13,7 @@ let app: Awaited<ReturnType<typeof Fastify>>;
 
 beforeAll(async () => {
   process.env.DATABASE_URL = TEST_DATABASE_URL;
-  app = buildApp({ logger: false, pool });
+  app = buildApp({ logger: false, pool, llm: new FakeLlm() });
   await app.ready();
 });
 
@@ -169,6 +170,35 @@ describe('Chat Colaborativo y Persistencia de Mensajes (Unidad 23.2)', () => {
     expect(botReply.content).toBeTruthy();
   });
 
+  it('genera una respuesta automática de Amongus en inglés cuando language es en', async () => {
+    const diagramId = await createFixtureDiagram();
+
+    const postRes = await app.inject({
+      method: 'POST',
+      url: `/diagrams/${diagramId}/messages`,
+      payload: {
+        deviceId: 'dev-1',
+        senderName: 'John',
+        channelType: 'direct_bot',
+        content: 'How do I create a class?',
+        language: 'en',
+      },
+    });
+
+    expect(postRes.statusCode).toBe(201);
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/diagrams/${diagramId}/messages?channel=direct_bot&deviceId=dev-1&userName=John`,
+    });
+
+    const messages = JSON.parse(getRes.body);
+    expect(messages.length).toBe(2);
+    const botReply = messages.find((m: any) => m.senderType === 'bot');
+    expect(botReply).toBeDefined();
+    expect(botReply.content).toContain('to create a class you can drag it');
+  });
+
   it('purga mensajes con más de 7 días de antigüedad (TTL)', async () => {
     const diagramId = await createFixtureDiagram();
 
@@ -192,5 +222,38 @@ describe('Chat Colaborativo y Persistencia de Mensajes (Unidad 23.2)', () => {
     const checkRes = await pool.query('SELECT content FROM chat_messages');
     expect(checkRes.rows.length).toBe(1);
     expect(checkRes.rows[0].content).toBe('Mensaje fresco');
+  });
+
+  it('delega al LLM dinámico si soporta chat y sanitiza emojis', async () => {
+    const mockLlm = {
+      interpret: async () => ({ kind: 'refused' as const, reason: 'stub' }),
+      chat: async () => '¡Hola! 🚀 Puedo ayudarte con clases y relaciones. 😊👍',
+    };
+    const customApp = buildApp({ logger: false, pool, llm: mockLlm as any });
+    await customApp.ready();
+
+    const diagramId = await createFixtureDiagram();
+
+    await customApp.inject({
+      method: 'POST',
+      url: `/diagrams/${diagramId}/messages`,
+      payload: {
+        deviceId: 'dev-1',
+        senderName: 'Carlos',
+        channelType: 'direct_bot',
+        content: '¿Qué podés hacer?',
+      },
+    });
+
+    const getRes = await customApp.inject({
+      method: 'GET',
+      url: `/diagrams/${diagramId}/messages?channel=direct_bot&deviceId=dev-1&userName=Carlos`,
+    });
+
+    const messages = JSON.parse(getRes.body);
+    const botReply = messages.find((m: any) => m.senderType === 'bot');
+    expect(botReply).toBeDefined();
+    expect(botReply.content).toBe('¡Hola! Puedo ayudarte con clases y relaciones.');
+    await customApp.close();
   });
 });

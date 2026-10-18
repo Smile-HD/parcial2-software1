@@ -16,6 +16,8 @@ export interface ChatMessage {
   targetUser: string | null;
   content: string;
   createdAt: string;
+  deltaId?: string;
+  delta?: any;
 }
 
 export interface SendMessagePayload {
@@ -23,6 +25,7 @@ export interface SendMessagePayload {
   senderName: string;
   channelType: 'group' | 'direct_bot';
   content: string;
+  language?: 'es' | 'en';
 }
 
 /**
@@ -64,7 +67,8 @@ export async function fetchChatMessages(
   if (!response.ok) {
     throw new Error(`Error al cargar mensajes: ${response.status}`);
   }
-  return response.json();
+  const data = await response.json().catch(() => []);
+  return Array.isArray(data) ? data : [];
 }
 
 /**

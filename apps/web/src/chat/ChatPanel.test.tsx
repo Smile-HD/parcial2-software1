@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ChatPanel } from './ChatPanel';
 import * as chatApi from './chatApi';
+import { setLang } from '../i18n';
 
 vi.mock('./chatApi', () => ({
   DEVICE_ID_STORAGE_KEY: 'uml_device_id',
@@ -17,6 +18,7 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setLang('es');
     vi.mocked(chatApi.fetchChatMessages).mockResolvedValue([]);
     vi.mocked(chatApi.sendChatMessage).mockResolvedValue({
       id: 'msg-1',
@@ -152,6 +154,7 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
         senderName: mockUserName,
         channelType: 'group',
         content: 'Nuevo mensaje para el equipo',
+        language: 'es',
       });
     });
   });
@@ -169,5 +172,21 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
     const closeBtn = screen.getByLabelText('Cerrar chat');
     fireEvent.click(closeBtn);
     expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renderiza la interfaz en inglés cuando se selecciona lang=en', () => {
+    setLang('en');
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+      />
+    );
+
+    expect(screen.getByText('Diagram Chat')).toBeDefined();
+    expect(screen.getByText('Team')).toBeDefined();
+    expect(screen.getByPlaceholderText(/Write a message/i)).toBeDefined();
   });
 });

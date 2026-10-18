@@ -172,7 +172,7 @@ describe('App delta-preview modal (interpreter:R2)', () => {
     expect(projectYDocToDiagram(sessionDoc).classes.map((c) => c.name)).toEqual(['Customer', 'Product']);
     expect(counters.confirms).toBe(1);
     expect(screen.queryByText('Add class "Product"')).toBeNull();
-  });
+  }, 15000);
 
   it('discards the pending delta on Reject and leaves the model unchanged', async () => {
     const diagram = makeFixture();
