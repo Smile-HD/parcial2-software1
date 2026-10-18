@@ -47,6 +47,9 @@ import { ExportToolbarButtons } from './canvas/imageExport';
 import { ImportXmiButton } from './xmi/ImportXmiButton';
 import { ExportXmiButton } from './xmi/ExportXmiButton';
 import { ImportPhotoButton } from './photo/ImportPhotoButton';
+import { ChatPanel } from './chat/ChatPanel';
+import { AmongusAvatar } from './chat/AmongusAvatar';
+import { TutorialModal, TUTORIAL_STORAGE_KEY } from './tutorial/TutorialModal';
 import './canvas/canvas.css';
 
 const DIAGRAM_NAME = 'Untitled';
@@ -210,6 +213,8 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const [userName, setUserName] = useState(initialUser.current.name);
   const [isNameModalOpen, setIsNameModalOpen] = useState(initialUser.current.isPromptNeeded);
   const [peerUsers, setPeerUsers] = useState<readonly PresenceUser[]>([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const providerRef = useRef<WebsocketProvider | null>(null);
 
   useEffect(() => {
@@ -538,6 +543,18 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             />
             {/* unidad 13e.9 — el control segmentado EN/ES reside en la barra de herramientas. */}
             <LanguageToggle />
+            {/* Guía interactiva de onboarding con Amongus */}
+            <button
+              type="button"
+              className="tutorial-toolbar-btn"
+              onClick={() => setIsTutorialOpen(true)}
+              aria-label="Abrir guía interactiva con Amongus"
+              title="Guía interactiva con Amongus"
+              data-testid="toolbar-tutorial-btn"
+            >
+              <AmongusAvatar size={18} isAnimated={false} />
+              <span>Guía</span>
+            </button>
           </div>
           <div className="interpreter-bar">
             <input
@@ -593,6 +610,29 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               setUserName(newName);
               setIsNameModalOpen(false);
             }}
+          />
+          {!isChatOpen && (
+            <button
+              type="button"
+              className="chat-launcher-btn"
+              onClick={() => setIsChatOpen(true)}
+              aria-label="Abrir chat y asistente Amongus"
+              data-testid="chat-launcher"
+            >
+              <AmongusAvatar size={24} isAnimated={true} />
+              <span>Chat & Amongus</span>
+            </button>
+          )}
+          <ChatPanel
+            diagramId={roomId ?? ''}
+            userName={userName}
+            isOpen={isChatOpen && Boolean(roomId)}
+            onClose={() => setIsChatOpen(false)}
+            peerUsers={peerUsers}
+          />
+          <TutorialModal
+            isOpen={isTutorialOpen}
+            onClose={() => setIsTutorialOpen(false)}
           />
         </>
       )}
