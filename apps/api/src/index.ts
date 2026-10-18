@@ -743,7 +743,10 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       return reply.status(400).send({ error: 'Invalid message payload', details: parsed.error.issues });
     }
 
-    const exists = await dbPool.query('SELECT id FROM diagrams WHERE id = $1', [id]);
+    const exists = await dbPool.query(
+      'SELECT id, name, doc, yjs_state, version FROM diagrams WHERE id = $1',
+      [id]
+    );
     if (exists.rows.length === 0) {
       return reply.status(404).send({ error: 'Diagram not found' });
     }
@@ -752,19 +755,44 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
     // Si es canal directo o menciona a Amongus, generamos respuesta contextual del asistente
     if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus')) {
-      const replyContent = await generateAmongusReply(
-        parsed.data.content,
-        parsed.data.senderName,
-        parsed.data.language ?? 'es',
-        llm
-      );
+      const isEn = parsed.data.language === 'en';
+      let deltaId: string | null = null;
+      let delta: import('@app/core').Delta | null = null;
+      let replyContent = '';
+
+      // Primero intentamos interpretar si el usuario está dando una orden de modelado UML
+      try {
+        const { diagram } = await loadDiagramFromRow(exists.rows[0]);
+        const outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
+        if (outcome.status === 'pending') {
+          deltaId = outcome.deltaId;
+          delta = outcome.delta;
+          replyContent = isEn
+            ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+            : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+        }
+      } catch {
+        // No era comando de modelado o fallo temporal -> procede a charla conversacional
+      }
+
+      if (!replyContent) {
+        replyContent = await generateAmongusReply(
+          parsed.data.content,
+          parsed.data.senderName,
+          parsed.data.language ?? 'es',
+          llm
+        );
+      }
+
       await insertBotReply(
         dbPool,
         id,
         parsed.data.deviceId,
         parsed.data.senderName,
         parsed.data.channelType,
-        replyContent
+        replyContent,
+        deltaId,
+        delta
       );
     }
 

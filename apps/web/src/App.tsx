@@ -14,11 +14,11 @@
  * del cliente (guardado preservando blob) y reintentan ante conflictos de versión generados por las
  * escrituras con debounce de colaboración.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-import { applyUpdateToYDoc, encodeYDoc, projectYDocToDiagram, type Diagram } from '@app/core';
+import { applyUpdateToYDoc, encodeYDoc, projectYDocToDiagram, type Delta, type Diagram } from '@app/core';
 
 import {
   DiagramApiError,
@@ -37,7 +37,8 @@ import { applyDeltaToYDoc } from './canvas/applyDeltaToYDoc';
 import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { CanvasErrorBoundary } from './canvas/CanvasErrorBoundary';
-import { DeltaPreviewModal } from './interpreter/DeltaPreviewModal';
+import { executeLiveAmongusBuild } from './canvas/liveConstruction';
+import type { RemoteCursorPeer } from './canvas/RemoteCursors';
 import { PresenceBar, type PresenceUser, type BotStatus } from './canvas/PresenceBar';
 import { UserNameModal, USERNAME_STORAGE_KEY } from './presence/UserNameModal';
 import { pickUserColor } from './presence/palette';
@@ -213,9 +214,19 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const [userName, setUserName] = useState(initialUser.current.name);
   const [isNameModalOpen, setIsNameModalOpen] = useState(initialUser.current.isPromptNeeded);
   const [peerUsers, setPeerUsers] = useState<readonly PresenceUser[]>([]);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [ghostDelta, setGhostDelta] = useState<Delta | null>(null);
+  const [virtualPeer, setVirtualPeer] = useState<RemoteCursorPeer | null>(null);
+  const [buildingDeltaId, setBuildingDeltaId] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(true);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const providerRef = useRef<WebsocketProvider | null>(null);
+
+  const activeProposal = useMemo(() => {
+    if (interpreter.phase === 'pending') {
+      return { deltaId: interpreter.deltaId, delta: interpreter.delta };
+    }
+    return null;
+  }, [interpreter]);
 
   useEffect(() => {
     if (didInit.current) {
@@ -303,8 +314,26 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
           });
         }
       }
-      setPeers(names);
-      setPeerUsers(currentUsers);
+      setPeers((prev) => {
+        if (prev.length === names.length && prev.every((n, i) => n === names[i])) {
+          return prev;
+        }
+        return names;
+      });
+      setPeerUsers((prev) => {
+        if (
+          prev.length === currentUsers.length &&
+          prev.every(
+            (u, i) =>
+              u.name === currentUsers[i]?.name &&
+              u.color === currentUsers[i]?.color &&
+              u.isSelf === currentUsers[i]?.isSelf,
+          )
+        ) {
+          return prev;
+        }
+        return currentUsers;
+      });
     };
     provider.awareness.on('change', syncPresence);
     syncPresence();
@@ -384,19 +413,21 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const apiFailureMessage = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : fallback;
 
-  const handleSubmitCommand = (): void => {
+  const handleSubmitCommand = (customText?: string): void => {
     if (version === null || status !== 'ready' || roomId === null || interpreter.phase === 'thinking') {
       return;
     }
-    const text = commandDraft.trim();
+    const text = (typeof customText === 'string' ? customText : commandDraft).trim();
     if (text.length === 0) {
       return;
     }
     setInterpreter({ phase: 'thinking' });
+    setGhostDelta(null);
     void interpretCommand(roomId, text)
       .then((outcome: InterpretResponse) => {
         if (outcome.status === 'pending') {
           setCommandDraft('');
+          setGhostDelta(outcome.delta);
           setInterpreter({ phase: 'pending', deltaId: outcome.deltaId, delta: outcome.delta });
           return;
         }
@@ -411,32 +442,43 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       });
   };
 
-  const handleConfirmDelta = (): void => {
-    if (interpreter.phase !== 'pending') {
+  const handleConfirmDelta = (targetDeltaId?: string, targetDelta?: Delta): void => {
+    const deltaId = targetDeltaId ?? (interpreter.phase === 'pending' ? interpreter.deltaId : null);
+    if (!deltaId) {
       return;
     }
-    const { deltaId } = interpreter;
     setInterpreter({ phase: 'thinking' });
+    setGhostDelta(null);
+    setBuildingDeltaId(deltaId);
+
     void confirmDelta(deltaId)
-      .then((result) => {
-        const applied = applyDeltaToYDoc(doc, result.delta);
-        if (!applied.ok) {
-          setInterpreter({ phase: 'error', message: t('interpreter.applyFailed', { kind: applied.error.kind }) });
-          return;
-        }
+      .then(async (result) => {
+        applyDeltaToYDoc(doc, result.delta);
+        await executeLiveAmongusBuild({
+          doc,
+          delta: result.delta,
+          setVirtualPeer: (peer) => setVirtualPeer(peer),
+          stepDelayMs: 20,
+        });
+        setVirtualPeer(null);
+        setBuildingDeltaId(null);
         setInterpreter({ phase: 'idle' });
       })
       .catch((error: unknown) => {
+        setVirtualPeer(null);
+        setBuildingDeltaId(null);
         setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.confirmFailed')) });
       });
   };
 
-  const handleRejectDelta = (): void => {
-    if (interpreter.phase !== 'pending') {
+  const handleRejectDelta = (targetDeltaId?: string): void => {
+    const deltaId = targetDeltaId ?? (interpreter.phase === 'pending' ? interpreter.deltaId : null);
+    if (!deltaId) {
       return;
     }
-    const { deltaId } = interpreter;
     setInterpreter({ phase: 'thinking' });
+    setGhostDelta(null);
+
     void rejectDelta(deltaId)
       .then(() => {
         setInterpreter({ phase: 'idle' });
@@ -477,6 +519,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
           .then((response) => {
             setCommandDraft(response.transcript);
             if (response.status === 'pending') {
+              setGhostDelta(response.delta);
               setInterpreter({ phase: 'pending', deltaId: response.deltaId, delta: response.delta });
               return;
             }
@@ -528,13 +571,14 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             {/* unidad 16b: exportación PNG/JPEG del lado del cliente — solo lectura, cero llamadas a la API. */}
             <ExportToolbarButtons doc={doc} />
             {/* PR 16c: importación de foto a UML. */}
+            <ImportPhotoButton doc={doc} diagramId={roomId} disabled={status !== 'ready'} />
             <PresenceBar
               names={peers}
               users={peerUsers}
               onEditSelf={() => setIsNameModalOpen(true)}
               bot={{
                 status:
-                  interpreter.phase === 'thinking'
+                  interpreter.phase === 'thinking' || Boolean(buildingDeltaId)
                     ? 'thinking'
                     : interpreter.phase === 'pending'
                       ? 'applying'
@@ -556,49 +600,14 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               <span>{lang === 'en' ? 'Guide' : 'Guía'}</span>
             </button>
           </div>
-          <div className="interpreter-bar">
-            <input
-              aria-label={tr('interpreter.ariaLabel')}
-              value={commandDraft}
-              onChange={(event) => setCommandDraft(event.target.value)}
-              placeholder={tr('interpreter.placeholder')}
-              disabled={interpreter.phase === 'thinking'}
-            />
-            <button type="button" onClick={handleSubmitCommand} disabled={interpreter.phase === 'thinking'}>
-              {tr('interpreter.send')}
-            </button>
-            {activeRecorder !== null && (
-              <button
-                type="button"
-                onClick={handleToggleRecord}
-                disabled={interpreter.phase === 'thinking'}
-                aria-label={recording ? tr('interpreter.stopAria') : tr('interpreter.recordAria')}
-              >
-                {recording ? tr('interpreter.stop') : tr('interpreter.record')}
-              </button>
-            )}
-            {interpreter.phase === 'thinking' && <span aria-live="polite">{tr('interpreter.thinking')}</span>}
-            {interpreter.phase === 'refused' && (
-              <span role="alert" className="interpreter-refusal">
-                {tr('interpreter.refused', { reason: interpreter.reason })}
-              </span>
-            )}
-            {interpreter.phase === 'error' && (
-              <span role="alert" className="interpreter-error">
-                {interpreter.message}
-              </span>
-            )}
-          </div>
-          {interpreter.phase === 'pending' && (
-            <DeltaPreviewModal
-              delta={interpreter.delta}
-              onConfirm={handleConfirmDelta}
-              onReject={handleRejectDelta}
-            />
-          )}
           <div className="app-canvas">
             <CanvasErrorBoundary>
-              <DiagramCanvas doc={doc} provider={providerRef.current} />
+              <DiagramCanvas
+                doc={doc}
+                provider={providerRef.current}
+                ghostDelta={ghostDelta}
+                virtualPeer={virtualPeer}
+              />
             </CanvasErrorBoundary>
           </div>
           <UserNameModal
@@ -619,7 +628,9 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               aria-label={lang === 'en' ? 'Open chat' : 'Abrir chat'}
               data-testid="chat-launcher"
             >
-              <AmongusAvatar size={24} isAnimated={true} />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
               <span>Chat</span>
             </button>
           )}
@@ -629,6 +640,20 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             isOpen={isChatOpen && Boolean(roomId)}
             onClose={() => setIsChatOpen(false)}
             peerUsers={peerUsers}
+            voiceRecorder={activeRecorder}
+            onConfirmProposal={handleConfirmDelta}
+            onRejectProposal={handleRejectDelta}
+            onPreviewProposal={setGhostDelta}
+            buildingDeltaId={buildingDeltaId}
+            activeProposal={activeProposal}
+            interpreterPhase={interpreter.phase}
+            interpreterError={interpreter.phase === 'error' ? interpreter.message : null}
+            interpreterRefusal={interpreter.phase === 'refused' ? interpreter.reason : null}
+            onSubmitCommand={handleSubmitCommand}
+            commandDraft={commandDraft}
+            onCommandDraftChange={setCommandDraft}
+            recording={recording}
+            onToggleRecord={handleToggleRecord}
           />
           <TutorialModal
             isOpen={isTutorialOpen}

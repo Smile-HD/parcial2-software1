@@ -10,7 +10,7 @@ import { ReactFlow, Background, BackgroundVariant, ViewportPortal, applyNodeChan
 import '@xyflow/react/dist/style.css';
 import type * as Y from 'yjs';
 
-import { MultiplicitySchema, projectYDocToDiagram, type ApplyError, type ApplyResult, type Association, type AssociationDelta, type ClassDelta, type DependencyDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type NaryAssociationDelta, type NaryMemberEnd, type Parameter, type Realization, type RealizationDelta } from '@app/core';
+import { MultiplicitySchema, projectYDocToDiagram, type ApplyError, type ApplyResult, type Association, type AssociationDelta, type ClassDelta, type Delta, type DependencyDelta, type Diagram, type Generalization, type GeneralizationDelta, type MemberDelta, type NaryAssociationDelta, type NaryMemberEnd, type Parameter, type Realization, type RealizationDelta } from '@app/core';
 
 import './canvas.css';
 import { ClassNode, type ClassNodeData, type ClassFlowNode, type MemberAdornments } from './ClassNode';
@@ -25,7 +25,7 @@ import { Palette, PALETTE_DND_MIME, type PaletteEdgeTool, type PaletteNodeKind }
 import { QuickLinkerMenu } from './QuickLinkerMenu';
 import type { WebsocketProvider } from 'y-websocket';
 import { useRemoteCursors } from './useRemoteCursors';
-import { RemoteCursors } from './RemoteCursors';
+import { RemoteCursors, type RemoteCursorPeer } from './RemoteCursors';
 import { getRemoteNodeSelections } from './selectionHalos';
 import { EdgeCrossingProvider } from './EdgeCrossingContext';
 import {
@@ -83,6 +83,8 @@ function isEditorEdgeType(type: string | undefined): type is EditorEdgeType {
 export interface DiagramCanvasProps {
   doc: Y.Doc;
   provider?: WebsocketProvider | null;
+  ghostDelta?: Delta | null;
+  virtualPeer?: RemoteCursorPeer | null;
 }
 
 /**
@@ -928,7 +930,7 @@ export function getOptimalHandles(
   }
 }
 
-export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
+export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: DiagramCanvasProps) {
   // unidad 13e.10 — accesor reactivo: cada cadena JSX a continuación se re-renderiza en vivo
   // cuando cambia el alternador de idioma (`t` a nivel de módulo atiende los controladores).
   const { t: tr } = useT();
@@ -967,7 +969,18 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
     provider,
     screenToFlowPosition: (pos) => rfRef.current?.screenToFlowPosition(pos) ?? pos,
   });
-  const remoteSelections = useMemo(() => getRemoteNodeSelections(remotePeers), [remotePeers]);
+  const [remoteSelections, setRemoteSelections] = useState<Map<string, import('./selectionHalos').RemoteSelectionInfo>>(() => new Map());
+  useEffect(() => {
+    const next = getRemoteNodeSelections(remotePeers);
+    setRemoteSelections((prev) => {
+      if (prev.size !== next.size) return next;
+      for (const [k, v] of next.entries()) {
+        const p = prev.get(k);
+        if (!p || p.color !== v.color || p.name !== v.name) return next;
+      }
+      return prev;
+    });
+  }, [remotePeers]);
 
   useEffect(() => {
     broadcastSelection(selectedClassId ? [selectedClassId] : []);
@@ -1542,6 +1555,60 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
     applyDeltaToYDoc(doc, delta);
   };
 
+  const ghostNodes = useMemo(() => {
+    if (!ghostDelta) return [];
+    const createdClasses: { id: string; name: string; position: { x: number; y: number } }[] = [];
+    if (ghostDelta.kind === 'class' && ghostDelta.op === 'create') {
+      createdClasses.push({
+        id: `ghost-${ghostDelta.classId}`,
+        name: ghostDelta.name,
+        position: ghostDelta.position ?? { x: 250, y: 150 },
+      });
+    } else if (ghostDelta.kind === 'batch') {
+      for (const d of ghostDelta.deltas) {
+        if (d.kind === 'class' && d.op === 'create') {
+          createdClasses.push({
+            id: `ghost-${d.classId}`,
+            name: d.name,
+            position: d.position ?? { x: 250, y: 150 },
+          });
+        }
+      }
+    }
+
+    return createdClasses.map((gc) => ({
+      id: gc.id,
+      type: 'class' as const,
+      position: gc.position,
+      className: 'class-node--ghost',
+      data: {
+        name: `${gc.name} (Propuesta)`,
+        attributes: [],
+        methods: [],
+        kind: 'class' as const,
+        isAbstract: false,
+        otherClasses: [],
+        otherInterfaces: [],
+        onRename: () => {},
+        onDelete: () => {},
+        onAddAttribute: () => {},
+        onEditAttribute: () => {},
+        onRemoveAttribute: () => {},
+        onAddMethod: () => {},
+        onEditMethod: () => {},
+        onRemoveMethod: () => {},
+        onMakeSubclass: () => {},
+        onToggleAbstract: () => {},
+        onRealize: () => {},
+        onDependOn: () => {},
+        onSelect: () => {},
+        connectArmed: false,
+        selected: false,
+        onQuickLinkStart: () => {},
+      } satisfies ClassNodeData,
+    }));
+  }, [ghostDelta]);
+
   const nodes = useMemo<(ClassFlowNode | NaryDiamondFlowNode)[]>(
     () => [
       ...diagram.classes.map((cls) => ({
@@ -1611,11 +1678,12 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
           } satisfies NaryDiamondFlowNode;
         })
         .filter((node): node is NaryDiamondFlowNode => node !== null),
+      ...ghostNodes,
     ],
     // unidad 13c — edgeTool se une a las dependencias: armar/desarmar conmuta las
     // superposiciones de conexión en todo el nodo. unidad 13d — selectedClassId conmuta la
     // flecha de la esquina de Quick Linker. unidad 21 — remoteSelections actualiza los halos.
-    [diagram, edgeTool, selectedClassId, remoteSelections],
+    [diagram, edgeTool, selectedClassId, remoteSelections, ghostNodes],
   );
 
   // unidad 13e.19 — transmisión colaborativa en vivo de arrastre (60/120 FPS).
@@ -1659,6 +1727,7 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
         dragRafRef.current = null;
       }
       activeDragNodeRef.current = null;
+      setDragOverride(null);
       handleNodeDragStop(doc, diagram.id, node);
     },
     [doc, diagram.id],
@@ -1666,24 +1735,20 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
 
   // Estado local sincronizado para arrastre suave y reactivo en tiempo real (60/120 FPS).
   // La posición canónica proviene del Y.Doc, pero durante el arrastre onNodesChange actualiza
-  // de inmediato la posición del nodo en pantalla para que acompañe al cursor sin saltos.
-  const [displayNodes, setDisplayNodes] = useState(nodes);
-  useEffect(() => {
-    setDisplayNodes((prev) => {
-      const draggingId = activeDragNodeRef.current?.id;
-      if (!draggingId) return nodes;
-      return nodes.map((n) => {
-        if (n.id === draggingId) {
-          const localMatch = prev.find((p) => p.id === draggingId);
-          return localMatch ? { ...n, position: localMatch.position } : n;
-        }
-        return n;
-      });
-    });
-  }, [nodes]);
+  // de inmediato la posición del nodo en pantalla para que acompañe al cursor sin saltos ni doble-render.
+  const [dragOverride, setDragOverride] = useState<{ id: string; position: { x: number; y: number } } | null>(null);
+
+  const displayNodes = useMemo(() => {
+    if (!dragOverride) return nodes;
+    return nodes.map((n) => (n.id === dragOverride.id ? { ...n, position: dragOverride.position } : n));
+  }, [nodes, dragOverride]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setDisplayNodes((nds) => applyNodeChanges(changes, nds) as typeof nds);
+    for (const change of changes) {
+      if (change.type === 'position' && change.position) {
+        setDragOverride({ id: change.id, position: change.position });
+      }
+    }
   }, []);
 
   const edges = useMemo<Edge[]>(
@@ -2461,7 +2526,7 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
           onInit={(instance) => {
             rfRef.current = instance;
           }}
-          onMove={(_event, viewport) => {
+          onMoveEnd={(_event, viewport) => {
             setCurrentZoom(viewport.zoom);
           }}
           onNodesChange={onNodesChange}
@@ -2497,13 +2562,12 @@ export function DiagramCanvas({ doc, provider }: DiagramCanvasProps) {
           onNodeDragStop={onNodeDragStop}
           snapToGrid={true}
           snapGrid={[20, 20]}
-          fitView
         >
           {/* unidad 13e — lienzo estilo EA: sutil cuadrícula de puntos nítidos detrás de los elementos. */}
           <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="#94a3b8" />
           {/* Límite visual del lienzo: hoja de diagrama con bordes definidos y sombreado exterior */}
           <ViewportPortal>
-            <RemoteCursors peers={remotePeers} />
+            <RemoteCursors peers={virtualPeer ? [...remotePeers, virtualPeer] : remotePeers} />
             <div
               className="diagram-canvas-boundary"
               data-testid="diagram-canvas-boundary"

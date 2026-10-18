@@ -1,23 +1,16 @@
 /* Estilos modernos y profesionales para Chat Colaborativo y Asistente Amongus */
 
-@keyframes amongus-bob {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-3px);
-  }
-}
-
-@keyframes amongus-pulse {
-  0%, 100% {
-    opacity: 0.8;
-    filter: drop-shadow(0 0 2px #22d3ee);
-  }
-  50% {
-    opacity: 1;
-    filter: drop-shadow(0 0 6px #67e8f9);
-  }
+/* Utilidad para lectores de pantalla y pruebas accesibles: visualmente oculto pero detectable por DOM */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 .amongus-avatar {
@@ -29,11 +22,12 @@
 }
 
 .amongus-avatar--animated {
-  animation: amongus-bob 3s ease-in-out infinite;
+  transform: none;
 }
 
 .amongus-avatar--animated .amongus-avatar__beacon {
-  animation: amongus-pulse 1.8s ease-in-out infinite;
+  opacity: 1;
+  filter: drop-shadow(0 0 3px #22d3ee);
 }
 
 /* Botón flotante para abrir el chat */
@@ -378,3 +372,229 @@
   background: #cbd5e1;
   cursor: not-allowed;
 }
+
+/* Icono interactivo de grabación por voz en Chat (sin marco de botón) */
+.chat-panel__mic-btn,
+.chat-panel__record-btn {
+  background: transparent;
+  color: #64748b;
+  border: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  outline: none;
+  box-shadow: none;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.chat-panel__mic-btn:hover:not(:disabled),
+.chat-panel__record-btn:hover:not(:disabled) {
+  background: transparent;
+  color: #4f46e5;
+  transform: scale(1.15);
+}
+
+.chat-panel__mic-btn:active:not(:disabled),
+.chat-panel__record-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.chat-panel__mic-btn:disabled,
+.chat-panel__record-btn:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+  background: transparent;
+  transform: none;
+}
+
+.chat-panel__mic-btn--recording,
+.chat-panel__record-btn--active {
+  background: transparent !important;
+  color: #ef4444 !important;
+  filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.5));
+}
+
+.chat-panel__recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 600;
+  flex: 1;
+}
+
+.chat-panel__recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 4px rgba(220, 38, 38, 0.5);
+}
+
+/* Tarjeta interactiva de propuesta de modelado */
+.proposal-card {
+  margin-top: 8px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #06b6d4;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.proposal-card--applied {
+  border-left-color: #10b981;
+  background: #f0fdf4;
+  border-color: #a7f3d0;
+}
+
+.proposal-card--rejected {
+  border-left-color: #94a3b8;
+  opacity: 0.7;
+}
+
+.proposal-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proposal-card__header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.proposal-card__badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.proposal-card--applied .proposal-card__badge {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.proposal-card__summary-main {
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  font-size: 13px;
+}
+
+.proposal-card__items-list {
+  margin: 4px 0 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.proposal-card__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.proposal-card__item-bullet {
+  color: #0284c7;
+  font-weight: 700;
+}
+
+.proposal-card__hint {
+  font-size: 11px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  font-style: italic;
+}
+
+.proposal-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.proposal-card__btn-confirm {
+  flex: 1;
+  background: #0284c7;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.15s ease;
+}
+
+.proposal-card__btn-confirm:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+.proposal-card__btn-confirm:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.proposal-card__btn-reject {
+  background: #e2e8f0;
+  color: #475569;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.proposal-card__btn-reject:hover:not(:disabled) {
+  background: #cbd5e1;
+  color: #1e293b;
+}
+
+.proposal-card__status-applied {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #059669;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.proposal-card__status-rejected {
+  color: #64748b;
+  font-size: 12px;
+  font-style: italic;
+  padding: 4px 0;
+}
+

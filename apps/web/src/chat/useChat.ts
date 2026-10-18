@@ -38,7 +38,19 @@ export function useChat({
         deviceIdRef.current,
         userName,
       );
-      setMessages(data);
+      setMessages((prev) => {
+        const next = Array.isArray(data) ? data : [];
+        if (prev.length === next.length) {
+          const isSame = prev.every(
+            (m, idx) =>
+              m.id === next[idx]?.id &&
+              m.content === next[idx]?.content &&
+              m.deltaId === next[idx]?.deltaId,
+          );
+          if (isSame) return prev;
+        }
+        return next;
+      });
       setError(null);
 
       // Si el chat está cerrado y hay nuevos mensajes, incrementar unreadCount

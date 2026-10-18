@@ -26,6 +26,8 @@ export interface ChatMessage {
   targetUser?: string | null;
   content: string;
   createdAt: string;
+  deltaId?: string | null;
+  delta?: any | null;
 }
 
 export async function insertChatMessage(
@@ -38,7 +40,7 @@ export async function insertChatMessage(
   const result = await pool.query(
     `INSERT INTO chat_messages (diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at`,
+     RETURNING id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at, delta_id, delta`,
     [diagramId, input.deviceId, input.senderName, senderType, input.channelType, targetUser, input.content]
   );
   const row = result.rows[0];
@@ -52,6 +54,8 @@ export async function insertChatMessage(
     targetUser: row.target_user,
     content: row.content,
     createdAt: row.created_at.toISOString(),
+    deltaId: row.delta_id ?? undefined,
+    delta: row.delta ?? undefined,
   };
 }
 
@@ -61,13 +65,15 @@ export async function insertBotReply(
   deviceId: string,
   targetUser: string,
   channelType: ChatChannelType,
-  content: string
+  content: string,
+  deltaId?: string | null,
+  delta?: any | null
 ): Promise<ChatMessage> {
   const result = await pool.query(
-    `INSERT INTO chat_messages (diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content)
-     VALUES ($1, $2, 'Amongus', 'bot', $3, $4, $5)
-     RETURNING id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at`,
-    [diagramId, deviceId, channelType, targetUser, content]
+    `INSERT INTO chat_messages (diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, delta_id, delta)
+     VALUES ($1, $2, 'Amongus', 'bot', $3, $4, $5, $6, $7)
+     RETURNING id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at, delta_id, delta`,
+    [diagramId, deviceId, channelType, targetUser, content, deltaId ?? null, delta ? JSON.stringify(delta) : null]
   );
   const row = result.rows[0];
   return {
@@ -80,6 +86,8 @@ export async function insertBotReply(
     targetUser: row.target_user,
     content: row.content,
     createdAt: row.created_at.toISOString(),
+    deltaId: row.delta_id ?? undefined,
+    delta: row.delta ?? undefined,
   };
 }
 
@@ -94,7 +102,7 @@ export async function listChatMessages(
   let params: any[];
 
   if (channelType === 'group') {
-    query = `SELECT id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at
+    query = `SELECT id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at, delta_id, delta
              FROM chat_messages
              WHERE diagram_id = $1 
                AND channel_type = 'group'
@@ -105,7 +113,7 @@ export async function listChatMessages(
     if (!deviceId || !userName) {
       return [];
     }
-    query = `SELECT id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at
+    query = `SELECT id, diagram_id, device_id, sender_name, sender_type, channel_type, target_user, content, created_at, delta_id, delta
              FROM chat_messages
              WHERE diagram_id = $1 
                AND channel_type = 'direct_bot'
@@ -127,6 +135,8 @@ export async function listChatMessages(
     targetUser: row.target_user,
     content: row.content,
     createdAt: row.created_at.toISOString(),
+    deltaId: row.delta_id ?? undefined,
+    delta: row.delta ?? undefined,
   }));
 }
 
