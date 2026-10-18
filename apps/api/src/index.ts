@@ -761,18 +761,25 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       let replyContent = '';
 
       // Primero intentamos interpretar si el usuario está dando una orden de modelado UML
-      try {
-        const { diagram } = await loadDiagramFromRow(exists.rows[0]);
-        const outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
-        if (outcome.status === 'pending') {
-          deltaId = outcome.deltaId;
-          delta = outcome.delta;
-          replyContent = isEn
-            ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
-            : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+      const isQuestionOrGreeting =
+        /^(¿|\?|hola|hello|hi|cómo|como|qué|que|por qué|why|what|how|explicame|explícame|ayudame|ayúdame|recomendas|recomendás|recomiendas)\b/i.test(
+          parsed.data.content.trim()
+        );
+
+      if (!isQuestionOrGreeting) {
+        try {
+          const { diagram } = await loadDiagramFromRow(exists.rows[0]);
+          const outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
+          if (outcome.status === 'pending') {
+            deltaId = outcome.deltaId;
+            delta = outcome.delta;
+            replyContent = isEn
+              ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+              : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+          }
+        } catch {
+          // No era comando de modelado o fallo temporal -> procede a charla conversacional
         }
-      } catch {
-        // No era comando de modelado o fallo temporal -> procede a charla conversacional
       }
 
       if (!replyContent) {

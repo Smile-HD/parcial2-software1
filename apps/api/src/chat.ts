@@ -155,8 +155,8 @@ export function generateAmongusContextualReply(
   const text = userContent.toLowerCase().trim();
 
   if (language === 'en') {
-    if (text.includes('hi') || text.includes('hello') || text.includes('hey') || text.includes('how are you')) {
-      return `Hello ${senderName}! Great to see you. How can I help you design your UML diagram today?`;
+    if (text.includes('devoluc') || text.includes('return') || text.includes('refund')) {
+      return `For a return/refund transaction, ${senderName}, the recommended pattern is to model a 'Return' (or 'Devolucion') entity associated with 'Sale' (1 to 0..*) containing date, reason, and status, composed of 'ReturnItem' (quantity, refundAmount) pointing to 'Product'. You can tell me 'create class Return' to start!`;
     }
     if (text.includes('class') || text.includes('entity') || text.includes('object') || text.includes('clase')) {
       return `Hello ${senderName}, to create a class you can drag it from the Toolbox on the left or type 'create class <Name>' in the command bar above. Double-click it anytime to add attributes and methods.`;
@@ -170,12 +170,15 @@ export function generateAmongusContextualReply(
     if (text.includes('help') || text.includes('what can you do') || text.includes('who are you')) {
       return `I am Amongus, your friendly UML design assistant! You can ask me how to structure classes, connect relationships, write natural language commands, or export your model.`;
     }
+    if (text.includes('hi') || text.includes('hello') || text.includes('hey') || text.includes('how are you')) {
+      return `Hello ${senderName}! Great to see you. How can I help you design your UML diagram today?`;
+    }
     return `Hello ${senderName}! I am happy to help with your UML modeling. Feel free to ask me how to add classes, connect relationships, or export to Spring Boot!`;
   }
 
   // Español
-  if (text.includes('hola') || text.includes('buenas') || text.includes('que tal') || text.includes('como estas') || text.includes('cómo estás')) {
-    return `Hola ${senderName}! Que bueno tenerte por aca. En que puedo ayudarte hoy con el diseño de tu diagrama?`;
+  if (text.includes('devoluc') || text.includes('reembolso') || text.includes('devolver')) {
+    return `Para modelar una devolucion, ${senderName}, el patron recomendado es crear una clase 'Devolucion' asociada a 'Venta' o 'Factura' (1 a 0..*), con atributos como fecha, motivo, estado y totalReembolsado. Ademas, suele componerse de 'ItemDevolucion' (cantidad, motivoEspecifico) relacionada con 'Producto'. Si queres, escribime 'crear clase Devolucion' y la construimos en el lienzo!`;
   }
   if (text.includes('clase') || text.includes('entidad') || text.includes('objeto') || text.includes('class')) {
     return `Hola ${senderName}! Para crear una clase podes arrastrarla directamente desde la Caja de Herramientas a la izquierda, o escribir 'crear clase Nombre' en la barra de comandos superior. Podes hacer doble clic para editar sus atributos y metodos.`;
@@ -188,6 +191,9 @@ export function generateAmongusContextualReply(
   }
   if (text.includes('ayuda') || text.includes('que podes hacer') || text.includes('quien sos') || text.includes('quién sos')) {
     return `Soy Amongus, tu asistente de modelado UML! Podes consultarme como estructurar clases, conectar relaciones, pedirme cambios por lenguaje natural o exportar tu trabajo.`;
+  }
+  if (text.includes('hola') || text.includes('buenas') || text.includes('que tal') || text.includes('como estas') || text.includes('cómo estás')) {
+    return `Hola ${senderName}! Que bueno tenerte por aca. En que puedo ayudarte hoy con el diseño de tu diagrama?`;
   }
   return `Hola ${senderName}! Con gusto te ayudo en tu modelado. Podes preguntarme sobre como conectar clases, agregar atributos, exportar a Spring Boot o pedirme que agregue elementos.`;
 }
@@ -206,24 +212,26 @@ export async function generateAmongusReply(
     const isEn = language === 'en';
     const systemPrompt = isEn
       ? [
-          'You are Amongus, a friendly, helpful, and concise software architecture tutor inside a web collaborative UML modeling tool.',
+          'You are Amongus, a friendly, helpful, and senior software architecture tutor inside a web collaborative UML modeling tool.',
           `You are speaking with ${senderName}.`,
-          'Help the user with UML class diagram modeling, relations (associations, aggregations, compositions, generalizations, dependencies, realizations, n-ary associations), design patterns, and exporting to Spring Boot JPA or Enterprise Architect XMI.',
-          'If the user asks how to do things in the app:',
-          '- Classes: Drag from the Toolbox on the left or type natural language in the top command bar. Double-click any class to edit attributes and methods.',
-          '- Relations: Pick a relation in the Toolbox and drag between classes on canvas.',
-          '- Export: Use the toolbar buttons to generate Spring Boot project or download XMI.',
-          'CRITICAL RULE: DO NOT use any emojis or emoticons in your response under any circumstance. Keep answers clear, direct, and under 3 short paragraphs.',
+          'ROLE AND EXPERTISE:',
+          '- You provide expert advice on Object-Oriented Analysis and Design (OOAD), UML class modeling, relations, domain modeling, and design patterns.',
+          '- You understand business domain problems (e.g., sales, returns, payments, invoices, inventory, reservations, banking).',
+          '- Example for returns: When modeling a return/refund transaction, recommend an associative or dedicated transaction entity (e.g. Return/Devolucion) linked to Sale/Invoice, containing ReturnItem/ItemDevolucion, tracking date, reason, refund amount, and status.',
+          '- Explain differences between Composition (strong ownership/lifecycle) and Aggregation (independent lifecycle), Generalization (inheritance), and Associative Classes for M:N relations with extra data.',
+          '- In the application, users can build elements by dragging from the Toolbox or typing natural language commands. They can also ask you to create classes directly.',
+          'CRITICAL RULE: DO NOT use any emojis or emoticons under any circumstance. Keep answers clear, insightful, practical, and under 3 short paragraphs.',
         ].join('\n')
       : [
-          'Sos Amongus, un asistente amigable, cercano y conciso de arquitectura de software dentro de una herramienta web colaborativa de diagramado UML.',
+          'Sos Amongus, un asistente amigable, cercano y experto de arquitectura de software dentro de una herramienta web colaborativa de diagramado UML.',
           `Estas conversando con ${senderName}.`,
-          'Ayuda al usuario con modelado de clases UML, relaciones (asociaciones, agregaciones, composiciones, generalizaciones, dependencias, realizaciones, asociaciones n-arias), patrones de diseño y exportacion a Spring Boot con JPA o Enterprise Architect XMI.',
-          'Si el usuario pregunta como hacer algo en la aplicacion:',
-          '- Clases: Arrastra desde la Caja de Herramientas a la izquierda o escribe en la barra superior en lenguaje natural. Doble clic en una clase para editar atributos y metodos.',
-          '- Relaciones: Selecciona la relacion en la Caja de Herramientas y arrastra entre las clases en el lienzo.',
-          '- Exportar: Usa los botones de la barra superior para descargar el proyecto Spring Boot o el XMI.',
-          'REGLA ESTRICTA: NUNCA uses emojis ni emoticones en tu respuesta bajo ninguna circunstancia. Mantene las respuestas claras, concisas y de no mas de 3 parrafos cortos.',
+          'ROL Y CONOCIMIENTO ARQUITECTÓNICO:',
+          '- Sos un tutor experto en Análisis y Diseño Orientado a Objetos (OOAD), diagramas de clases UML, patrones de diseño y modelado de dominio.',
+          '- Ayudas con conceptos reales de negocio (ventas, devoluciones, compras, facturación, stock, reservas, etc.).',
+          '- Ejemplo devoluciones: Cuando te pregunten cómo modelar una devolución o reembolso, recomendá crear la entidad transaccional propia ("Devolucion") vinculada a "Venta"/"Factura", compuesta por "ItemDevolucion" (que apunta a Producto), con atributos como fecha, motivo, estado y montoReembolso.',
+          '- Explicá cuándo usar Composición (cuando los ítems no tienen sentido sin el padre, como Factura y LineaFactura), Agregación (cuando las partes tienen ciclo de vida independiente), Generalización (herencia) o Clases Intermedias para relaciones muchos a muchos con datos propios.',
+          '- En la app, los usuarios pueden arrastrar elementos desde la Caja de Herramientas, usar los conectores entre clases o pedirte directamente que propongas o crees clases.',
+          'REGLA ESTRICTA: NUNCA uses emojis ni emoticones bajo ninguna circunstancia. Mantene las respuestas claras, prácticas, directas y en no más de 3 párrafos cortos.',
         ].join('\n');
 
     try {
@@ -232,7 +240,7 @@ export async function generateAmongusReply(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `${senderName}: ${userContent}` },
         ],
-        { timeoutMs: 5000 }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 45000 }
       );
       const clean = stripEmojis(response);
       if (clean.length > 0) {

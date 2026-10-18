@@ -65,11 +65,11 @@ export class WhisperStt implements SttPort {
   }
 
   static fromEnv(): WhisperStt | null {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.STT_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
     return new WhisperStt({
       apiKey,
-      baseUrl: process.env.OPENAI_BASE_URL,
+      baseUrl: process.env.STT_BASE_URL || process.env.OPENAI_BASE_URL,
       model: process.env.WHISPER_MODEL,
     });
   }
