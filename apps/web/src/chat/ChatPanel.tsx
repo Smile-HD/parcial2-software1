@@ -3,6 +3,7 @@ import { AmongusAvatar } from './AmongusAvatar';
 import { useChat } from './useChat';
 import { pickUserColor } from '../presence/palette';
 import { presenceInitials } from '../canvas/PresenceBar';
+import { useT } from '../i18n';
 import './chat.css';
 
 export interface ChatPanelProps {
@@ -25,6 +26,9 @@ export function ChatPanel({
   onClose,
   peerUsers,
 }: ChatPanelProps) {
+  const { lang } = useT();
+  const isEn = lang === 'en';
+
   const {
     messages,
     activeChannel,
@@ -32,7 +36,7 @@ export function ChatPanel({
     sendMessage,
     isLoading,
     error,
-  } = useChat({ diagramId, userName });
+  } = useChat({ diagramId, userName, language: lang });
 
   const [draft, setDraft] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -81,14 +85,14 @@ export function ChatPanel({
       <div className="chat-panel__header">
         <div className="chat-panel__header-info">
           <AmongusAvatar size={24} isAnimated={false} />
-          <h2 className="chat-panel__title">Chat del Diagrama</h2>
+          <h2 className="chat-panel__title">{isEn ? 'Diagram Chat' : 'Chat del Diagrama'}</h2>
         </div>
         <button
           type="button"
           onClick={onClose}
           className="chat-panel__close-btn"
-          aria-label="Cerrar chat"
-          title="Cerrar chat"
+          aria-label={isEn ? 'Close chat' : 'Cerrar chat'}
+          title={isEn ? 'Close chat' : 'Cerrar chat'}
         >
           {/* Icono SVG de cerrar (X) */}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -115,7 +119,7 @@ export function ChatPanel({
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
-          <span>Equipo</span>
+          <span>{isEn ? 'Team' : 'Equipo'}</span>
         </button>
 
         <button
@@ -143,9 +147,22 @@ export function ChatPanel({
         {messages.length === 0 && !isLoading && (
           <div className="chat-panel__empty">
             {activeChannel === 'group' ? (
+              isEn ? (
+                <>
+                  <p>No messages in this canvas yet.</p>
+                  <p>Start the conversation with your team or mention @Amongus!</p>
+                </>
+              ) : (
+                <>
+                  <p>No hay mensajes en este lienzo aún.</p>
+                  <p>¡Iniciá la conversación con tu equipo o mencioná a @Amongus!</p>
+                </>
+              )
+            ) : isEn ? (
               <>
-                <p>No hay mensajes en este lienzo aún.</p>
-                <p>¡Iniciá la conversación con tu equipo o mencioná a @Amongus!</p>
+                <AmongusAvatar size={48} />
+                <p><strong>Private chat with Amongus</strong></p>
+                <p>Ask questions about your UML classes, relationships, or design suggestions.</p>
               </>
             ) : (
               <>
@@ -192,7 +209,7 @@ export function ChatPanel({
               <div className="chat-message__body">
                 <div className="chat-message__header">
                   <span className="chat-message__sender">
-                    {isSelf ? 'Vos' : msg.senderName}
+                    {isSelf ? (isEn ? 'You' : 'Vos') : msg.senderName}
                   </span>
                   {isBot && <span className="chat-message__tag-bot">Bot</span>}
                   <span className="chat-message__time">
@@ -226,10 +243,14 @@ export function ChatPanel({
             onKeyDown={handleKeyDown}
             placeholder={
               activeChannel === 'group'
-                ? 'Escribí un mensaje o @Amongus...'
-                : 'Preguntale algo a Amongus...'
+                ? isEn
+                  ? 'Write a message or @Amongus...'
+                  : 'Escribí un mensaje o @Amongus...'
+                : isEn
+                  ? 'Ask something to Amongus...'
+                  : 'Preguntale algo a Amongus...'
             }
-            aria-label="Mensaje de chat"
+            aria-label={isEn ? 'Chat message' : 'Mensaje de chat'}
             data-testid="chat-input"
             disabled={isSending}
           />
@@ -237,7 +258,7 @@ export function ChatPanel({
             type="submit"
             className="chat-panel__send-btn"
             disabled={isSending || draft.trim().length === 0}
-            aria-label="Enviar mensaje"
+            aria-label={isEn ? 'Send message' : 'Enviar mensaje'}
             data-testid="chat-send-btn"
           >
             {/* Icono de enviar (avión de papel SVG) */}

@@ -9,12 +9,14 @@ import {
 export interface UseChatOptions {
   diagramId: string;
   userName: string;
+  language?: 'es' | 'en';
   pollIntervalMs?: number;
 }
 
 export function useChat({
   diagramId,
   userName,
+  language = 'es',
   pollIntervalMs = 3000,
 }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -94,6 +96,7 @@ export function useChat({
           senderName: userName,
           channelType: activeChannel,
           content: trimmed,
+          language,
         });
         // Recargar inmediatamente después de enviar
         await loadMessages();
@@ -102,7 +105,7 @@ export function useChat({
         throw err;
       }
     },
-    [diagramId, userName, activeChannel, loadMessages],
+    [diagramId, userName, activeChannel, language, loadMessages],
   );
 
   return {

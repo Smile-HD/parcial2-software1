@@ -35,6 +35,7 @@ import {
   ChatChannelTypeSchema,
   CreateChatMessageSchema,
   generateAmongusContextualReply,
+  generateAmongusReply,
   insertBotReply,
   insertChatMessage,
   listChatMessages,
@@ -751,7 +752,12 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
     // Si es canal directo o menciona a Amongus, generamos respuesta contextual del asistente
     if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus')) {
-      const replyContent = generateAmongusContextualReply(parsed.data.content, parsed.data.senderName);
+      const replyContent = await generateAmongusReply(
+        parsed.data.content,
+        parsed.data.senderName,
+        parsed.data.language ?? 'es',
+        llm
+      );
       await insertBotReply(
         dbPool,
         id,

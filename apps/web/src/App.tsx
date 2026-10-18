@@ -180,7 +180,7 @@ function resolveCollabUrl(collabUrl: AppProps['collabUrl']): string | null {
 }
 
 export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {}) {
-  const { t: tr } = useT();
+  const { t: tr, lang } = useT();
   const docRef = useRef<Y.Doc | null>(null);
   if (docRef.current === null) {
     docRef.current = injectedDoc ?? new Y.Doc();
@@ -548,12 +548,12 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               type="button"
               className="tutorial-toolbar-btn"
               onClick={() => setIsTutorialOpen(true)}
-              aria-label="Abrir guía interactiva con Amongus"
-              title="Guía interactiva con Amongus"
+              aria-label={lang === 'en' ? 'Open interactive guide with Amongus' : 'Abrir guía interactiva con Amongus'}
+              title={lang === 'en' ? 'Interactive guide with Amongus' : 'Guía interactiva con Amongus'}
               data-testid="toolbar-tutorial-btn"
             >
               <AmongusAvatar size={18} isAnimated={false} />
-              <span>Guía</span>
+              <span>{lang === 'en' ? 'Guide' : 'Guía'}</span>
             </button>
           </div>
           <div className="interpreter-bar">
@@ -616,11 +616,11 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
               type="button"
               className="chat-launcher-btn"
               onClick={() => setIsChatOpen(true)}
-              aria-label="Abrir chat y asistente Amongus"
+              aria-label={lang === 'en' ? 'Open chat' : 'Abrir chat'}
               data-testid="chat-launcher"
             >
               <AmongusAvatar size={24} isAnimated={true} />
-              <span>Chat & Amongus</span>
+              <span>Chat</span>
             </button>
           )}
           <ChatPanel

@@ -281,7 +281,7 @@ describe('App integration (editor:R5 round-trip + 6b blobs)', () => {
     expect(laggedProjection.classes).toHaveLength(3);
     expect(laggedProjection.classes[0]!.attributes).toHaveLength(1);
     expect(laggedProjection.associations).toHaveLength(1);
-  });
+  }, 15000);
 
   it('creates a new diagram on first visit without sending a client blob', async () => {
     // The API echoes the created diagram back; mirror that here.

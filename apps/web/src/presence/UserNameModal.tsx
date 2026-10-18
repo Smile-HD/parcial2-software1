@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { pickUserColor } from './palette';
 import { presenceInitials } from '../canvas/PresenceBar';
+import { useT } from '../i18n';
+import './userNameModal.css';
 
 export const USERNAME_STORAGE_KEY = 'ai_uml_username';
 
@@ -19,6 +21,9 @@ export function UserNameModal({
   onClose,
   onSave,
 }: UserNameModalProps) {
+  const { lang } = useT();
+  const isEn = lang === 'en';
+
   const [name, setName] = useState(initialName);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -44,7 +49,7 @@ export function UserNameModal({
     try {
       localStorage.setItem(USERNAME_STORAGE_KEY, trimmed);
     } catch {
-      // Ignorar errores de acceso a almacenamiento
+      // Ignorar errores en navegadores con almacenamiento deshabilitado
     }
     onSave(trimmed);
   };
@@ -52,92 +57,104 @@ export function UserNameModal({
   return (
     <div className="modal-backdrop" role="presentation">
       <div
-        className="modal-dialog"
+        className="modal-dialog username-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="username-modal-title"
-        style={{ maxWidth: '420px', textAlign: 'center' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-          <div
-            style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              backgroundColor: previewColor,
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '22px',
-              fontWeight: 600,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              transition: 'background-color 0.2s ease',
-            }}
-            aria-hidden="true"
-          >
-            {trimmed ? presenceInitials(trimmed) : '?'}
+        <div className="username-modal__header">
+          <div className="username-modal__badge">
+            <span className="username-modal__badge-dot" />
+            <span>{isEn ? 'Collaboration Profile' : 'Perfil de Colaboración'}</span>
           </div>
+
+          <div className="username-modal__avatar-wrapper">
+            <div
+              className="username-modal__avatar"
+              style={{ backgroundColor: previewColor }}
+              aria-hidden="true"
+            >
+              {trimmed ? presenceInitials(trimmed) : '?'}
+            </div>
+            {isValid && <div className="username-modal__status-dot" />}
+          </div>
+
+          <h3 id="username-modal-title" className="username-modal__title">
+            {canClose
+              ? isEn
+                ? 'Edit Your Name'
+                : 'Editar tu Nombre'
+              : isEn
+                ? 'Welcome to UML Studio'
+                : 'Bienvenido a UML Studio'}
+          </h3>
+          <p className="username-modal__subtitle">
+            {isEn
+              ? 'Enter your name so your team and the assistant can identify you in real time.'
+              : 'Ingresá tu nombre para que tus compañeros y el asistente te reconozcan en tiempo real.'}
+          </p>
         </div>
 
-        <h3 id="username-modal-title" style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 600 }}>
-          {canClose ? 'Editar tu Nombre' : 'Bienvenido al Diagramador UML'}
-        </h3>
-        <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#64748b' }}>
-          Ingresá tu nombre para que tus compañeros y el asistente IA te reconozcan en tiempo real.
-        </p>
-
         <form onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            type="text"
-            className="input-text"
-            style={{
-              width: '100%',
-              padding: '10px 14px',
-              fontSize: '15px',
-              borderRadius: '6px',
-              border: '1px solid #cbd5e1',
-              marginBottom: '20px',
-              boxSizing: 'border-box',
-              outline: 'none',
-            }}
-            placeholder="Tu nombre (ej. Ana López)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            maxLength={32}
-            autoFocus
-          />
+          <div className="username-modal__body">
+            <div className="username-modal__field">
+              <label htmlFor="username-input" className="username-modal__label">
+                {isEn ? 'Your Display Name' : 'Tu Nombre Visible'}
+              </label>
+              <div className="username-modal__input-wrapper">
+                <span className="username-modal__input-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </span>
+                <input
+                  id="username-input"
+                  ref={inputRef}
+                  type="text"
+                  className="username-modal__input"
+                  placeholder={isEn ? 'Your name (e.g. Ana López)' : 'Tu nombre (ej. Ana López)'}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
+                  maxLength={32}
+                  autoFocus
+                />
+              </div>
+              <div className="username-modal__hint">
+                <span>{isEn ? 'Visible on your cursor and chat' : 'Visible en tus cursores y chat'}</span>
+                <span>{name.length} / 32</span>
+              </div>
+            </div>
+          </div>
 
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <div className="username-modal__footer">
             {canClose && onClose && (
               <button
                 type="button"
-                className="btn btn--secondary"
+                className="username-modal__btn username-modal__btn--secondary"
                 onClick={onClose}
-                style={{ padding: '8px 16px', borderRadius: '6px' }}
               >
-                Cancelar
+                {isEn ? 'Cancel' : 'Cancelar'}
               </button>
             )}
             <button
               type="submit"
-              className="btn btn--primary"
+              className="username-modal__btn username-modal__btn--primary"
               disabled={!isValid}
-              style={{
-                padding: '8px 20px',
-                borderRadius: '6px',
-                opacity: isValid ? 1 : 0.5,
-                cursor: isValid ? 'pointer' : 'not-allowed',
-              }}
             >
-              {canClose ? 'Guardar' : 'Entrar a la sala'}
+              {canClose
+                ? isEn
+                  ? 'Save'
+                  : 'Guardar'
+                : isEn
+                  ? 'Enter canvas'
+                  : 'Entrar a la sala'}
             </button>
           </div>
         </form>

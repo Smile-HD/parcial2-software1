@@ -23,6 +23,7 @@ export interface SendMessagePayload {
   senderName: string;
   channelType: 'group' | 'direct_bot';
   content: string;
+  language?: 'es' | 'en';
 }
 
 /**

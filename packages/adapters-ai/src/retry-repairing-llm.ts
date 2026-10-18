@@ -146,4 +146,14 @@ export class RetryRepairingLlmPort implements LlmPort {
       reason: `I could not translate your command into a valid edit. Issues:\n${lastDigest}`,
     };
   }
+
+  async chat(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    options?: { timeoutMs?: number; temperature?: number }
+  ): Promise<string> {
+    if ('chat' in this.inner && typeof (this.inner as any).chat === 'function') {
+      return (this.inner as any).chat(messages, options);
+    }
+    throw new Error('Inner LLM does not support chat');
+  }
 }
