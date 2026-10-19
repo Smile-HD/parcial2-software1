@@ -1,5 +1,7 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
+import type { BatchDelta } from '@app/core';
+import { robustParseDomainJson, expandSemanticDomainToDelta } from './domain-synthesizer.js';
 
 export const ChatChannelTypeSchema = z.enum(['group', 'direct_bot']);
 export type ChatChannelType = z.infer<typeof ChatChannelTypeSchema>;
@@ -282,5 +284,111 @@ export async function generateAmongusReply(
   }
 
   return generateAmongusContextualReply(userContent, senderName, language);
+}
+
+export interface UnifiedTurnResult {
+  replyContent: string;
+  batchDelta?: BatchDelta | null;
+}
+
+export async function processUnifiedAmongusTurn(
+  userContent: string,
+  senderName: string,
+  language: 'es' | 'en' = 'es',
+  diagramId: string,
+  llm?: any,
+  diagram?: any
+): Promise<UnifiedTurnResult> {
+  const isEn = language === 'en';
+
+  if (!llm || typeof llm.chat !== 'function') {
+    return {
+      replyContent: generateAmongusContextualReply(userContent, senderName, language),
+    };
+  }
+
+  const diagramContext = summarizeDiagramForPrompt(diagram);
+  const systemPrompt = isEn
+    ? [
+        'You are Amongus, a senior software architecture tutor inside a web collaborative UML modeling tool.',
+        `You are conversing with ${senderName}.`,
+        'CRITICAL RULES:',
+        '1. NO EMOJIS or emoticons under any circumstance.',
+        '2. DECISION LOGIC:',
+        '   - If the user wants to CREATE, GENERATE, ADD, or MODIFY classes or relationships (e.g. "make an ecommerce db", "add an Alumno class with name", "connect Profesor to Materia"):',
+        '     Respond with a JSON block containing the domain model elements to create or update:',
+        '     ```json',
+        '     {',
+        '       "action": "modify",',
+        '       "classes": [{ "name": "ClassName", "attributes": [{ "name": "attrName", "type": "string" }] }],',
+        '       "associations": [{ "source": "ClassA", "target": "ClassB", "name": "relName" }]',
+        '     }',
+        '     ```',
+        '     You may include a short friendly sentence before or after the JSON block.',
+        '   - If the user asks a QUESTION (conceptual OOAD, why classes are separated or disconnected, advice, or general conversation):',
+        '     Respond in clear, natural, direct text explaining the technical reason based on the current canvas state.',
+        '',
+        `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
+      ].join('\n')
+    : [
+        'Sos Amongus, un tutor senior de arquitectura de software dentro de una herramienta web colaborativa de diagramado UML.',
+        `Estas conversando con ${senderName}.`,
+        'REGLAS CRÍTICAS:',
+        '1. NUNCA uses emojis ni emoticones bajo ninguna circunstancia.',
+        '2. LÓGICA DE DECISIÓN:',
+        '   - Si el usuario pide CREAR, GENERAR, AGREGAR o MODIFICAR clases o relaciones (ej. "haceme un sistema para tienda", "agrega una clase Alumno con matricula", "conecta Profesor con Materia"):',
+        '     Responde con un bloque JSON con los elementos a construir:',
+        '     ```json',
+        '     {',
+        '       "action": "modify",',
+        '       "classes": [{ "name": "NombreClase", "attributes": [{ "name": "attr", "type": "string" }] }],',
+        '       "associations": [{ "source": "ClaseA", "target": "ClaseB", "name": "nombreRel" }]',
+        '     }',
+        '     ```',
+        '     Podes incluir una breve oracion antes o despues del JSON.',
+        '   - Si el usuario hace una PREGUNTA (conceptual de diseño, por que algo esta separado, consejos sobre relaciones, o saludo):',
+        '     Responde en texto natural, claro y directo explicando la razon arquitectonica basada en el estado actual del lienzo.',
+        '',
+        `ESTADO ACTUAL DEL DIAGRAMA EN EL LIENZO:\n${diagramContext}`,
+      ].join('\n');
+
+  try {
+    const raw = await llm.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `${senderName}: ${userContent}` },
+      ],
+      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 60000, maxTokens: 800 }
+    );
+
+    const clean = stripEmojis(raw);
+
+    // Si el modelo devolvió una propuesta de modelado estructurada en JSON
+    const parsedModel = robustParseDomainJson(clean);
+    if (parsedModel && parsedModel.classes && parsedModel.classes.length > 0) {
+      const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram);
+      if (batchDelta) {
+        const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
+        const defaultReply = isEn
+          ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'
+          : 'Preparé la propuesta para este cambio. Podés ver los elementos en el lienzo y confirmarla para que se construya en vivo.';
+        return {
+          replyContent: textWithoutJson.length > 10 ? textWithoutJson : defaultReply,
+          batchDelta,
+        };
+      }
+    }
+
+    // Si es respuesta explicativa o conceptual
+    if (clean.length > 0) {
+      return { replyContent: clean };
+    }
+  } catch (err) {
+    console.error('Error in processUnifiedAmongusTurn:', err);
+  }
+
+  return {
+    replyContent: generateAmongusContextualReply(userContent, senderName, language),
+  };
 }
 

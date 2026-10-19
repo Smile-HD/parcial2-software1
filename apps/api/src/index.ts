@@ -41,6 +41,7 @@ import {
   insertChatMessage,
   listChatMessages,
   purgeExpiredChatMessages,
+  processUnifiedAmongusTurn,
 } from './chat.js';
 
 // Carga apps/api/.env cuando está presente para que la configuración del proveedor
@@ -768,52 +769,38 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         diagram = loaded.diagram;
       } catch {}
 
-      // Primero verificamos si es una solicitud de armar un dominio completo con IA (o fallback de plantilla)
-      const domainTemplate = await synthesizeDomainModel(parsed.data.content, id, llm);
-      if (domainTemplate) {
-        const pending = pendingDeltas.put(id, domainTemplate);
-        deltaId = pending.id;
-        delta = pending.delta;
-        replyContent = isEn
-          ? `I have prepared the complete domain model proposal. You can preview all classes, attributes, and relationships on the canvas and confirm to build them.`
-          : `Preparé la propuesta completa para el modelo solicitado con todas sus clases, atributos y relaciones. Podés ver la previsualización en el lienzo y confirmarla para que se construya en vivo.`;
-      } else {
-        // Intentamos interpretar si el usuario está dando una orden de modelado UML o haciendo una pregunta
-        const trimmedContent = parsed.data.content.trim();
-        const isQuestionOrGreeting =
-          /^(¿|\?|hola|hello|hi|cómo|como|qué|que|por qué|por que|porque|why|what|how|explicame|explícame|ayudame|ayúdame|recomendas|recomendás|recomiendas)\b/i.test(
-            trimmedContent
-          ) || /\?$/.test(trimmedContent);
-
-        if (!isQuestionOrGreeting && diagram) {
-          try {
-            // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para edición y borrado)
-            let outcome = await interpretCommand(trimmedContent, new FakeLlm(), diagram, pendingDeltas);
-            // Nivel 2: Si no coincidió con patrones estándar, delegar al LLM
-            if (outcome.status !== 'pending' && llm) {
-              outcome = await interpretCommand(trimmedContent, llm, diagram, pendingDeltas);
-            }
-            if (outcome.status === 'pending') {
-              deltaId = outcome.deltaId;
-              delta = outcome.delta;
-              replyContent = isEn
-                ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
-                : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
-            }
-          } catch {
-            // No era comando de modelado o fallo temporal -> procede a charla conversacional
+      // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para edición y borrado directo)
+      if (diagram) {
+        try {
+          const outcome = await interpretCommand(parsed.data.content.trim(), new FakeLlm(), diagram, pendingDeltas);
+          if (outcome.status === 'pending') {
+            deltaId = outcome.deltaId;
+            delta = outcome.delta;
+            replyContent = isEn
+              ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+              : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
           }
+        } catch {
+          // Si no es comando determinista, pasa directo al agente IA unificado
         }
       }
 
+      // Nivel 2: Agente unificado en un solo turno (el modelo decide en una sola pasada si es propuesta o respuesta conceptual)
       if (!replyContent) {
-        replyContent = await generateAmongusReply(
+        const unified = await processUnifiedAmongusTurn(
           parsed.data.content,
           parsed.data.senderName,
           parsed.data.language ?? 'es',
+          id,
           llm,
           diagram
         );
+        if (unified.batchDelta) {
+          const pending = pendingDeltas.put(id, unified.batchDelta);
+          deltaId = pending.id;
+          delta = pending.delta;
+        }
+        replyContent = unified.replyContent;
       }
 
       await insertBotReply(

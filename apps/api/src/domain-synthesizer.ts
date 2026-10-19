@@ -32,7 +32,8 @@ export function isDomainModelRequest(text: string): boolean {
  */
 export function expandSemanticDomainToDelta(
   model: SemanticDomainModel,
-  diagramId: string
+  diagramId: string,
+  currentDiagram?: any
 ): BatchDelta | null {
   if (!model.classes || !Array.isArray(model.classes) || model.classes.length === 0) {
     return null;
@@ -42,16 +43,27 @@ export function expandSemanticDomainToDelta(
   const classIdMap = new Map<string, string>();
   const deltas: any[] = [];
 
+  // Registrar clases existentes para resolver asociaciones mixtas si ya existían
+  if (currentDiagram?.classes && Array.isArray(currentDiagram.classes)) {
+    for (const ec of currentDiagram.classes) {
+      if (ec.id && ec.name) {
+        classIdMap.set(ec.name.toLowerCase().trim(), ec.id);
+      }
+    }
+  }
+
   // 1. Crear clases en grilla 2D espaciada para evitar superposición
   const cols = 2;
+  const existingCount = currentDiagram?.classes?.length ?? 0;
   model.classes.forEach((cls, idx) => {
     const classId = crypto.randomUUID();
     const cleanName = cls.name.trim().replace(/\s+/g, '');
     classIdMap.set(cleanName.toLowerCase(), classId);
     classIdMap.set(cls.name.toLowerCase(), classId);
 
-    const x = 80 + (idx % cols) * 440;
-    const y = 80 + Math.floor(idx / cols) * 320;
+    const posIdx = existingCount + idx;
+    const x = 80 + (posIdx % cols) * 440;
+    const y = 80 + Math.floor(posIdx / cols) * 320;
 
     deltas.push({
       id: crypto.randomUUID(),
