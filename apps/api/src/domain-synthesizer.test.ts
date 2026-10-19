@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expandSemanticDomainToDelta, synthesizeDomainModel, type SemanticDomainModel } from './domain-synthesizer.js';
+import { expandSemanticDomainToDelta, synthesizeDomainModel, robustParseDomainJson, type SemanticDomainModel } from './domain-synthesizer.js';
 import { applyDelta, type Diagram } from '@app/core';
 
 describe('AI Domain Synthesizer & Dynamic Generation', () => {
@@ -106,8 +106,84 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     }
   });
 
-  it('returns null when no LLM is present instead of falling back to fake canned templates', async () => {
-    const delta = await synthesizeDomainModel('diseñame un sistema de veterinaria', emptyDiagram.id, undefined);
-    expect(delta).toBeNull();
+  it('parses dictionary-style classes, generalizations, and object source/target', () => {
+    const raw = `
+\`\`\`json
+{
+  "action": "modify",
+  "classes": {
+    "Profesor": {
+      "attributes": {
+        "telefono": "string"
+      }
+    },
+    "Persona": {
+      "attributes": {
+        "ci": "string"
+      }
+    }
+  },
+  "associations": [
+    {
+      "name": "generaliza",
+      "source": { "name": "Profesor" },
+      "target": { "name": "Persona" }
+    }
+  ]
+}
+\`\`\``;
+
+    const parsed = robustParseDomainJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.classes).toHaveLength(2);
+    expect(parsed!.classes[0]!.name).toBe('Profesor');
+    expect(parsed!.classes[0]!.attributes).toEqual([{ name: 'telefono', type: 'string' }]);
+    expect(parsed!.classes[1]!.name).toBe('Persona');
+    expect(parsed!.classes[1]!.attributes).toEqual([{ name: 'ci', type: 'string' }]);
+    expect(parsed!.associations).toHaveLength(1);
+    expect(parsed!.associations![0]!.source).toBe('Profesor');
+    expect(parsed!.associations![0]!.target).toBe('Persona');
+
+    // Ahora expandir considerando que Profesor ya existe en el diagrama
+    const currentDiagram: Diagram = {
+      id: 'diag-1',
+      name: 'Diagrama Existente',
+      classes: [
+        {
+          id: 'prof-id-1',
+          name: 'Profesor',
+          position: { x: 100, y: 100 },
+          attributes: [{ id: 'attr-1', name: 'nombre', type: 'string', visibility: '+', isStatic: false, isDerived: false }],
+          methods: [],
+          kind: 'class',
+          isAbstract: false,
+        },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const delta = expandSemanticDomainToDelta(parsed!, currentDiagram.id, currentDiagram);
+    expect(delta).not.toBeNull();
+
+    // Profesor NO debe emitir op: 'create' para la clase
+    const classCreates = delta!.deltas.filter((d: any) => d.kind === 'class' && d.op === 'create');
+    expect(classCreates).toHaveLength(1);
+    expect((classCreates[0] as any).name).toBe('Persona');
+
+    // Debe emitir addAttribute para telefono sobre prof-id-1
+    const attrAdds = delta!.deltas.filter((d: any) => d.kind === 'member' && d.op === 'addAttribute');
+    const profAttr = attrAdds.find((a: any) => a.classId === 'prof-id-1');
+    expect(profAttr).toBeDefined();
+    expect((profAttr as any).name).toBe('telefono');
+
+    // Debe emitir una generalización porque la asociación se llama "generaliza"
+    const genCreates = delta!.deltas.filter((d: any) => d.kind === 'generalization' && d.op === 'create');
+    expect(genCreates).toHaveLength(1);
+    expect((genCreates[0] as any).subClassId).toBe('prof-id-1');
   });
 });
+

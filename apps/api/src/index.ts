@@ -800,10 +800,20 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           chatHistory = recentMessages
             .filter((m) => m.id !== message.id)
             .slice(-6)
-            .map((m) => ({
-              role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
-              content: m.content,
-            }));
+            .map((m) => {
+              let content = m.content;
+              if (m.senderType === 'bot') {
+                // Purgar bloques json o tutoriales largos previos para no contaminar el razonamiento del modelo
+                content = content.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
+                if (content.length > 120) {
+                  content = content.slice(0, 120) + '...';
+                }
+              }
+              return {
+                role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
+                content,
+              };
+            });
         } catch {}
 
         const unified = await processUnifiedAmongusTurn(

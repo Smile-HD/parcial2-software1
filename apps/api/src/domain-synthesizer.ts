@@ -17,9 +17,15 @@ export interface SemanticAssociation {
   name?: string;
 }
 
+export interface SemanticGeneralization {
+  subclass: string;
+  superclass: string;
+}
+
 export interface SemanticDomainModel {
   classes: SemanticClass[];
   associations?: SemanticAssociation[];
+  generalizations?: SemanticGeneralization[];
 }
 
 export function isDomainModelRequest(text: string): boolean {
@@ -37,7 +43,8 @@ export function expandSemanticDomainToDelta(
 ): BatchDelta | null {
   const hasClasses = Array.isArray(model.classes) && model.classes.length > 0;
   const hasAssociations = Array.isArray(model.associations) && model.associations.length > 0;
-  if (!hasClasses && !hasAssociations) {
+  const hasGeneralizations = Array.isArray(model.generalizations) && model.generalizations.length > 0;
+  if (!hasClasses && !hasAssociations && !hasGeneralizations) {
     return null;
   }
 
@@ -45,95 +52,113 @@ export function expandSemanticDomainToDelta(
   const classIdMap = new Map<string, string>();
   const deltas: any[] = [];
 
-  // Registrar clases existentes para resolver asociaciones mixtas si ya existían
+  // Registrar clases existentes para resolver asociaciones mixtas y actualizar atributos existentes
+  const existingClassesMap = new Map<string, any>();
   if (currentDiagram?.classes && Array.isArray(currentDiagram.classes)) {
     for (const ec of currentDiagram.classes) {
       if (ec.id && ec.name) {
-        classIdMap.set(ec.name.toLowerCase().trim(), ec.id);
+        const lower = ec.name.toLowerCase().trim();
+        classIdMap.set(lower, ec.id);
+        existingClassesMap.set(lower, ec);
       }
     }
   }
 
-  // 1. Crear clases en grilla 2D espaciada para evitar superposición
+  // 1. Crear clases en grilla 2D espaciada o agregar atributos a existentes
   const cols = 2;
   const existingCount = currentDiagram?.classes?.length ?? 0;
   if (hasClasses) {
     model.classes.forEach((cls, idx) => {
-      const classId = crypto.randomUUID();
       const cleanName = cls.name.trim().replace(/\s+/g, '');
-      classIdMap.set(cleanName.toLowerCase(), classId);
-      classIdMap.set(cls.name.toLowerCase(), classId);
+      const lower = cleanName.toLowerCase();
+      const existingClass = existingClassesMap.get(lower);
 
-      const posIdx = existingCount + idx;
-      const x = 80 + (posIdx % cols) * 440;
-      const y = 80 + Math.floor(posIdx / cols) * 320;
+      let classId: string;
+      if (existingClass) {
+        classId = existingClass.id;
+      } else {
+        classId = crypto.randomUUID();
+        classIdMap.set(lower, classId);
 
-      deltas.push({
-        id: crypto.randomUUID(),
-        diagramId,
-        timestamp,
-        kind: 'class',
-        op: 'create',
-        classId,
-        name: cleanName,
-        position: { x, y },
-      });
-
-    // Atributos de la clase (soporta formato compacto "nombre:tipo" y formato objeto {name, type})
-    if (Array.isArray(cls.attributes)) {
-      cls.attributes.forEach((attr: any) => {
-        let name = '';
-        let type = 'string';
-        if (typeof attr === 'string') {
-          const parts = attr.split(':');
-          name = parts[0]?.trim() ?? '';
-          type = parts[1]?.trim() ?? 'string';
-        } else if (attr && typeof attr === 'object') {
-          name = attr.name ?? '';
-          type = attr.type ?? 'string';
-        }
-        name = name.replace(/\s+/g, '');
-        if (!name) return;
-
-        const rawType = type.toLowerCase().trim();
-        const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
-          ? rawType
-          : 'string';
+        const posIdx = existingCount + idx;
+        const x = 80 + (posIdx % cols) * 440;
+        const y = 80 + Math.floor(posIdx / cols) * 320;
 
         deltas.push({
           id: crypto.randomUUID(),
           diagramId,
           timestamp,
-          kind: 'member',
-          op: 'addAttribute',
+          kind: 'class',
+          op: 'create',
           classId,
-          memberId: crypto.randomUUID(),
-          name,
-          type: cleanType,
-          visibility: '+',
+          name: cleanName,
+          position: { x, y },
         });
-      });
-    }
+      }
 
-    // Métodos de la clase (si fueron provistos)
-    if (Array.isArray(cls.methods)) {
-      cls.methods.forEach((m) => {
-        deltas.push({
-          id: crypto.randomUUID(),
-          diagramId,
-          timestamp,
-          kind: 'member',
-          op: 'addMethod',
-          classId,
-          memberId: crypto.randomUUID(),
-          name: m.name.trim().replace(/\s+/g, ''),
-          returnType: m.returnType ?? 'void',
-          parameters: [],
-          visibility: '+',
+      // Atributos de la clase (soporta formato compacto "nombre:tipo" y formato objeto {name, type})
+      if (Array.isArray(cls.attributes)) {
+        cls.attributes.forEach((attr: any) => {
+          let name = '';
+          let type = 'string';
+          if (typeof attr === 'string') {
+            const parts = attr.split(':');
+            name = parts[0]?.trim() ?? '';
+            type = parts[1]?.trim() ?? 'string';
+          } else if (attr && typeof attr === 'object') {
+            name = attr.name ?? '';
+            type = attr.type ?? 'string';
+          }
+          name = name.replace(/\s+/g, '');
+          if (!name) return;
+
+          // Si la clase ya existía, evitar agregar atributos duplicados
+          if (existingClass && Array.isArray(existingClass.attributes)) {
+            const alreadyHasAttr = existingClass.attributes.some(
+              (ea: any) => ea.name && ea.name.toLowerCase().trim() === name.toLowerCase()
+            );
+            if (alreadyHasAttr) return;
+          }
+
+          const rawType = type.toLowerCase().trim().replace(/\[\]$/, '');
+          const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
+            ? rawType
+            : 'string';
+
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'member',
+            op: 'addAttribute',
+            classId,
+            memberId: crypto.randomUUID(),
+            name,
+            type: cleanType,
+            visibility: '+',
+          });
         });
-      });
-    }
-  });
+      }
+
+      // Métodos de la clase (si fueron provistos)
+      if (Array.isArray(cls.methods)) {
+        cls.methods.forEach((m) => {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'member',
+            op: 'addMethod',
+            classId,
+            memberId: crypto.randomUUID(),
+            name: m.name.trim().replace(/\s+/g, ''),
+            returnType: m.returnType ?? 'void',
+            parameters: [],
+            visibility: '+',
+          });
+        });
+      }
+    });
   }
 
   // 2. Crear asociaciones y composiciones
@@ -142,7 +167,23 @@ export function expandSemanticDomainToDelta(
       const sourceId = classIdMap.get(assoc.source.toLowerCase().trim());
       const targetId = classIdMap.get(assoc.target.toLowerCase().trim());
 
-      if (!sourceId || !targetId) return;
+      if (!sourceId || !targetId || sourceId === targetId) return;
+
+      // Si el nombre de la relación indica herencia/generalización
+      const isGeneralization = assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name);
+      if (isGeneralization) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'generalization',
+          op: 'create',
+          generalizationId: crypto.randomUUID(),
+          subClassId: sourceId,
+          superClassId: targetId,
+        });
+        return;
+      }
 
       const assocClassId = assoc.associationClass
         ? classIdMap.get(assoc.associationClass.toLowerCase().trim())
@@ -177,6 +218,26 @@ export function expandSemanticDomainToDelta(
     });
   }
 
+  // 3. Crear generalizaciones / herencia
+  if (Array.isArray(model.generalizations)) {
+    model.generalizations.forEach((gen) => {
+      const subId = classIdMap.get(gen.subclass.toLowerCase().trim());
+      const superId = classIdMap.get(gen.superclass.toLowerCase().trim());
+      if (!subId || !superId || subId === superId) return;
+
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'generalization',
+        op: 'create',
+        generalizationId: crypto.randomUUID(),
+        subClassId: subId,
+        superClassId: superId,
+      });
+    });
+  }
+
   return {
     id: crypto.randomUUID(),
     diagramId,
@@ -195,23 +256,58 @@ export function expandSemanticDomainToDelta(
  * Parsea el JSON devuelto por el modelo, tolerando markdown y truncamientos parciales.
  */
 export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
-  const isDummyName = (str?: string) => !str || /^(NombreClase|ClassName|ClaseA|ClaseB)$/i.test(str.trim());
+  const isDummyName = (str?: string) => !str || /^(NombreClase|ClassName|ClaseA|ClaseB|Origen|Destino|Hijo|Padre)$/i.test(str.trim());
 
   // 1. Intento de parseo JSON estándar
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) {
     try {
       const parsed = JSON.parse(match[0]);
-      const rawClasses = Array.isArray(parsed.classes) ? parsed.classes : [];
+      let rawClasses: any[] = [];
+      if (Array.isArray(parsed.classes)) {
+        rawClasses = parsed.classes;
+      } else if (parsed.classes && typeof parsed.classes === 'object') {
+        rawClasses = Object.entries(parsed.classes).map(([className, classData]: [string, any]) => {
+          let attrs: any[] = [];
+          if (Array.isArray(classData?.attributes)) {
+            attrs = classData.attributes;
+          } else if (classData?.attributes && typeof classData.attributes === 'object') {
+            attrs = Object.entries(classData.attributes).map(([attrName, attrType]) => ({
+              name: attrName,
+              type: typeof attrType === 'string' ? attrType : 'string',
+            }));
+          }
+          return {
+            name: classData?.name || className,
+            attributes: attrs,
+            methods: classData?.methods,
+          };
+        });
+      }
+
       const rawAssocs = Array.isArray(parsed.associations) ? parsed.associations : [];
+      const rawGens = Array.isArray(parsed.generalizations) ? parsed.generalizations : [];
 
       const classes = rawClasses.filter((c: any) => c.name && !isDummyName(c.name));
-      const associations = rawAssocs.filter(
-        (a: any) => a.source && a.target && !isDummyName(a.source) && !isDummyName(a.target)
-      );
+      const associations = rawAssocs
+        .map((a: any) => ({
+          source: typeof a.source === 'object' ? a.source?.name : a.source,
+          target: typeof a.target === 'object' ? a.target?.name : a.target,
+          name: a.name,
+          type: a.type,
+          aggregation: a.aggregation,
+        }))
+        .filter((a: any) => a.source && a.target && !isDummyName(a.source) && !isDummyName(a.target));
 
-      if (classes.length > 0 || associations.length > 0) {
-        return { classes, associations };
+      const generalizations = rawGens
+        .map((g: any) => ({
+          subclass: typeof g.subclass === 'object' ? g.subclass?.name : g.subclass,
+          superclass: typeof g.superclass === 'object' ? g.superclass?.name : g.superclass,
+        }))
+        .filter((g: any) => g.subclass && g.superclass && !isDummyName(g.subclass) && !isDummyName(g.superclass));
+
+      if (classes.length > 0 || associations.length > 0 || generalizations.length > 0) {
+        return { classes, associations, generalizations };
       }
     } catch {
       // Si el JSON quedó truncado al final, se recuperan las clases completas

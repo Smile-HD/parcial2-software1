@@ -309,6 +309,8 @@ export async function processUnifiedAmongusTurn(
   }
 
   const diagramContext = summarizeDiagramForPrompt(diagram);
+  const isAction = /(agreg|crea|dise[ñn]|model|conecta|relacion|generaliz|hered|cambi|modific|pone|pon\b|insert|quit|borr|elimin|hace|haz|add|create|connect|modify|link)/i.test(userContent);
+
   const systemPrompt = isEn
     ? [
         'You are Amongus, a senior software architecture tutor inside a web collaborative UML modeling tool.',
@@ -316,19 +318,26 @@ export async function processUnifiedAmongusTurn(
         'CRITICAL RULES:',
         '1. NO EMOJIS or emoticons under any circumstance.',
         '2. THE USER NEVER WRITES JSON OR CODE: The user interacts visually or via conversational chat. NEVER output JSON tutorials, schema examples, or tell the user how to format JSON.',
-        '3. DECISION LOGIC:',
-        '   - If proposing or creating elements (e.g. user asks to connect Materia and Clase, add entities, or make changes):',
-        '     Output the JSON block with the REAL domain entities from the canvas or request so the system can build the proposal:',
-        '     ```json',
-        '     {',
-        '       "action": "modify",',
-        '       "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
-        '       "associations": [{ "source": "...", "target": "...", "name": "..." }]',
-        '     }',
-        '     ```',
-        '   - If answering a question, architectural doubt, or conversational observation:',
-        '     Answer 100% in natural, pedagogical human language explaining the architecture.',
-        '     STRICT: NEVER include code blocks, JSON syntax, or dummy placeholders in your conversational replies.',
+        isAction
+          ? [
+              '3. USER REQUESTED A MODELING ACTION OR CHANGE (e.g. add/modify classes, attributes, relations):',
+              '   YOUR ENTIRE RESPONSE MUST START IMMEDIATELY WITH THE ```json BLOCK.',
+              '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT DRAW ASCII ART DIAGRAMS, DO NOT WRITE EXPLANATIONS BEFORE JSON.',
+              '   Output the real domain classes, attributes, associations, and generalizations:',
+              '   ```json',
+              '   {',
+              '     "action": "modify",',
+              '     "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
+              '     "associations": [{ "source": "...", "target": "...", "name": "..." }],',
+              '     "generalizations": [{ "subclass": "...", "superclass": "..." }]',
+              '   }',
+              '   ```',
+            ].join('\n')
+          : [
+              '3. THEORETICAL OR ADVICE QUESTION (e.g. what is aggregation vs composition?):',
+              '   Answer 100% in natural, pedagogical human language explaining the architecture.',
+              '   STRICT: NEVER include code blocks, JSON syntax, or dummy placeholders in your conversational replies.',
+            ].join('\n'),
         '',
         'NAME DISAMBIGUATION:',
         '- In UML, "class" is the concept of an entity. But in this diagram the user also has a specific entity literally named "Clase" (lesson/course entity). Use the conversation context and history to differentiate between the OOP concept of class and the specific entity named "Clase".',
@@ -341,19 +350,26 @@ export async function processUnifiedAmongusTurn(
         'REGLAS CRÍTICAS:',
         '1. NUNCA uses emojis ni emoticones bajo ninguna circunstancia.',
         '2. EL USUARIO NUNCA ESCRIBE JSON NI CÓDIGO: El usuario interactúa de forma visual o mediante chat. NUNCA le des tutoriales de JSON ni le muestres cómo formatear JSON.',
-        '3. LÓGICA DE DECISIÓN:',
-        '   - Si vas a proponer o crear elementos en el diagrama (ej. conectar Materia con Clase, agregar entidades, modificar):',
-        '     Emití el bloque JSON con los nombres REALES de las entidades del lienzo para que el sistema genere la propuesta visual interactiva:',
-        '     ```json',
-        '     {',
-        '       "action": "modify",',
-        '       "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
-        '       "associations": [{ "source": "...", "target": "...", "name": "..." }]',
-        '     }',
-        '     ```',
-        '   - Si respondés a una pregunta, duda conceptual u observación del diagrama:',
-        '     Respondé 100% en lenguaje natural humano, claro y pedagógico como arquitecto de software.',
-        '     ESTRICTO: NUNCA incluyas bloques de código, JSON ni plantillas de ejemplo en tu respuesta conversacional.',
+        isAction
+          ? [
+              '3. EL USUARIO SOLICITA UNA ACCIÓN O CAMBIO EN EL DIAGRAMA (ej. agregar clases, atributos, relaciones, herencia):',
+              '   TU RESPUESTA DEBE EMPEZAR INMEDIATAMENTE CON EL BLOQUE ```json.',
+              '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir saludos ("Claro...", "Hola..."), dibujar diagramas ASCII o cajas, dar explicaciones previas o tutoriales.',
+              '   Emití directamente el bloque JSON con las clases, atributos, asociaciones o generalizaciones reales solicitadas:',
+              '   ```json',
+              '   {',
+              '     "action": "modify",',
+              '     "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
+              '     "associations": [{ "source": "...", "target": "...", "name": "..." }],',
+              '     "generalizations": [{ "subclass": "...", "superclass": "..." }]',
+              '   }',
+              '   ```',
+            ].join('\n')
+          : [
+              '3. PREGUNTA TEÓRICA O CONCEPTUAL (ej. ¿qué es agregación?, ¿por qué separar entidades?):',
+              '   Respondé 100% en lenguaje natural humano, claro y pedagógico como arquitecto de software.',
+              '   ESTRICTO: NUNCA incluyas bloques de código, JSON ni plantillas de ejemplo en tu respuesta conversacional.',
+            ].join('\n'),
         '',
         'DESAMBIGUACIÓN DE NOMBRES:',
         '- En UML la palabra "clase" suele referirse al concepto general de entidad. Pero en este lienzo el usuario tiene además una entidad nombrada literalmente "Clase" (para una clase o sesión escolar, con profesor y materia). Usá el contexto y el historial de la conversación para discernir si habla del concepto o de su entidad específica "Clase".',
@@ -378,7 +394,12 @@ export async function processUnifiedAmongusTurn(
 
     // 2. Si el modelo devolvió una propuesta de modelado estructurada en JSON
     const parsedModel = robustParseDomainJson(clean);
-    if (parsedModel && (parsedModel.classes.length > 0 || (parsedModel.associations && parsedModel.associations.length > 0))) {
+    if (
+      parsedModel &&
+      (parsedModel.classes.length > 0 ||
+        (parsedModel.associations && parsedModel.associations.length > 0) ||
+        (parsedModel.generalizations && parsedModel.generalizations.length > 0))
+    ) {
       const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram);
       if (batchDelta && batchDelta.deltas.length > 0) {
         const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
