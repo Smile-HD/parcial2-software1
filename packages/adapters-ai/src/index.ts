@@ -208,9 +208,10 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 2b. eliminar todas las clases / limpiar lienzo
-    const deleteAll = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\s+(?:all\s+classes|todas\s+las\s+clases|all\s+the\s+classes|todas\s+las\s+tablas|todo)\b|\b(?:limpia|limpiá|limpiame|limpiamelo|limpiámelo)\b(?:\s+(?:el\s+lienzo|el\s+diagrama|todo))?/i.exec(utterance);
-    if (deleteAll) {
+    // 2b. eliminar todas las clases / limpiar o reiniciar lienzo
+    const isWipeOrDeleteAll =
+      /\b(?:delete|remove|borr(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|elimin(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|limpi(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|lmpi(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|lipia|vaci(?:a|ar|á|alo|álo)?|reinici(?:a|ar|á|alo|álo)?|reset(?:ea|ear|ealo|eálo)?|clear|wipe|clean)\b[\s\S]*?\b(?:lienzo|canvas|diagrama|tablero|mesa|pantalla|(?:(?:todas?|tod[oa]s?|all)\s+)?(?:las?\s+|the\s+)?(?:clases?|classes|tablas?|tables)|tod[oa]s?|todo|all)\b|\b(?:limpiamelo|limpiámelo|limpiame|borramelo|borrámelo|limpialo|limpiálo|borralo|borrálo|eliminalo|eliminálo|empezar\s+de\s+nuevo|comenzar\s+de\s+nuevo|partir\s+de\s+cero|desde\s+cero|clear\s+all|wipe\s+all)\b/i.test(utterance);
+    if (isWipeOrDeleteAll) {
       if (currentIr.classes.length === 0) {
         return refused('No classes to delete');
       }
