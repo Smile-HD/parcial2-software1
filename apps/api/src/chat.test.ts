@@ -256,4 +256,51 @@ describe('Chat Colaborativo y Persistencia de Mensajes (Unidad 23.2)', () => {
     expect(botReply.content).toBe('¡Hola! Puedo ayudarte con clases y relaciones.');
     await customApp.close();
   });
+
+  it('procesa turnos unificados de modelado generando deltaId y batchDelta en el mensaje del bot', async () => {
+    const mockLlm = {
+      interpret: async () => ({ kind: 'refused' as const, reason: 'stub' }),
+      chat: async () => `\`\`\`json
+{
+  "action": "create",
+  "classes": [
+    { "name": "Volador", "isInterface": true }
+  ],
+  "realizations": []
+}
+\`\`\``,
+    };
+    const customApp = buildApp({ logger: false, pool, llm: mockLlm as any });
+    await customApp.ready();
+
+    const diagramId = await createFixtureDiagram();
+
+    await customApp.inject({
+      method: 'POST',
+      url: `/diagrams/${diagramId}/messages`,
+      payload: {
+        deviceId: 'dev-1',
+        senderName: 'Carlos',
+        channelType: 'direct_bot',
+        content: 'crea una interfaz Volador',
+      },
+    });
+
+    const getRes = await customApp.inject({
+      method: 'GET',
+      url: `/diagrams/${diagramId}/messages?channel=direct_bot&deviceId=dev-1&userName=Carlos`,
+    });
+
+    const messages = JSON.parse(getRes.body);
+    const botReply = messages.find((m: any) => m.senderType === 'bot');
+    expect(botReply).toBeDefined();
+    expect(botReply.deltaId).toBeDefined();
+    expect(botReply.delta).toBeDefined();
+    expect(botReply.delta.kind).toBe('batch');
+    const classDelta = botReply.delta.deltas.find((d: any) => d.kind === 'class');
+    expect(classDelta).toBeDefined();
+    expect(classDelta.name).toBe('Volador');
+    expect(classDelta.classKind).toBe('interface');
+    await customApp.close();
+  });
 });

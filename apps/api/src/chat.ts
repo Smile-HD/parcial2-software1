@@ -309,7 +309,7 @@ export async function processUnifiedAmongusTurn(
   }
 
   const diagramContext = summarizeDiagramForPrompt(diagram);
-  const isAction = /(agreg|crea|dise[ñn]|model|conecta|relacion|generaliz|hered|cambi|modific|pone|pon\b|insert|quit|borr|elimin|hace|haz|add|create|connect|modify|link)/i.test(userContent);
+  const isAction = /(agreg|crea|dise[ñn]|model|conecta|relacion|asoci|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(userContent);
 
   const systemPrompt = isEn
     ? [
@@ -320,16 +320,27 @@ export async function processUnifiedAmongusTurn(
         '2. THE USER NEVER WRITES JSON OR CODE: The user interacts visually or via conversational chat. NEVER output JSON tutorials, schema examples, or tell the user how to format JSON.',
         isAction
           ? [
-              '3. USER REQUESTED A MODELING ACTION OR CHANGE (e.g. add/modify classes, attributes, relations):',
+              '3. USER REQUESTED A MODELING ACTION OR CHANGE (classes, interfaces, attributes, methods, relations, inheritance, deletions):',
               '   YOUR ENTIRE RESPONSE MUST START IMMEDIATELY WITH THE ```json BLOCK.',
               '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT DRAW ASCII ART DIAGRAMS, DO NOT WRITE EXPLANATIONS BEFORE JSON.',
-              '   Output the real domain classes, attributes, associations, and generalizations:',
+              '   TOOLBOX OPERATIONS CATALOG:',
+              '   - Classes (normal/abstract): "classes": [{"name": "Animal", "isAbstract": true, "attributes": [{"name": "age", "type": "int"}], "methods": [{"name": "move", "returnType": "void"}]}]',
+              '   - Interfaces: "classes": [{"name": "Flyable", "isInterface": true, "methods": [{"name": "fly", "returnType": "void"}]}]',
+              '   - Modifying existing classes: include the same class name to append members or toggle "isAbstract": true without duplicating it.',
+              '   - Associations: "associations": [{"source": "Customer", "target": "Order", "sourceMultiplicity": "1", "targetMultiplicity": "0..*", "directed": false}]',
+              '   - Composition/Aggregation: "associations": [{"source": "Invoice", "target": "InvoiceItem", "aggregation": "composite", "aggregationEnd": "source"}] (or "aggregation": "shared")',
+              '   - Association class: "associations": [{"source": "Student", "target": "Course", "associationClass": "Enrollment"}]',
+              '   - Generalization (inheritance): "generalizations": [{"subclass": "Dog", "superclass": "Animal"}]',
+              '   - Realization (implements interface): "realizations": [{"clientClass": "Pigeon", "supplierInterface": "Flyable"}]',
+              '   - Dependency: "dependencies": [{"client": "Invoice", "supplier": "EmailService"}]',
+              '   - N-ary association (>= 3 classes): "naryAssociations": [{"name": "Contract", "members": [{"class": "Teacher"}, {"class": "University"}, {"class": "Union"}]}]',
+              '   - Deletions: "deletions": {"classes": ["ClassToDelete"], "attributes": [{"class": "Teacher", "attribute": "age"}], "methods": [{"class": "Teacher", "method": "oldMethod"}], "associations": [{"source": "A", "target": "B"}]}',
+              '   Output the real domain operations directly in JSON:',
               '   ```json',
               '   {',
               '     "action": "modify",',
-              '     "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
-              '     "associations": [{ "source": "...", "target": "...", "name": "..." }],',
-              '     "generalizations": [{ "subclass": "...", "superclass": "..." }]',
+              '     "classes": [...],',
+              '     "associations": [...]',
               '   }',
               '   ```',
             ].join('\n')
@@ -352,16 +363,27 @@ export async function processUnifiedAmongusTurn(
         '2. EL USUARIO NUNCA ESCRIBE JSON NI CÓDIGO: El usuario interactúa de forma visual o mediante chat. NUNCA le des tutoriales de JSON ni le muestres cómo formatear JSON.',
         isAction
           ? [
-              '3. EL USUARIO SOLICITA UNA ACCIÓN O CAMBIO EN EL DIAGRAMA (ej. agregar clases, atributos, relaciones, herencia):',
+              '3. EL USUARIO SOLICITA UNA ACCIÓN O CAMBIO EN EL DIAGRAMA (clases, interfaces, atributos, métodos, relaciones, herencia, borrados):',
               '   TU RESPUESTA DEBE EMPEZAR INMEDIATAMENTE CON EL BLOQUE ```json.',
               '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir saludos ("Claro...", "Hola..."), dibujar diagramas ASCII o cajas, dar explicaciones previas o tutoriales.',
-              '   Emití directamente el bloque JSON con las clases, atributos, asociaciones o generalizaciones reales solicitadas:',
+              '   CATÁLOGO DE OPERACIONES DISPONIBLES EN TU TOOLBOX:',
+              '   - Clases normales o abstractas: "classes": [{"name": "Animal", "isAbstract": true, "attributes": [{"name": "edad", "type": "int"}], "methods": [{"name": "moverse", "returnType": "void"}]}]',
+              '   - Interfaces: "classes": [{"name": "Volador", "isInterface": true, "methods": [{"name": "volar", "returnType": "void"}]}]',
+              '   - Modificar clase existente: incluí el mismo nombre de la clase para agregarle atributos/métodos o marcar "isAbstract": true sin duplicarla.',
+              '   - Asociaciones normales: "associations": [{"source": "Cliente", "target": "Pedido", "sourceMultiplicity": "1", "targetMultiplicity": "0..*", "directed": false}]',
+              '   - Agregación o Composición: "associations": [{"source": "Factura", "target": "ItemFactura", "aggregation": "composite", "aggregationEnd": "source"}] (o "aggregation": "shared")',
+              '   - Clase asociativa: "associations": [{"source": "Estudiante", "target": "Curso", "associationClass": "Inscripcion"}]',
+              '   - Generalización (herencia): "generalizations": [{"subclass": "Perro", "superclass": "Animal"}]',
+              '   - Realización (implementa interfaz): "realizations": [{"clientClass": "Paloma", "supplierInterface": "Volador"}]',
+              '   - Dependencia: "dependencies": [{"client": "Factura", "supplier": "ServicioEmail"}]',
+              '   - Asociación N-aria (3 o más clases): "naryAssociations": [{"name": "Contrato", "members": [{"class": "Docente"}, {"class": "Universidad"}, {"class": "Gremio"}]}]',
+              '   - Eliminaciones: "deletions": {"classes": ["ClaseABorrar"], "attributes": [{"class": "Profesor", "attribute": "edad"}], "methods": [{"class": "Profesor", "method": "metodoViejo"}], "associations": [{"source": "A", "target": "B"}]}',
+              '   Emití directamente el bloque JSON con las operaciones solicitadas:',
               '   ```json',
               '   {',
               '     "action": "modify",',
-              '     "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
-              '     "associations": [{ "source": "...", "target": "...", "name": "..." }],',
-              '     "generalizations": [{ "subclass": "...", "superclass": "..." }]',
+              '     "classes": [...],',
+              '     "associations": [...]',
               '   }',
               '   ```',
             ].join('\n')
@@ -394,12 +416,22 @@ export async function processUnifiedAmongusTurn(
 
     // 2. Si el modelo devolvió una propuesta de modelado estructurada en JSON
     const parsedModel = robustParseDomainJson(clean);
-    if (
+    const hasAnyContent =
       parsedModel &&
-      (parsedModel.classes.length > 0 ||
+      ((parsedModel.classes && parsedModel.classes.length > 0) ||
         (parsedModel.associations && parsedModel.associations.length > 0) ||
-        (parsedModel.generalizations && parsedModel.generalizations.length > 0))
-    ) {
+        (parsedModel.generalizations && parsedModel.generalizations.length > 0) ||
+        (parsedModel.realizations && parsedModel.realizations.length > 0) ||
+        (parsedModel.dependencies && parsedModel.dependencies.length > 0) ||
+        (parsedModel.naryAssociations && parsedModel.naryAssociations.length > 0) ||
+        (parsedModel.deletions && (
+          (parsedModel.deletions.classes && parsedModel.deletions.classes.length > 0) ||
+          (parsedModel.deletions.attributes && parsedModel.deletions.attributes.length > 0) ||
+          (parsedModel.deletions.methods && parsedModel.deletions.methods.length > 0) ||
+          (parsedModel.deletions.associations && parsedModel.deletions.associations.length > 0)
+        )));
+
+    if (hasAnyContent) {
       const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram);
       if (batchDelta && batchDelta.deltas.length > 0) {
         const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();

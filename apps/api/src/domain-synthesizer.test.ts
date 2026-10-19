@@ -185,5 +185,195 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect(genCreates).toHaveLength(1);
     expect((genCreates[0] as any).subClassId).toBe('prof-id-1');
   });
+
+  it('synthesizes interfaces, realizations, and dependencies', () => {
+    const raw = `
+\`\`\`json
+{
+  "classes": [
+    {
+      "name": "Volador",
+      "isInterface": true,
+      "methods": [
+        { "name": "volar", "returnType": "void" }
+      ]
+    },
+    {
+      "name": "Paloma",
+      "attributes": [
+        { "name": "nombre", "type": "string" }
+      ]
+    },
+    {
+      "name": "ServicioEmail",
+      "methods": [
+        { "name": "enviar", "returnType": "boolean" }
+      ]
+    }
+  ],
+  "realizations": [
+    {
+      "clientClass": "Paloma",
+      "supplierInterface": "Volador"
+    }
+  ],
+  "dependencies": [
+    {
+      "client": "Paloma",
+      "supplier": "ServicioEmail"
+    }
+  ]
+}
+\`\`\``;
+
+    const parsed = robustParseDomainJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.classes).toHaveLength(3);
+    expect(parsed!.realizations).toHaveLength(1);
+    expect(parsed!.dependencies).toHaveLength(1);
+
+    const delta = expandSemanticDomainToDelta(parsed!, emptyDiagram.id, emptyDiagram);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+
+    if (applied.ok) {
+      const diagram = applied.value;
+      const volador = diagram.classes.find(c => c.name === 'Volador');
+      expect(volador).toBeDefined();
+      expect(volador!.kind).toBe('interface');
+      expect(volador!.methods).toHaveLength(1);
+
+      expect(diagram.realizations).toHaveLength(1);
+      expect(diagram.dependencies).toHaveLength(1);
+    }
+  });
+
+  it('synthesizes n-ary associations with 3 or more participants', () => {
+    const raw = `
+\`\`\`json
+{
+  "classes": [
+    { "name": "Profesor" },
+    { "name": "Universidad" },
+    { "name": "Gremio" }
+  ],
+  "naryAssociations": [
+    {
+      "name": "Contrato",
+      "members": [
+        { "class": "Profesor", "multiplicity": "1..*" },
+        { "class": "Universidad", "multiplicity": "1" },
+        { "class": "Gremio", "multiplicity": "0..1" }
+      ]
+    }
+  ]
+}
+\`\`\``;
+
+    const parsed = robustParseDomainJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.naryAssociations).toHaveLength(1);
+
+    const delta = expandSemanticDomainToDelta(parsed!, emptyDiagram.id, emptyDiagram);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+
+    if (applied.ok) {
+      const diagram = applied.value;
+      expect(diagram.naryAssociations).toHaveLength(1);
+      expect(diagram.naryAssociations[0]!.name).toBe('Contrato');
+      expect(diagram.naryAssociations[0]!.memberEnds).toHaveLength(3);
+    }
+  });
+
+  it('synthesizes deletions for classes, attributes, methods, and associations', () => {
+    const existingDiagram: Diagram = {
+      id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
+      name: 'Diagrama con elementos para borrar',
+      classes: [
+        {
+          id: '01925b42-d690-7c28-9f12-9c98a3f80c66',
+          name: 'Factura',
+          position: { x: 50, y: 50 },
+          attributes: [
+            { id: '01925b42-d690-7c28-9f12-9c98a3f80c67', name: 'numero', type: 'string', visibility: '+', isStatic: false, isDerived: false },
+            { id: '01925b42-d690-7c28-9f12-9c98a3f80c68', name: 'obsoleto', type: 'string', visibility: '+', isStatic: false, isDerived: false },
+          ],
+          methods: [
+            { id: '01925b42-d690-7c28-9f12-9c98a3f80c69', name: 'calcularTotal', returnType: 'float', parameters: [], visibility: '+', isStatic: false },
+            { id: '01925b42-d690-7c28-9f12-9c98a3f80c6a', name: 'metodoViejo', returnType: 'void', parameters: [], visibility: '+', isStatic: false },
+          ],
+          kind: 'class',
+          isAbstract: false,
+        },
+        {
+          id: '01925b42-d690-7c28-9f12-9c98a3f80c6b',
+          name: 'ClaseInutil',
+          position: { x: 300, y: 50 },
+          attributes: [],
+          methods: [],
+          kind: 'class',
+          isAbstract: false,
+        },
+      ],
+      associations: [
+        {
+          id: '01925b42-d690-7c28-9f12-9c98a3f80c6c',
+          sourceClassId: '01925b42-d690-7c28-9f12-9c98a3f80c66',
+          targetClassId: '01925b42-d690-7c28-9f12-9c98a3f80c6b',
+          directed: false,
+          aggregation: 'none',
+          aggregationEnd: 'source',
+        },
+      ],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const raw = `
+\`\`\`json
+{
+  "action": "delete",
+  "deletions": {
+    "classes": ["ClaseInutil"],
+    "attributes": [{ "class": "Factura", "attribute": "obsoleto" }],
+    "methods": [{ "class": "Factura", "method": "metodoViejo" }],
+    "associations": [{ "source": "Factura", "target": "ClaseInutil" }]
+  }
+}
+\`\`\``;
+
+    const parsed = robustParseDomainJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.deletions).toBeDefined();
+
+    const delta = expandSemanticDomainToDelta(parsed!, existingDiagram.id, existingDiagram);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(existingDiagram, delta!);
+    expect(applied.ok).toBe(true);
+
+    if (applied.ok) {
+      const diagram = applied.value;
+      // ClaseInutil eliminada
+      expect(diagram.classes.find(c => c.name === 'ClaseInutil')).toBeUndefined();
+      // Factura conservada pero sin atributo 'obsoleto' ni método 'metodoViejo'
+      const factura = diagram.classes.find(c => c.name === 'Factura');
+      expect(factura).toBeDefined();
+      expect(factura!.attributes.find(a => a.name === 'obsoleto')).toBeUndefined();
+      expect(factura!.attributes.find(a => a.name === 'numero')).toBeDefined();
+      expect(factura!.methods.find(m => m.name === 'metodoViejo')).toBeUndefined();
+      expect(factura!.methods.find(m => m.name === 'calcularTotal')).toBeDefined();
+      // Asociacion eliminada
+      expect(diagram.associations).toHaveLength(0);
+    }
+  });
 });
+
 

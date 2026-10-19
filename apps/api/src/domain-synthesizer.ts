@@ -1,31 +1,86 @@
 import type { BatchDelta, LlmPort } from '@app/core';
 
+export interface SemanticAttribute {
+  name: string;
+  type?: string;
+  visibility?: '+' | '-' | '#' | '~';
+  isStatic?: boolean;
+  isDerived?: boolean;
+}
+
+export interface SemanticMethod {
+  name: string;
+  returnType?: string;
+  parameters?: Array<{ name: string; type: string }>;
+  visibility?: '+' | '-' | '#' | '~';
+  isStatic?: boolean;
+}
+
 export interface SemanticClass {
   name: string;
-  attributes?: Array<{ name: string; type?: string }>;
-  methods?: Array<{ name: string; returnType?: string }>;
+  isInterface?: boolean;
+  isAbstract?: boolean;
+  attributes?: SemanticAttribute[];
+  methods?: SemanticMethod[];
 }
 
 export interface SemanticAssociation {
   source: string;
   target: string;
+  name?: string;
   sourceMultiplicity?: string;
   targetMultiplicity?: string;
   aggregation?: 'none' | 'shared' | 'composite';
   aggregationEnd?: 'source' | 'target';
   associationClass?: string;
-  name?: string;
+  directed?: boolean;
+  sourceRole?: string;
+  targetRole?: string;
 }
 
 export interface SemanticGeneralization {
   subclass: string;
   superclass: string;
+  name?: string;
+}
+
+export interface SemanticRealization {
+  clientClass: string;
+  supplierInterface: string;
+  name?: string;
+}
+
+export interface SemanticDependency {
+  client: string;
+  supplier: string;
+  name?: string;
+}
+
+export interface SemanticNaryAssociation {
+  name?: string;
+  members: Array<{
+    class: string;
+    multiplicity?: string;
+    role?: string;
+  }>;
+}
+
+export interface SemanticDeletions {
+  classes?: string[];
+  attributes?: Array<{ class: string; attribute: string }>;
+  methods?: Array<{ class: string; method: string }>;
+  associations?: Array<{ source: string; target: string }>;
 }
 
 export interface SemanticDomainModel {
-  classes: SemanticClass[];
+  action?: 'create' | 'modify' | 'delete';
+  classes?: SemanticClass[];
   associations?: SemanticAssociation[];
   generalizations?: SemanticGeneralization[];
+  realizations?: SemanticRealization[];
+  dependencies?: SemanticDependency[];
+  naryAssociations?: SemanticNaryAssociation[];
+  deletions?: SemanticDeletions;
 }
 
 export function isDomainModelRequest(text: string): boolean {
@@ -44,7 +99,17 @@ export function expandSemanticDomainToDelta(
   const hasClasses = Array.isArray(model.classes) && model.classes.length > 0;
   const hasAssociations = Array.isArray(model.associations) && model.associations.length > 0;
   const hasGeneralizations = Array.isArray(model.generalizations) && model.generalizations.length > 0;
-  if (!hasClasses && !hasAssociations && !hasGeneralizations) {
+  const hasRealizations = Array.isArray(model.realizations) && model.realizations.length > 0;
+  const hasDependencies = Array.isArray(model.dependencies) && model.dependencies.length > 0;
+  const hasNary = Array.isArray(model.naryAssociations) && model.naryAssociations.length > 0;
+  const hasDeletions = !!model.deletions && (
+    (Array.isArray(model.deletions.classes) && model.deletions.classes.length > 0) ||
+    (Array.isArray(model.deletions.attributes) && model.deletions.attributes.length > 0) ||
+    (Array.isArray(model.deletions.methods) && model.deletions.methods.length > 0) ||
+    (Array.isArray(model.deletions.associations) && model.deletions.associations.length > 0)
+  );
+
+  if (!hasClasses && !hasAssociations && !hasGeneralizations && !hasRealizations && !hasDependencies && !hasNary && !hasDeletions) {
     return null;
   }
 
@@ -64,11 +129,11 @@ export function expandSemanticDomainToDelta(
     }
   }
 
-  // 1. Crear clases en grilla 2D espaciada o agregar atributos a existentes
+  // 1. Crear clases nuevas o modificar existentes
   const cols = 2;
   const existingCount = currentDiagram?.classes?.length ?? 0;
   if (hasClasses) {
-    model.classes.forEach((cls, idx) => {
+    model.classes!.forEach((cls, idx) => {
       const cleanName = cls.name.trim().replace(/\s+/g, '');
       const lower = cleanName.toLowerCase();
       const existingClass = existingClassesMap.get(lower);
@@ -76,6 +141,19 @@ export function expandSemanticDomainToDelta(
       let classId: string;
       if (existingClass) {
         classId = existingClass.id;
+        // Si pide marcar abstracta o cambiar a interfaz
+        if (cls.isAbstract !== undefined || cls.isInterface !== undefined) {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'class',
+            op: 'update',
+            classId,
+            isAbstract: cls.isAbstract ?? existingClass.isAbstract ?? false,
+            classKind: cls.isInterface ? 'interface' : (existingClass.classKind ?? 'class'),
+          });
+        }
       } else {
         classId = crypto.randomUUID();
         classIdMap.set(lower, classId);
@@ -92,6 +170,8 @@ export function expandSemanticDomainToDelta(
           op: 'create',
           classId,
           name: cleanName,
+          classKind: cls.isInterface ? 'interface' : 'class',
+          isAbstract: !!cls.isAbstract,
           position: { x, y },
         });
       }
@@ -101,6 +181,10 @@ export function expandSemanticDomainToDelta(
         cls.attributes.forEach((attr: any) => {
           let name = '';
           let type = 'string';
+          let visibility: '+' | '-' | '#' | '~' = '+';
+          let isStatic = false;
+          let isDerived = false;
+
           if (typeof attr === 'string') {
             const parts = attr.split(':');
             name = parts[0]?.trim() ?? '';
@@ -108,6 +192,9 @@ export function expandSemanticDomainToDelta(
           } else if (attr && typeof attr === 'object') {
             name = attr.name ?? '';
             type = attr.type ?? 'string';
+            if (attr.visibility) visibility = attr.visibility;
+            if (attr.isStatic !== undefined) isStatic = !!attr.isStatic;
+            if (attr.isDerived !== undefined) isDerived = !!attr.isDerived;
           }
           name = name.replace(/\s+/g, '');
           if (!name) return;
@@ -135,14 +222,42 @@ export function expandSemanticDomainToDelta(
             memberId: crypto.randomUUID(),
             name,
             type: cleanType,
-            visibility: '+',
+            visibility,
+            isStatic,
+            isDerived,
           });
         });
       }
 
-      // Métodos de la clase (si fueron provistos)
+      // Métodos de la clase
       if (Array.isArray(cls.methods)) {
-        cls.methods.forEach((m) => {
+        cls.methods.forEach((m: any) => {
+          let mName = '';
+          let returnType = 'void';
+          let visibility: '+' | '-' | '#' | '~' = '+';
+          let isStatic = false;
+          let parameters: Array<{ name: string; type: string }> = [];
+
+          if (typeof m === 'string') {
+            mName = m.replace(/\(\)$/, '').trim();
+          } else if (m && typeof m === 'object') {
+            mName = m.name ?? '';
+            returnType = m.returnType ?? 'void';
+            if (m.visibility) visibility = m.visibility;
+            if (m.isStatic !== undefined) isStatic = !!m.isStatic;
+            if (Array.isArray(m.parameters)) parameters = m.parameters;
+          }
+          mName = mName.trim().replace(/\s+/g, '');
+          if (!mName) return;
+
+          // Si ya existía el método en la clase, evitar duplicar
+          if (existingClass && Array.isArray(existingClass.methods)) {
+            const alreadyHasMethod = existingClass.methods.some(
+              (em: any) => em.name && em.name.toLowerCase().trim() === mName.toLowerCase()
+            );
+            if (alreadyHasMethod) return;
+          }
+
           deltas.push({
             id: crypto.randomUUID(),
             diagramId,
@@ -151,17 +266,18 @@ export function expandSemanticDomainToDelta(
             op: 'addMethod',
             classId,
             memberId: crypto.randomUUID(),
-            name: m.name.trim().replace(/\s+/g, ''),
-            returnType: m.returnType ?? 'void',
-            parameters: [],
-            visibility: '+',
+            name: mName,
+            returnType,
+            parameters,
+            visibility,
+            isStatic,
           });
         });
       }
     });
   }
 
-  // 2. Crear asociaciones y composiciones
+  // 2. Asociaciones, composiciones y agregaciones
   if (Array.isArray(model.associations)) {
     model.associations.forEach((assoc) => {
       const sourceId = classIdMap.get(assoc.source.toLowerCase().trim());
@@ -169,7 +285,7 @@ export function expandSemanticDomainToDelta(
 
       if (!sourceId || !targetId || sourceId === targetId) return;
 
-      // Si el nombre de la relación indica herencia/generalización
+      // Si el nombre o tipo indica herencia/generalización
       const isGeneralization = assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name);
       if (isGeneralization) {
         deltas.push({
@@ -185,11 +301,44 @@ export function expandSemanticDomainToDelta(
         return;
       }
 
+      // Si el nombre o tipo indica realización/implementación
+      const isRealization = assoc.name && /^(implement|realiz)/i.test(assoc.name);
+      if (isRealization) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'realization',
+          op: 'create',
+          realizationId: crypto.randomUUID(),
+          clientClassId: sourceId,
+          supplierInterfaceId: targetId,
+        });
+        return;
+      }
+
+      // Si el nombre o tipo indica dependencia
+      const isDependency = assoc.name && /^(depend|usa|uses)/i.test(assoc.name);
+      if (isDependency) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'dependency',
+          op: 'create',
+          dependencyId: crypto.randomUUID(),
+          clientClassId: sourceId,
+          supplierClassId: targetId,
+        });
+        return;
+      }
+
       const assocClassId = assoc.associationClass
         ? classIdMap.get(assoc.associationClass.toLowerCase().trim())
         : undefined;
 
       const isComposite = assoc.aggregation === 'composite';
+      const isShared = assoc.aggregation === 'shared';
 
       const assocDelta: any = {
         id: crypto.randomUUID(),
@@ -202,23 +351,21 @@ export function expandSemanticDomainToDelta(
         targetClassId: targetId,
         sourceMultiplicity: assoc.sourceMultiplicity ?? '1',
         targetMultiplicity: assoc.targetMultiplicity ?? '0..*',
-        directed: false,
-        aggregation: isComposite ? 'composite' : 'none',
-        aggregationEnd: isComposite ? (assoc.aggregationEnd ?? 'source') : 'source',
+        directed: assoc.directed ?? false,
+        aggregation: isComposite ? 'composite' : (isShared ? 'shared' : 'none'),
+        aggregationEnd: (isComposite || isShared) ? (assoc.aggregationEnd ?? 'source') : 'source',
       };
 
-      if (assoc.name) {
-        assocDelta.name = assoc.name;
-      }
-      if (assocClassId) {
-        assocDelta.associationClassId = assocClassId;
-      }
+      if (assoc.name) assocDelta.name = assoc.name;
+      if (assoc.sourceRole) assocDelta.sourceRole = assoc.sourceRole;
+      if (assoc.targetRole) assocDelta.targetRole = assoc.targetRole;
+      if (assocClassId) assocDelta.associationClassId = assocClassId;
 
       deltas.push(assocDelta);
     });
   }
 
-  // 3. Crear generalizaciones / herencia
+  // 3. Generalizaciones explícitas
   if (Array.isArray(model.generalizations)) {
     model.generalizations.forEach((gen) => {
       const subId = classIdMap.get(gen.subclass.toLowerCase().trim());
@@ -234,8 +381,172 @@ export function expandSemanticDomainToDelta(
         generalizationId: crypto.randomUUID(),
         subClassId: subId,
         superClassId: superId,
+        name: gen.name,
       });
     });
+  }
+
+  // 4. Realizaciones explícitas (implementación de interfaz)
+  if (Array.isArray(model.realizations)) {
+    model.realizations.forEach((r) => {
+      const client = classIdMap.get(r.clientClass.toLowerCase().trim());
+      const supplier = classIdMap.get(r.supplierInterface.toLowerCase().trim());
+      if (!client || !supplier || client === supplier) return;
+
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'realization',
+        op: 'create',
+        realizationId: crypto.randomUUID(),
+        clientClassId: client,
+        supplierInterfaceId: supplier,
+        name: r.name,
+      });
+    });
+  }
+
+  // 5. Dependencias explícitas
+  if (Array.isArray(model.dependencies)) {
+    model.dependencies.forEach((d) => {
+      const client = classIdMap.get(d.client.toLowerCase().trim());
+      const supplier = classIdMap.get(d.supplier.toLowerCase().trim());
+      if (!client || !supplier || client === supplier) return;
+
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'dependency',
+        op: 'create',
+        dependencyId: crypto.randomUUID(),
+        clientClassId: client,
+        supplierClassId: supplier,
+        name: d.name,
+      });
+    });
+  }
+
+  // 6. Asociaciones N-arias (3 o más extremos con rombo central)
+  if (Array.isArray(model.naryAssociations)) {
+    model.naryAssociations.forEach((n) => {
+      if (!Array.isArray(n.members) || n.members.length < 3) return;
+      const memberEnds: any[] = [];
+      for (const m of n.members) {
+        const cid = classIdMap.get(m.class.toLowerCase().trim());
+        if (cid && !memberEnds.some((e) => e.classId === cid)) {
+          memberEnds.push({
+            classId: cid,
+            multiplicity: m.multiplicity || '1',
+            role: m.role,
+          });
+        }
+      }
+      if (memberEnds.length >= 3) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'naryAssociation',
+          op: 'create',
+          naryAssociationId: crypto.randomUUID(),
+          memberEnds,
+          name: n.name,
+        });
+      }
+    });
+  }
+
+  // 7. Eliminaciones puntuales (clases, atributos, métodos, relaciones)
+  if (model.deletions) {
+    // Borrado de clases
+    if (Array.isArray(model.deletions.classes)) {
+      model.deletions.classes.forEach((cname) => {
+        const cid = classIdMap.get(cname.toLowerCase().trim());
+        if (cid) {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'class',
+            op: 'delete',
+            classId: cid,
+          });
+        }
+      });
+    }
+
+    // Borrado de atributos
+    if (Array.isArray(model.deletions.attributes)) {
+      model.deletions.attributes.forEach((item) => {
+        const lower = item.class.toLowerCase().trim();
+        const cid = classIdMap.get(lower);
+        const ec = existingClassesMap.get(lower);
+        if (cid && ec && Array.isArray(ec.attributes)) {
+          const attr = ec.attributes.find((a: any) => a.name && a.name.toLowerCase().trim() === item.attribute.toLowerCase().trim());
+          if (attr) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'member',
+              op: 'deleteAttribute',
+              classId: cid,
+              memberId: attr.id,
+            });
+          }
+        }
+      });
+    }
+
+    // Borrado de métodos
+    if (Array.isArray(model.deletions.methods)) {
+      model.deletions.methods.forEach((item) => {
+        const lower = item.class.toLowerCase().trim();
+        const cid = classIdMap.get(lower);
+        const ec = existingClassesMap.get(lower);
+        if (cid && ec && Array.isArray(ec.methods)) {
+          const m = ec.methods.find((em: any) => em.name && em.name.toLowerCase().trim() === item.method.toLowerCase().trim());
+          if (m) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'member',
+              op: 'deleteMethod',
+              classId: cid,
+              memberId: m.id,
+            });
+          }
+        }
+      });
+    }
+
+    // Borrado de asociaciones
+    if (Array.isArray(model.deletions.associations) && currentDiagram?.associations) {
+      model.deletions.associations.forEach((item) => {
+        const srcId = classIdMap.get(item.source.toLowerCase().trim());
+        const tgtId = classIdMap.get(item.target.toLowerCase().trim());
+        if (srcId && tgtId) {
+          const assoc = currentDiagram.associations.find(
+            (a: any) =>
+              (a.sourceClassId === srcId && a.targetClassId === tgtId) ||
+              (a.sourceClassId === tgtId && a.targetClassId === srcId)
+          );
+          if (assoc) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'association',
+              op: 'delete',
+              associationId: assoc.id,
+            });
+          }
+        }
+      });
+    }
   }
 
   return {
@@ -279,6 +590,8 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
           }
           return {
             name: classData?.name || className,
+            isInterface: classData?.isInterface ?? false,
+            isAbstract: classData?.isAbstract ?? false,
             attributes: attrs,
             methods: classData?.methods,
           };
@@ -287,6 +600,9 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
 
       const rawAssocs = Array.isArray(parsed.associations) ? parsed.associations : [];
       const rawGens = Array.isArray(parsed.generalizations) ? parsed.generalizations : [];
+      const rawRealizations = Array.isArray(parsed.realizations) ? parsed.realizations : [];
+      const rawDependencies = Array.isArray(parsed.dependencies) ? parsed.dependencies : [];
+      const rawNary = Array.isArray(parsed.naryAssociations) ? parsed.naryAssociations : [];
 
       const classes = rawClasses.filter((c: any) => c.name && !isDummyName(c.name));
       const associations = rawAssocs
@@ -296,6 +612,11 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
           name: a.name,
           type: a.type,
           aggregation: a.aggregation,
+          aggregationEnd: a.aggregationEnd,
+          associationClass: a.associationClass,
+          directed: a.directed,
+          sourceRole: a.sourceRole,
+          targetRole: a.targetRole,
         }))
         .filter((a: any) => a.source && a.target && !isDummyName(a.source) && !isDummyName(a.target));
 
@@ -303,11 +624,60 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
         .map((g: any) => ({
           subclass: typeof g.subclass === 'object' ? g.subclass?.name : g.subclass,
           superclass: typeof g.superclass === 'object' ? g.superclass?.name : g.superclass,
+          name: g.name,
         }))
         .filter((g: any) => g.subclass && g.superclass && !isDummyName(g.subclass) && !isDummyName(g.superclass));
 
-      if (classes.length > 0 || associations.length > 0 || generalizations.length > 0) {
-        return { classes, associations, generalizations };
+      const realizations = rawRealizations
+        .map((r: any) => ({
+          clientClass: typeof r.clientClass === 'object' ? r.clientClass?.name : (r.clientClass ?? r.client),
+          supplierInterface: typeof r.supplierInterface === 'object' ? r.supplierInterface?.name : (r.supplierInterface ?? r.supplier),
+          name: r.name,
+        }))
+        .filter((r: any) => r.clientClass && r.supplierInterface && !isDummyName(r.clientClass) && !isDummyName(r.supplierInterface));
+
+      const dependencies = rawDependencies
+        .map((d: any) => ({
+          client: typeof d.client === 'object' ? d.client?.name : d.client,
+          supplier: typeof d.supplier === 'object' ? d.supplier?.name : d.supplier,
+          name: d.name,
+        }))
+        .filter((d: any) => d.client && d.supplier && !isDummyName(d.client) && !isDummyName(d.supplier));
+
+      const naryAssociations = rawNary
+        .map((n: any) => ({
+          name: n.name,
+          members: Array.isArray(n.members)
+            ? n.members.map((m: any) => ({
+                class: typeof m === 'string' ? m : (m.class ?? m.name),
+                multiplicity: m.multiplicity,
+                role: m.role,
+              })).filter((m: any) => m.class && !isDummyName(m.class))
+            : [],
+        }))
+        .filter((n: any) => n.members.length >= 3);
+
+      const deletions = parsed.deletions;
+
+      if (
+        classes.length > 0 ||
+        associations.length > 0 ||
+        generalizations.length > 0 ||
+        realizations.length > 0 ||
+        dependencies.length > 0 ||
+        naryAssociations.length > 0 ||
+        deletions
+      ) {
+        return {
+          action: parsed.action,
+          classes,
+          associations,
+          generalizations,
+          realizations,
+          dependencies,
+          naryAssociations,
+          deletions,
+        };
       }
     } catch {
       // Si el JSON quedó truncado al final, se recuperan las clases completas
@@ -344,7 +714,11 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
         associations.push({ source: classes[i]!.name, target: classes[i + 1]!.name });
       }
     }
-    return { classes: classes.slice(0, 6), associations };
+    const mappedClasses: SemanticClass[] = classes.slice(0, 6).map(c => ({
+      name: c.name,
+      attributes: c.attributes.map(a => ({ name: a, type: 'string' })),
+    }));
+    return { classes: mappedClasses, associations };
   }
 
   return null;
