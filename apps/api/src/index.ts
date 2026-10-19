@@ -802,7 +802,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
             .slice(-6)
             .map((m) => ({
               role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
-              content: `${m.senderName}: ${m.content}`,
+              content: m.content,
             }));
         } catch {}
 

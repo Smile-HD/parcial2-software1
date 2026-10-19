@@ -317,17 +317,18 @@ export async function processUnifiedAmongusTurn(
         '1. NO EMOJIS or emoticons under any circumstance.',
         '2. DECISION LOGIC:',
         '   - If the user wants to CREATE, GENERATE, ADD, or MODIFY classes or relationships (e.g. "make an ecommerce db", "add an Alumno class with name", "connect Profesor to Materia"):',
-        '     Respond with a JSON block containing the domain model elements to create or update:',
+        '   - If the user wants to CREATE, GENERATE, ADD, or MODIFY classes or relationships:',
+        '     Respond ONLY with the JSON block containing the actual elements to build or connect (using the real domain class names):',
         '     ```json',
         '     {',
         '       "action": "modify",',
-        '       "classes": [{ "name": "ClassName", "attributes": [{ "name": "attrName", "type": "string" }] }],',
-        '       "associations": [{ "source": "ClassA", "target": "ClassB", "name": "relName" }]',
+        '       "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
+        '       "associations": [{ "source": "...", "target": "...", "name": "..." }]',
         '     }',
         '     ```',
-        '     You may include a short friendly sentence before or after the JSON block.',
-        '   - If the user asks a QUESTION (conceptual OOAD, why classes are separated or disconnected, advice, or general conversation):',
-        '     Respond in clear, natural, direct text explaining the technical reason based on the current canvas state.',
+        '   - If the user asks a QUESTION, OBSERVATION, or asks for ADVICE (e.g. "is it missing a relation between X and Y?", "why are they separated?", conceptual questions):',
+        '     Respond in clear, natural, direct text explaining the architectural reason based on the current canvas state.',
+        '     STRICT RULE: NEVER include code blocks or JSON syntax in your conversational text explanations.',
         '',
         'NAME DISAMBIGUATION:',
         '- In UML, "class" is the concept of an entity. But in this diagram the user also has a specific entity literally named "Clase" (lesson/course entity). Use the conversation context and history to differentiate between the OOP concept of class and the specific entity named "Clase".',
@@ -340,18 +341,18 @@ export async function processUnifiedAmongusTurn(
         'REGLAS CRÍTICAS:',
         '1. NUNCA uses emojis ni emoticones bajo ninguna circunstancia.',
         '2. LÓGICA DE DECISIÓN:',
-        '   - Si el usuario pide CREAR, GENERAR, AGREGAR o MODIFICAR clases o relaciones (ej. "haceme un sistema para tienda", "agrega una clase Alumno con matricula", "conecta Profesor con Materia"):',
-        '     Responde con un bloque JSON con los elementos a construir:',
+        '   - Si el usuario pide o sugiere un CAMBIO, CREACIÓN o CONEXIÓN de clases o relaciones:',
+        '     Responde ÚNICAMENTE con el bloque JSON de los elementos a construir o conectar, usando los nombres reales del dominio:',
         '     ```json',
         '     {',
         '       "action": "modify",',
-        '       "classes": [{ "name": "NombreClase", "attributes": [{ "name": "attr", "type": "string" }] }],',
-        '       "associations": [{ "source": "ClaseA", "target": "ClaseB", "name": "nombreRel" }]',
+        '       "classes": [{ "name": "...", "attributes": [{ "name": "...", "type": "string" }] }],',
+        '       "associations": [{ "source": "...", "target": "...", "name": "..." }]',
         '     }',
         '     ```',
-        '     Podes incluir una breve oracion antes o despues del JSON.',
-        '   - Si el usuario hace una PREGUNTA (conceptual de diseño, por que algo esta separado, consejos sobre relaciones, o saludo):',
-        '     Responde en texto natural, claro y directo explicando la razon arquitectonica basada en el estado actual del lienzo.',
+        '   - Si el usuario hace una PREGUNTA, OBSERVACIÓN o DUDA (ej. "no falta conectar X con Y?", "¿por qué están separados?", consejos):',
+        '     Responde en lenguaje natural, claro y pedagógico explicando la razón arquitectónica basada en el estado actual del lienzo.',
+        '     REGLA ESTRICTA DE TEXTO: NUNCA incluyas bloques de código ni sintaxis JSON en tus explicaciones de texto al usuario.',
         '',
         'DESAMBIGUACIÓN DE NOMBRES:',
         '- En UML la palabra "clase" suele referirse al concepto de entidad/tabla. Pero en este dominio el usuario tiene además una entidad explícitamente nombrada "Clase" (para una clase o curso escolar, con profesor y materia). Usá el contexto y el historial de la conversación para discernir si el usuario habla del concepto general o de su entidad específica "Clase".',
@@ -363,7 +364,7 @@ export async function processUnifiedAmongusTurn(
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: systemPrompt },
       ...(chatHistory ?? []),
-      { role: 'user', content: `${senderName}: ${userContent}` },
+      { role: 'user', content: userContent },
     ];
 
     const raw = await llm.chat(
@@ -371,13 +372,14 @@ export async function processUnifiedAmongusTurn(
       { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 60000, maxTokens: 800 }
     );
 
-    const clean = stripEmojis(raw);
+    // 1. Sanitizar prefijo Amongus: si el modelo lo colocó
+    let clean = stripEmojis(raw).replace(/^Amongus:\s*/i, '').trim();
 
-    // Si el modelo devolvió una propuesta de modelado estructurada en JSON
+    // 2. Si el modelo devolvió una propuesta de modelado estructurada en JSON
     const parsedModel = robustParseDomainJson(clean);
-    if (parsedModel && parsedModel.classes && parsedModel.classes.length > 0) {
+    if (parsedModel && (parsedModel.classes.length > 0 || (parsedModel.associations && parsedModel.associations.length > 0))) {
       const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram);
-      if (batchDelta) {
+      if (batchDelta && batchDelta.deltas.length > 0) {
         const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
         const defaultReply = isEn
           ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'
@@ -389,7 +391,10 @@ export async function processUnifiedAmongusTurn(
       }
     }
 
-    // Si es respuesta explicativa o conceptual
+    // 3. Si no fue propuesta o fue una explicación conversacional:
+    // Purgar cualquier bloque ```json ... ``` huérfano para que el usuario nunca vea código crudo en la burbuja de chat
+    clean = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\n{3,}/g, '\n\n').trim();
+
     if (clean.length > 0) {
       return { replyContent: clean };
     }

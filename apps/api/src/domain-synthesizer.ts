@@ -35,7 +35,9 @@ export function expandSemanticDomainToDelta(
   diagramId: string,
   currentDiagram?: any
 ): BatchDelta | null {
-  if (!model.classes || !Array.isArray(model.classes) || model.classes.length === 0) {
+  const hasClasses = Array.isArray(model.classes) && model.classes.length > 0;
+  const hasAssociations = Array.isArray(model.associations) && model.associations.length > 0;
+  if (!hasClasses && !hasAssociations) {
     return null;
   }
 
@@ -55,26 +57,27 @@ export function expandSemanticDomainToDelta(
   // 1. Crear clases en grilla 2D espaciada para evitar superposición
   const cols = 2;
   const existingCount = currentDiagram?.classes?.length ?? 0;
-  model.classes.forEach((cls, idx) => {
-    const classId = crypto.randomUUID();
-    const cleanName = cls.name.trim().replace(/\s+/g, '');
-    classIdMap.set(cleanName.toLowerCase(), classId);
-    classIdMap.set(cls.name.toLowerCase(), classId);
+  if (hasClasses) {
+    model.classes.forEach((cls, idx) => {
+      const classId = crypto.randomUUID();
+      const cleanName = cls.name.trim().replace(/\s+/g, '');
+      classIdMap.set(cleanName.toLowerCase(), classId);
+      classIdMap.set(cls.name.toLowerCase(), classId);
 
-    const posIdx = existingCount + idx;
-    const x = 80 + (posIdx % cols) * 440;
-    const y = 80 + Math.floor(posIdx / cols) * 320;
+      const posIdx = existingCount + idx;
+      const x = 80 + (posIdx % cols) * 440;
+      const y = 80 + Math.floor(posIdx / cols) * 320;
 
-    deltas.push({
-      id: crypto.randomUUID(),
-      diagramId,
-      timestamp,
-      kind: 'class',
-      op: 'create',
-      classId,
-      name: cleanName,
-      position: { x, y },
-    });
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'class',
+        op: 'create',
+        classId,
+        name: cleanName,
+        position: { x, y },
+      });
 
     // Atributos de la clase (soporta formato compacto "nombre:tipo" y formato objeto {name, type})
     if (Array.isArray(cls.attributes)) {
@@ -131,6 +134,7 @@ export function expandSemanticDomainToDelta(
       });
     }
   });
+  }
 
   // 2. Crear asociaciones y composiciones
   if (Array.isArray(model.associations)) {
@@ -191,13 +195,23 @@ export function expandSemanticDomainToDelta(
  * Parsea el JSON devuelto por el modelo, tolerando markdown y truncamientos parciales.
  */
 export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
+  const isDummyName = (str?: string) => !str || /^(NombreClase|ClassName|ClaseA|ClaseB)$/i.test(str.trim());
+
   // 1. Intento de parseo JSON estándar
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) {
     try {
       const parsed = JSON.parse(match[0]);
-      if (parsed.classes && Array.isArray(parsed.classes) && parsed.classes.length >= 2) {
-        return parsed as SemanticDomainModel;
+      const rawClasses = Array.isArray(parsed.classes) ? parsed.classes : [];
+      const rawAssocs = Array.isArray(parsed.associations) ? parsed.associations : [];
+
+      const classes = rawClasses.filter((c: any) => c.name && !isDummyName(c.name));
+      const associations = rawAssocs.filter(
+        (a: any) => a.source && a.target && !isDummyName(a.source) && !isDummyName(a.target)
+      );
+
+      if (classes.length > 0 || associations.length > 0) {
+        return { classes, associations };
       }
     } catch {
       // Si el JSON quedó truncado al final, se recuperan las clases completas
@@ -210,6 +224,7 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
   let m: RegExpExecArray | null;
   while ((m = classRegex.exec(raw)) !== null) {
     const name = m[1]!;
+    if (isDummyName(name)) continue;
     const attrsRaw = m[2]!;
     const attrItems: string[] = [];
     const attrRegex = /"([^"]+)"/g;
@@ -223,17 +238,17 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
   const associations: Array<{ source: string; target: string }> = [];
   const assocRegex = /\{\s*"source"\s*:\s*"([^"]+)"\s*,\s*"target"\s*:\s*"([^"]+)"/g;
   while ((m = assocRegex.exec(raw)) !== null) {
+    if (isDummyName(m[1]!) || isDummyName(m[2]!)) continue;
     associations.push({ source: m[1]!, target: m[2]! });
   }
 
-  if (classes.length >= 2) {
-    // Si se cortó antes de las asociaciones, conectar las entidades secuencialmente
-    if (associations.length === 0) {
+  if (classes.length > 0 || associations.length > 0) {
+    if (classes.length >= 2 && associations.length === 0) {
       for (let i = 0; i < classes.length - 1; i++) {
         associations.push({ source: classes[i]!.name, target: classes[i + 1]!.name });
       }
     }
-    return { classes: classes.slice(0, 4), associations };
+    return { classes: classes.slice(0, 6), associations };
   }
 
   return null;
