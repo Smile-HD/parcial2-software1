@@ -761,6 +761,13 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       let delta: import('@app/core').Delta | null = null;
       let replyContent = '';
 
+      // Cargar diagrama actual para dar contexto tanto al modelado como a las respuestas de Amongus
+      let diagram: import('@app/core').Diagram | undefined;
+      try {
+        const loaded = await loadDiagramFromRow(exists.rows[0]);
+        diagram = loaded.diagram;
+      } catch {}
+
       // Primero verificamos si es una solicitud de armar un dominio completo con IA (o fallback de plantilla)
       const domainTemplate = await synthesizeDomainModel(parsed.data.content, id, llm);
       if (domainTemplate) {
@@ -771,20 +778,20 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           ? `I have prepared the complete domain model proposal. You can preview all classes, attributes, and relationships on the canvas and confirm to build them.`
           : `Preparé la propuesta completa para el modelo solicitado con todas sus clases, atributos y relaciones. Podés ver la previsualización en el lienzo y confirmarla para que se construya en vivo.`;
       } else {
-        // Intentamos interpretar si el usuario está dando una orden de modelado UML
+        // Intentamos interpretar si el usuario está dando una orden de modelado UML o haciendo una pregunta
+        const trimmedContent = parsed.data.content.trim();
         const isQuestionOrGreeting =
-          /^(¿|\?|hola|hello|hi|cómo|como|qué|que|por qué|why|what|how|explicame|explícame|ayudame|ayúdame|recomendas|recomendás|recomiendas)\b/i.test(
-            parsed.data.content.trim()
-          );
+          /^(¿|\?|hola|hello|hi|cómo|como|qué|que|por qué|por que|porque|why|what|how|explicame|explícame|ayudame|ayúdame|recomendas|recomendás|recomiendas)\b/i.test(
+            trimmedContent
+          ) || /\?$/.test(trimmedContent);
 
-        if (!isQuestionOrGreeting) {
+        if (!isQuestionOrGreeting && diagram) {
           try {
-            const { diagram } = await loadDiagramFromRow(exists.rows[0]);
             // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para edición y borrado)
-            let outcome = await interpretCommand(parsed.data.content, new FakeLlm(), diagram, pendingDeltas);
+            let outcome = await interpretCommand(trimmedContent, new FakeLlm(), diagram, pendingDeltas);
             // Nivel 2: Si no coincidió con patrones estándar, delegar al LLM
             if (outcome.status !== 'pending' && llm) {
-              outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
+              outcome = await interpretCommand(trimmedContent, llm, diagram, pendingDeltas);
             }
             if (outcome.status === 'pending') {
               deltaId = outcome.deltaId;
@@ -804,7 +811,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           parsed.data.content,
           parsed.data.senderName,
           parsed.data.language ?? 'es',
-          llm
+          llm,
+          diagram
         );
       }
 

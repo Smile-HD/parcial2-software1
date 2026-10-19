@@ -189,6 +189,9 @@ export function generateAmongusContextualReply(
   if (text.includes('exportar') || text.includes('xmi') || text.includes('spring') || text.includes('descargar') || text.includes('codigo')) {
     return `Podes exportar tu modelo cuando quieras, ${senderName}! En la barra superior tenes los botones para descargar el archivo XMI 2.1 compatible con Enterprise Architect o generar el proyecto completo de Spring Boot con entidades JPA.`;
   }
+  if (text.includes('separad') || text.includes('aislad') || text.includes('desconect') || text.includes('suelt')) {
+    return `Estan separados porque todavia no se les definio una asociacion o relacion en el diagrama, ${senderName}. Podes conectarlos seleccionando una 'Asociacion' en el panel izquierdo y arrastrando la linea de una clase a la otra.`;
+  }
   if (text.includes('ayuda') || text.includes('que podes hacer') || text.includes('quien sos') || text.includes('quién sos')) {
     return `Soy Amongus, tu asistente de modelado UML! Podes consultarme como estructurar clases, conectar relaciones, pedirme cambios por lenguaje natural o exportar tu trabajo.`;
   }
@@ -202,14 +205,37 @@ export function stripEmojis(text: string): string {
   return text.replace(/\p{Extended_Pictographic}/gu, '').replace(/\s{2,}/g, ' ').trim();
 }
 
+export function summarizeDiagramForPrompt(diagram?: any): string {
+  if (!diagram || !diagram.classes || diagram.classes.length === 0) {
+    return 'Lienzo actualmente vacio (sin clases ni relaciones).';
+  }
+  const classMap = new Map((diagram.classes as any[]).map(c => [c.id, c.name]));
+  const classesStr = (diagram.classes as any[]).map(c => {
+    const attrs = (c.attributes || []).map((a: any) => `${a.name}: ${a.type || 'string'}`).join(', ');
+    const methods = (c.methods || []).map((m: any) => `${m.name}(): ${m.returnType || 'void'}`).join(', ');
+    const details = [attrs ? `atributos: [${attrs}]` : null, methods ? `metodos: [${methods}]` : null].filter(Boolean).join(' | ');
+    return `- Clase "${c.name}"${details ? ` (${details})` : ''}`;
+  }).join('\n');
+
+  const associations = (diagram.associations || []).map((a: any) => {
+    const src = classMap.get(a.sourceClassId) || a.sourceClassId;
+    const tgt = classMap.get(a.targetClassId) || a.targetClassId;
+    return `- Relacion entre "${src}" y "${tgt}" (${a.aggregation && a.aggregation !== 'none' ? a.aggregation : 'asociacion'})`;
+  }).join('\n');
+
+  return `CLASES EN EL LIENZO:\n${classesStr}\n\nRELACIONES EN EL LIENZO:\n${associations || 'Ninguna (las clases estan desconectadas sin relaciones entre si)'}`;
+}
+
 export async function generateAmongusReply(
   userContent: string,
   senderName: string,
   language: 'es' | 'en' = 'es',
-  llm?: any
+  llm?: any,
+  diagram?: any
 ): Promise<string> {
   if (llm && typeof llm.chat === 'function') {
     const isEn = language === 'en';
+    const diagramContext = summarizeDiagramForPrompt(diagram);
     const systemPrompt = isEn
       ? [
           'You are Amongus, a friendly, helpful, and senior software architecture tutor inside a web collaborative UML modeling tool.',
@@ -222,6 +248,7 @@ export async function generateAmongusReply(
           '- In the application, users can build elements by dragging from the Toolbox or typing natural language commands. They can also ask you to create classes directly.',
           'CRITICAL RULE: DO NOT use any emojis or emoticons under any circumstance. Keep answers clear, insightful, practical, and under 3 short paragraphs.',
           'CANVAS STATE RULE: NEVER claim that you cleared, deleted, modified, or created elements on the canvas from this text response. All canvas mutations require a structured proposal card. If the user asks to clear, delete, or modify the canvas, guide them to use a modeling command.',
+          `CURRENT CANVAS CONTEXT:\n${diagramContext}\nUse this context to accurately answer questions about which classes exist, why they are connected or separated, or how to model them.`,
         ].join('\n')
       : [
           'Sos Amongus, un asistente amigable, cercano y experto de arquitectura de software dentro de una herramienta web colaborativa de diagramado UML.',
@@ -234,6 +261,7 @@ export async function generateAmongusReply(
           '- En la app, los usuarios pueden arrastrar elementos desde la Caja de Herramientas, usar los conectores entre clases o pedirte directamente que propongas o crees clases.',
           'REGLA ESTRICTA: NUNCA uses emojis ni emoticones bajo ninguna circunstancia. Mantene las respuestas claras, prácticas, directas y en no más de 3 párrafos cortos.',
           'REGLA SOBRE EL ESTADO DEL LIENZO: NUNCA digas que limpiaste, borraste o modificaste el lienzo desde este mensaje de texto. El lienzo solo se modifica mediante tarjetas de propuesta estructuradas. Si te piden limpiar o borrar, indícales el comando adecuado.',
+          `ESTADO ACTUAL DEL DIAGRAMA EN EL LIENZO:\n${diagramContext}\nUsa este contexto para responder con precision a preguntas sobre que clases existen, por que estan separadas o como conectarlas.`,
         ].join('\n');
 
     try {
