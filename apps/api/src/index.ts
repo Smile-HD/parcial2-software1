@@ -24,6 +24,7 @@ import {
 } from '@app/core';
 import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
+import { synthesizeDomainTemplate } from './domain-synthesizer.js';
 import { registerXmiImportRoutes } from './xmi-import.js';
 import { registerXmiExportRoutes } from './xmi-export.js';
 import { registerPhotoImportRoutes } from './photo-import.js';
@@ -760,25 +761,36 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       let delta: import('@app/core').Delta | null = null;
       let replyContent = '';
 
-      // Primero intentamos interpretar si el usuario está dando una orden de modelado UML
-      const isQuestionOrGreeting =
-        /^(¿|\?|hola|hello|hi|cómo|como|qué|que|por qué|why|what|how|explicame|explícame|ayudame|ayúdame|recomendas|recomendás|recomiendas)\b/i.test(
-          parsed.data.content.trim()
-        );
+      // Primero verificamos si es una solicitud de armar un dominio completo desde cero (ej: ecommerce, biblioteca)
+      const domainTemplate = synthesizeDomainTemplate(parsed.data.content, id);
+      if (domainTemplate) {
+        const pending = pendingDeltas.put(id, domainTemplate);
+        deltaId = pending.id;
+        delta = pending.delta;
+        replyContent = isEn
+          ? `I have prepared the complete domain model proposal. You can preview all classes, attributes, and relationships on the canvas and confirm to build them.`
+          : `Preparé la propuesta completa para el modelo solicitado con todas sus clases, atributos y relaciones. Podés ver la previsualización en el lienzo y confirmarla para que se construya en vivo.`;
+      } else {
+        // Intentamos interpretar si el usuario está dando una orden de modelado UML
+        const isQuestionOrGreeting =
+          /^(¿|\?|hola|hello|hi|cómo|como|qué|que|por qué|why|what|how|explicame|explícame|ayudame|ayúdame|recomendas|recomendás|recomiendas)\b/i.test(
+            parsed.data.content.trim()
+          );
 
-      if (!isQuestionOrGreeting) {
-        try {
-          const { diagram } = await loadDiagramFromRow(exists.rows[0]);
-          const outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
-          if (outcome.status === 'pending') {
-            deltaId = outcome.deltaId;
-            delta = outcome.delta;
-            replyContent = isEn
-              ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
-              : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+        if (!isQuestionOrGreeting) {
+          try {
+            const { diagram } = await loadDiagramFromRow(exists.rows[0]);
+            const outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
+            if (outcome.status === 'pending') {
+              deltaId = outcome.deltaId;
+              delta = outcome.delta;
+              replyContent = isEn
+                ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+                : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+            }
+          } catch {
+            // No era comando de modelado o fallo temporal -> procede a charla conversacional
           }
-        } catch {
-          // No era comando de modelado o fallo temporal -> procede a charla conversacional
         }
       }
 
