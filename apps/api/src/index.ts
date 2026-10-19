@@ -24,7 +24,7 @@ import {
 } from '@app/core';
 import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
-import { synthesizeDomainTemplate } from './domain-synthesizer.js';
+import { synthesizeDomainModel } from './domain-synthesizer.js';
 import { registerXmiImportRoutes } from './xmi-import.js';
 import { registerXmiExportRoutes } from './xmi-export.js';
 import { registerPhotoImportRoutes } from './photo-import.js';
@@ -761,8 +761,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       let delta: import('@app/core').Delta | null = null;
       let replyContent = '';
 
-      // Primero verificamos si es una solicitud de armar un dominio completo desde cero (ej: ecommerce, biblioteca)
-      const domainTemplate = synthesizeDomainTemplate(parsed.data.content, id);
+      // Primero verificamos si es una solicitud de armar un dominio completo con IA (o fallback de plantilla)
+      const domainTemplate = await synthesizeDomainModel(parsed.data.content, id, llm);
       if (domainTemplate) {
         const pending = pendingDeltas.put(id, domainTemplate);
         deltaId = pending.id;
