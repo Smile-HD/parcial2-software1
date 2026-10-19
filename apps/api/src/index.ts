@@ -780,7 +780,12 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         if (!isQuestionOrGreeting) {
           try {
             const { diagram } = await loadDiagramFromRow(exists.rows[0]);
-            const outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
+            // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para edición y borrado)
+            let outcome = await interpretCommand(parsed.data.content, new FakeLlm(), diagram, pendingDeltas);
+            // Nivel 2: Si no coincidió con patrones estándar, delegar al LLM
+            if (outcome.status !== 'pending' && llm) {
+              outcome = await interpretCommand(parsed.data.content, llm, diagram, pendingDeltas);
+            }
             if (outcome.status === 'pending') {
               deltaId = outcome.deltaId;
               delta = outcome.delta;

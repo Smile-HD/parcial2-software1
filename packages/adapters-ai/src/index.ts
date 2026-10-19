@@ -208,8 +208,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 2b. eliminar todas las clases
-    const deleteAll = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:all\s+classes|todas\s+las\s+clases|all\s+the\s+classes|todas\s+las\s+tablas)\b/i.exec(utterance);
+    // 2b. eliminar todas las clases / limpiar lienzo
+    const deleteAll = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\s+(?:all\s+classes|todas\s+las\s+clases|all\s+the\s+classes|todas\s+las\s+tablas|todo)\b|\b(?:limpia|limpiá|limpiame|limpiamelo|limpiámelo)\b(?:\s+(?:el\s+lienzo|el\s+diagrama|todo))?/i.exec(utterance);
     if (deleteAll) {
       if (currentIr.classes.length === 0) {
         return refused('No classes to delete');
@@ -801,11 +801,10 @@ export class OpenAiLlm implements LlmPort {
       '- Example: "OrderLine is part of Order" → whole=Order. Set aggregationEnd to the end where Order resides.',
       '- Default is "source" if omitted (backward compat).',
       '',
-      'FLEXIBLE INTENT & DOMAIN GENERATION:',
-      '- If the user asks to build or design a complete domain system or database from scratch (e.g. "base de datos de ecommerce", "sistema de ecommerce", "diseña un ecommerce", "modelo de biblioteca", "sistema de hospital", "ventas"): create a coherent domain model wrapped in a "kind":"batch" envelope containing the 3-5 core classes with essential attributes and associations.',
+      'FLEXIBLE INTENT & TYPE DEFAULTS:',
       '- If the user names attributes without specifying types (e.g. "crea un diagrama hola con atributos pepe y año", "crea clase Usuario con atributos nombre, email", "add attribute nickname to User"), default type to "string". Do NOT refuse or fail due to omitted attribute types.',
       '- Informal phrasings like "crea un diagrama X con atributos..." or "crea clase X con atributos A, B y C" mean create class X with those attributes (using default type "string" if unspecified). Combine them in a "kind":"batch" envelope.',
-      '- REFUSAL OF VAGUE / GARBAGE PROMPTS: If the request is truly meaningless garbage (e.g. "asdfghjkl", "...."), reply with {"action":"refuse","reason":"No valid UML entities or operations specified."}.',
+      '- REFUSAL OF VAGUE / GARBAGE PROMPTS: If the request lacks any actionable UML entities, classes, attributes or operations (e.g. "creame algo", "haz algo", "poner cosas", "asdfghjkl"), reply with {"action":"refuse","reason":"No valid UML entities or operations specified."}. Never invent arbitrary unrequested classes.',
       '',
       'HARD RULES:',
       '- Every uuid you output MUST be hex-only (0-9a-f) UUID v4.',
