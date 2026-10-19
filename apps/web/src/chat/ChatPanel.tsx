@@ -125,13 +125,9 @@ export function ChatPanel({
       setDraft('');
       setVoiceError(null);
 
-      if (onSubmitCommand) {
-        await onSubmitCommand(trimmed);
-      } else {
-        await sendMessage(trimmed);
-      }
+      await sendMessage(trimmed);
     } catch {
-      // Error manejado por el contenedor
+      // Error manejado por useChat
     } finally {
       setIsSending(false);
     }
