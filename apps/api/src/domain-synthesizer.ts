@@ -175,6 +175,63 @@ export function expandSemanticDomainToDelta(
  * Consulta al LLM para razonar la estructura semántica específica del dominio pedido,
  * sin recurrir a plantillas fijas cableadas.
  */
+/**
+ * Parsea el JSON devuelto por el modelo, tolerando markdown y truncamientos parciales.
+ */
+export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
+  // 1. Intento de parseo JSON estándar
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed.classes && Array.isArray(parsed.classes) && parsed.classes.length >= 2) {
+        return parsed as SemanticDomainModel;
+      }
+    } catch {
+      // Si el JSON quedó truncado al final, se recuperan las clases completas
+    }
+  }
+
+  // 2. Extracción resiliente por expresiones regulares si el JSON fue truncado por límite de tokens
+  const classes: Array<{ name: string; attributes: string[] }> = [];
+  const classRegex = /\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"attributes"\s*:\s*\[([\s\S]*?)\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = classRegex.exec(raw)) !== null) {
+    const name = m[1]!;
+    const attrsRaw = m[2]!;
+    const attrItems: string[] = [];
+    const attrRegex = /"([^"]+)"/g;
+    let am: RegExpExecArray | null;
+    while ((am = attrRegex.exec(attrsRaw)) !== null) {
+      attrItems.push(am[1]!);
+    }
+    classes.push({ name, attributes: attrItems });
+  }
+
+  const associations: Array<{ source: string; target: string }> = [];
+  const assocRegex = /\{\s*"source"\s*:\s*"([^"]+)"\s*,\s*"target"\s*:\s*"([^"]+)"/g;
+  while ((m = assocRegex.exec(raw)) !== null) {
+    associations.push({ source: m[1]!, target: m[2]! });
+  }
+
+  if (classes.length >= 2) {
+    // Si se cortó antes de las asociaciones, conectar las entidades secuencialmente
+    if (associations.length === 0) {
+      for (let i = 0; i < classes.length - 1; i++) {
+        associations.push({ source: classes[i]!.name, target: classes[i + 1]!.name });
+      }
+    }
+    return { classes: classes.slice(0, 4), associations };
+  }
+
+  return null;
+}
+
+/**
+ * Síntesis 100% dinámica con IA de modelos de dominio.
+ * Consulta al LLM para razonar la estructura semántica específica del dominio pedido,
+ * sin recurrir a plantillas fijas cableadas.
+ */
 export async function synthesizeDomainModel(
   text: string,
   diagramId: string,
@@ -191,9 +248,9 @@ export async function synthesizeDomainModel(
 
   const systemPrompt = [
     'You are a senior UML software architect.',
-    'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; cinema: Cine, Pelicula, Sala; hospital: Paciente, Medico, Consulta).',
+    'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
     'CRITICAL: If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
-    'Provide exactly 3 essential classes with 2 to 3 realistic attributes each.',
+    'Provide exactly 3 to 4 essential classes with 2 to 3 realistic attributes each.',
     'Include 2 essential relationships between them.',
     'Output ONLY a valid raw JSON object matching:',
     '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB"}]}',
@@ -205,20 +262,18 @@ export async function synthesizeDomainModel(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
       ],
-      { timeoutMs: 40000, temperature: 0.1, maxTokens: 250 }
+      { timeoutMs: 60000, temperature: 0.1, maxTokens: 800 }
     );
 
     if (typeof response !== 'string') {
       return null;
     }
 
-    // Extraer el objeto JSON más externo de manera resiliente
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const parsed = robustParseDomainJson(response);
+    if (!parsed) {
       return null;
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as SemanticDomainModel;
     const expanded = expandSemanticDomainToDelta(parsed, diagramId);
     if (expanded && expanded.deltas.length >= 2) {
       return expanded;
@@ -229,3 +284,4 @@ export async function synthesizeDomainModel(
 
   return null;
 }
+
