@@ -220,9 +220,34 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 2b. eliminar todas las clases / limpiar o reiniciar lienzo
+    // 2b. eliminar clase específica
+    const deleteClassWithKeyword = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|borra|borrá|borrar|borrame|borráme|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|tabla|table)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    let targetClassName: string | null = null;
+    if (deleteClassWithKeyword) {
+      targetClassName = deleteClassWithKeyword[1];
+    } else {
+      // Intentar detectar si dice "borra/elimina <NombreClase>" donde NombreClase es una clase existente en el diagrama
+      const deleteDirect = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|borra|borrá|borrar|borrame|borráme|sacar|sacá|saca)\s+(?:a\s+|la\s+|el\s+)?([A-Za-z_]\w*)\b/i.exec(utterance);
+      if (deleteDirect) {
+        const potentialName = deleteDirect[1];
+        if (!/^(todas?|todos?|all|el|la|los|las|un|una|canvas|lienzo|diagrama|todo)$/i.test(potentialName)) {
+          if (classIdByName(currentIr, potentialName) !== null) {
+            targetClassName = potentialName;
+          }
+        }
+      }
+    }
+
+    if (targetClassName) {
+      const classId = classIdByName(currentIr, targetClassName);
+      if (classId === null) return refused(`Unknown class "${targetClassName}"`);
+      const delta: ClassDelta = { kind: 'class', op: 'delete', ...deltaBase(currentIr), classId };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 2c. eliminar todas las clases / limpiar o reiniciar lienzo
     const isWipeOrDeleteAll =
-      /\b(?:delete|remove|borr(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|elimin(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|limpi(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|lmpi(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|lipia|vaci(?:a|ar|á|alo|álo)?|reinici(?:a|ar|á|alo|álo)?|reset(?:ea|ear|ealo|eálo)?|clear|wipe|clean)\b[\s\S]*?\b(?:lienzo|canvas|diagrama|tablero|mesa|pantalla|(?:(?:todas?|tod[oa]s?|all)\s+)?(?:las?\s+|the\s+)?(?:clases?|classes|tablas?|tables)|tod[oa]s?|todo|all)\b|\b(?:limpiamelo|limpiámelo|limpiame|borramelo|borrámelo|limpialo|limpiálo|borralo|borrálo|eliminalo|eliminálo|empezar\s+de\s+nuevo|comenzar\s+de\s+nuevo|partir\s+de\s+cero|desde\s+cero|clear\s+all|wipe\s+all)\b/i.test(utterance);
+      /\b(?:delete|remove|borr(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|elimin(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|limpi(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|lmpi(?:a|ar|á|alo|álo|ame|amelo|ámelo)?|lipia|vaci(?:a|ar|á|alo|álo)?|reinici(?:a|ar|á|alo|álo)?|reset(?:ea|ear|ealo|eálo)?|clear|wipe|clean)\b[\s\S]*?\b(?:lienzo|canvas|diagrama|tablero|mesa|pantalla|(?:todas?|tod[oa]s?|all)\s+(?:las?\s+|the\s+)?(?:clases?|classes|tablas?|tables)|tod[oa]s?|todo|all)\b|\b(?:limpiamelo|limpiámelo|limpiame|borramelo|borrámelo|limpialo|limpiálo|borralo|borrálo|eliminalo|eliminálo|empezar\s+de\s+nuevo|comenzar\s+de\s+nuevo|partir\s+de\s+cero|desde\s+cero|clear\s+all|wipe\s+all)\b/i.test(utterance);
     if (isWipeOrDeleteAll) {
       if (currentIr.classes.length === 0) {
         return refused('No classes to delete');
@@ -238,15 +263,6 @@ export class FakeLlm implements LlmPort {
         })),
       };
       return { kind: 'delta', value: batch };
-    }
-
-    // 3. eliminar clase
-    const deleteClass = /\b(?:delete|remove|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:class|clase)\s+([A-Za-z_]\w*)/i.exec(utterance);
-    if (deleteClass) {
-      const classId = classIdByName(currentIr, deleteClass[1]!);
-      if (classId === null) return refused(`Unknown class "${deleteClass[1]}"`);
-      const delta: ClassDelta = { kind: 'class', op: 'delete', ...deltaBase(currentIr), classId };
-      return { kind: 'delta', value: delta };
     }
 
     // 5. eliminar atributo / método

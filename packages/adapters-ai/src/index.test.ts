@@ -83,6 +83,25 @@ describe('FakeLlm', () => {
 
     const deleted = await llm.interpret('delete class Customer', schema, diagram);
     expect(deleted.kind).toBe('delta');
+    if (deleted.kind === 'delta') {
+      expect(deleted.value.kind).toBe('class');
+      expect((deleted.value as any).op).toBe('delete');
+      expect((deleted.value as any).classId).toBe(diagram.classes[0].id);
+    }
+
+    const deletedEs = await llm.interpret('borra la clase Customer', schema, diagram);
+    expect(deletedEs.kind).toBe('delta');
+    if (deletedEs.kind === 'delta') {
+      expect(deletedEs.value.kind).toBe('class');
+      expect((deletedEs.value as any).op).toBe('delete');
+    }
+
+    const deletedTabla = await llm.interpret('borrame la tabla Customer', schema, diagram);
+    expect(deletedTabla.kind).toBe('delta');
+    if (deletedTabla.kind === 'delta') {
+      expect(deletedTabla.value.kind).toBe('class');
+      expect((deletedTabla.value as any).op).toBe('delete');
+    }
 
     const unknown = await llm.interpret('rename class Ghost to Phantom', schema, diagram);
     expect(unknown.kind).toBe('refused');
