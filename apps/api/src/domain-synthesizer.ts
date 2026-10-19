@@ -5,7 +5,7 @@ export function synthesizeDomainTemplate(text: string, diagramId: string): Batch
   const timestamp = new Date().toISOString();
 
   // Ecommerce / Tienda / Ventas / Pedidos
-  if (/\b(ecom|tienda|comercio|ventas?|pedidos?|store|shop)\b/i.test(lower)) {
+  if (/(e-?comm?er\w*|\becom\b|tienda|comercio|ventas?|pedidos?|store|shop)/i.test(lower)) {
     const prodId = crypto.randomUUID();
     const clienteId = crypto.randomUUID();
     const pedidoId = crypto.randomUUID();
@@ -262,7 +262,7 @@ export function synthesizeDomainTemplate(text: string, diagramId: string): Batch
   }
 
   // Biblioteca / Libros
-  if (/\b(biblioteca|libros?|prestamos?|library)\b/i.test(lower)) {
+  if (/(biblioteca|libros?|prestamos?|library)/i.test(lower)) {
     const libroId = crypto.randomUUID();
     const autorId = crypto.randomUUID();
     const usuarioId = crypto.randomUUID();
@@ -289,6 +289,82 @@ export function synthesizeDomainTemplate(text: string, diagramId: string): Batch
       { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: autorId, targetClassId: libroId, sourceMultiplicity: '1..*', targetMultiplicity: '1..*' },
       { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: usuarioId, targetClassId: prestamoId, sourceMultiplicity: '1', targetMultiplicity: '0..*' },
       { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: prestamoId, targetClassId: libroId, sourceMultiplicity: '*', targetMultiplicity: '1' },
+    ];
+
+    return {
+      id: crypto.randomUUID(),
+      diagramId,
+      timestamp,
+      kind: 'batch',
+      deltas,
+    };
+  }
+
+  // Hospital / Clinica / Medico / Paciente
+  if (/(hospital|cl[ií]nica|m[eé]dic|citas?|paciente|doctor)/i.test(lower)) {
+    const pacienteId = crypto.randomUUID();
+    const medicoId = crypto.randomUUID();
+    const citaId = crypto.randomUUID();
+    const historialId = crypto.randomUUID();
+
+    const deltas: any[] = [
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: pacienteId, name: 'Paciente', position: { x: 80, y: 80 } },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: medicoId, name: 'Medico', position: { x: 500, y: 80 } },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: citaId, name: 'CitaMedica', position: { x: 500, y: 380 } },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: historialId, name: 'HistorialClinico', position: { x: 80, y: 380 } },
+      // Atributos
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: pacienteId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: pacienteId, memberId: crypto.randomUUID(), name: 'nombre', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: pacienteId, memberId: crypto.randomUUID(), name: 'telefono', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: medicoId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: medicoId, memberId: crypto.randomUUID(), name: 'nombre', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: medicoId, memberId: crypto.randomUUID(), name: 'especialidad', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: citaId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: citaId, memberId: crypto.randomUUID(), name: 'fechaHora', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: citaId, memberId: crypto.randomUUID(), name: 'motivo', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: historialId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: historialId, memberId: crypto.randomUUID(), name: 'diagnostico', type: 'string' },
+      // Relaciones
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: pacienteId, targetClassId: citaId, sourceMultiplicity: '1', targetMultiplicity: '0..*' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: medicoId, targetClassId: citaId, sourceMultiplicity: '1', targetMultiplicity: '0..*' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: pacienteId, targetClassId: historialId, sourceMultiplicity: '1', targetMultiplicity: '1' },
+    ];
+
+    return {
+      id: crypto.randomUUID(),
+      diagramId,
+      timestamp,
+      kind: 'batch',
+      deltas,
+    };
+  }
+
+  // Universidad / Escuela / Cursos
+  if (/(escuela|colegio|universidad|cursos?|alumn|estudiante)/i.test(lower)) {
+    const estudianteId = crypto.randomUUID();
+    const profesorId = crypto.randomUUID();
+    const cursoId = crypto.randomUUID();
+    const matriculaId = crypto.randomUUID();
+
+    const deltas: any[] = [
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: estudianteId, name: 'Estudiante', position: { x: 80, y: 80 } },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: profesorId, name: 'Profesor', position: { x: 500, y: 80 } },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: cursoId, name: 'Curso', position: { x: 500, y: 380 } },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'class', op: 'create', classId: matriculaId, name: 'Inscripcion', position: { x: 80, y: 380 } },
+      // Atributos
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: estudianteId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: estudianteId, memberId: crypto.randomUUID(), name: 'nombre', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: estudianteId, memberId: crypto.randomUUID(), name: 'matricula', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: profesorId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: profesorId, memberId: crypto.randomUUID(), name: 'nombre', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: cursoId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: cursoId, memberId: crypto.randomUUID(), name: 'titulo', type: 'string' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: matriculaId, memberId: crypto.randomUUID(), name: 'id', type: 'int' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'member', op: 'addAttribute', classId: matriculaId, memberId: crypto.randomUUID(), name: 'fecha', type: 'string' },
+      // Relaciones
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: profesorId, targetClassId: cursoId, sourceMultiplicity: '1', targetMultiplicity: '1..*' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: estudianteId, targetClassId: matriculaId, sourceMultiplicity: '1', targetMultiplicity: '0..*' },
+      { id: crypto.randomUUID(), diagramId, timestamp, kind: 'association', op: 'create', associationId: crypto.randomUUID(), sourceClassId: cursoId, targetClassId: matriculaId, sourceMultiplicity: '1', targetMultiplicity: '0..*' },
     ];
 
     return {
