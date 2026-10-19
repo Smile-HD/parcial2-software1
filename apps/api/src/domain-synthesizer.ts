@@ -64,10 +64,23 @@ export function expandSemanticDomainToDelta(
       position: { x, y },
     });
 
-    // Atributos de la clase
+    // Atributos de la clase (soporta formato compacto "nombre:tipo" y formato objeto {name, type})
     if (Array.isArray(cls.attributes)) {
-      cls.attributes.forEach((attr) => {
-        const rawType = (attr.type ?? 'string').toLowerCase().trim();
+      cls.attributes.forEach((attr: any) => {
+        let name = '';
+        let type = 'string';
+        if (typeof attr === 'string') {
+          const parts = attr.split(':');
+          name = parts[0]?.trim() ?? '';
+          type = parts[1]?.trim() ?? 'string';
+        } else if (attr && typeof attr === 'object') {
+          name = attr.name ?? '';
+          type = attr.type ?? 'string';
+        }
+        name = name.replace(/\s+/g, '');
+        if (!name) return;
+
+        const rawType = type.toLowerCase().trim();
         const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
           ? rawType
           : 'string';
@@ -80,7 +93,7 @@ export function expandSemanticDomainToDelta(
           op: 'addAttribute',
           classId,
           memberId: crypto.randomUUID(),
-          name: attr.name.trim().replace(/\s+/g, ''),
+          name,
           type: cleanType,
           visibility: '+',
         });
@@ -178,17 +191,12 @@ export async function synthesizeDomainModel(
 
   const systemPrompt = [
     'You are a senior UML software architect.',
-    'The user wants to model or design a domain / database / system in UML.',
-    'CRITICAL INSTRUCTIONS:',
-    '1. Design a clean, realistic domain model tailored specifically to what the user requested (e.g. if clothing store: Prenda, Categoria, Talla, Venta; if veterinary: Mascota, Cliente, Veterinario, Consulta; etc.).',
-    '2. DO NOT use generic purchase or ecommerce names unless the user explicitly requested a generic store or ecommerce.',
-    '3. If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
-    '4. Include 3 to 5 core classes with 3 to 4 realistic attributes each (types: int, float, string, boolean).',
-    '5. Include meaningful relationships between the classes.',
-    '6. Use COMPOSITION ("aggregation": "composite") for strong part-whole ownership.',
-    '7. Use ASSOCIATION CLASSES ("associationClass": "ClassName") when an intermediary class holds relation data.',
-    'Output ONLY a valid raw JSON object without markdown fences, matching this schema:',
-    '{"classes":[{"name":"ClassName","attributes":[{"name":"attr","type":"string|int|float|boolean"}]}],"associations":[{"source":"ClassA","target":"ClassB","sourceMultiplicity":"1","targetMultiplicity":"0..*","aggregation":"none|composite","associationClass":"OptionalAssocClassName"}]}',
+    'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; cinema: Cine, Pelicula, Sala; hospital: Paciente, Medico, Consulta).',
+    'CRITICAL: If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
+    'Provide exactly 3 essential classes with 2 to 3 realistic attributes each.',
+    'Include 2 essential relationships between them.',
+    'Output ONLY a valid raw JSON object matching:',
+    '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB"}]}',
   ].join('\n');
 
   try {
@@ -197,7 +205,7 @@ export async function synthesizeDomainModel(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
       ],
-      { timeoutMs: 60000, temperature: 0.2, maxTokens: 600 }
+      { timeoutMs: 40000, temperature: 0.1, maxTokens: 250 }
     );
 
     if (typeof response !== 'string') {

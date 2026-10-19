@@ -708,7 +708,8 @@ export class OpenAiLlm implements LlmPort {
         body: JSON.stringify({
           model: this.model,
           messages,
-          temperature: options?.temperature ?? 0.7,
+          temperature: options?.temperature ?? 0.2,
+          max_tokens: options?.maxTokens ?? 350,
         }),
         signal: controller.signal,
       });
@@ -842,6 +843,8 @@ export class OpenAiLlm implements LlmPort {
           { role: 'system', content: system },
           { role: 'user', content: utterance },
         ],
+        temperature: 0.1,
+        max_tokens: 350,
       }),
     });
 
