@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { expandSemanticDomainToDelta, synthesizeDomainTemplate, synthesizeDomainModel, type SemanticDomainModel } from './domain-synthesizer.js';
+import { expandSemanticDomainToDelta, synthesizeDomainModel, type SemanticDomainModel } from './domain-synthesizer.js';
 import { applyDelta, type Diagram } from '@app/core';
 
-describe('AI Domain Synthesizer & Relationship Expansion', () => {
+describe('AI Domain Synthesizer & Dynamic Generation', () => {
   const emptyDiagram: Diagram = {
     id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
     name: 'Test Canvas',
@@ -77,56 +77,37 @@ describe('AI Domain Synthesizer & Relationship Expansion', () => {
     }
   });
 
-  it('ecommerce template generates valid associations, composite items, and association class', () => {
-    const delta = synthesizeDomainTemplate('crea una tienda online con pedidos y productos', emptyDiagram.id);
-    expect(delta).not.toBeNull();
-
-    const applied = applyDelta(emptyDiagram, delta!);
-    expect(applied.ok).toBe(true);
-
-    if (applied.ok) {
-      const diagram = applied.value;
-      expect(diagram.classes.map(c => c.name)).toContain('Producto');
-      expect(diagram.classes.map(c => c.name)).toContain('Cliente');
-      expect(diagram.classes.map(c => c.name)).toContain('Pedido');
-      expect(diagram.classes.map(c => c.name)).toContain('ItemPedido');
-
-      expect(diagram.associations.length).toBeGreaterThanOrEqual(3);
-
-      // Composición entre Pedido e ItemPedido
-      const compositeAssoc = diagram.associations.find(a => a.aggregation === 'composite');
-      expect(compositeAssoc).toBeDefined();
-      expect(compositeAssoc!.directed).toBe(false);
-
-      // Clase de asociación ItemPedido
-      const assocClass = diagram.associations.find(a => a.associationClassId !== undefined);
-      expect(assocClass).toBeDefined();
-    }
-  });
-
-  it('delegates to dynamic AI if llm supports chat', async () => {
+  it('dynamically generates tailored domain model from LLM chat with markdown fences', async () => {
     const fakeAiLlm = {
       interpret: async () => ({ kind: 'refused' as const, reason: 'none' }),
-      chat: async () => JSON.stringify({
-        classes: [
-          { name: 'NaveEspacial', attributes: [{ name: 'modelo', type: 'string' }] },
-          { name: 'Piloto', attributes: [{ name: 'licencia', type: 'string' }] },
-        ],
-        associations: [
-          { source: 'NaveEspacial', target: 'Piloto', sourceMultiplicity: '1', targetMultiplicity: '1..*' }
-        ]
-      })
+      chat: async () => `Here is the UML model:
+\`\`\`json
+{
+  "classes": [
+    { "name": "Prenda", "attributes": [{ "name": "talla", "type": "string" }, { "name": "color", "type": "string" }] },
+    { "name": "Categoria", "attributes": [{ "name": "nombre", "type": "string" }] }
+  ],
+  "associations": [
+    { "source": "Prenda", "target": "Categoria", "sourceMultiplicity": "*", "targetMultiplicity": "1" }
+  ]
+}
+\`\`\``
     };
 
-    const delta = await synthesizeDomainModel('diseñame un sistema de naves espaciales y pilotos', emptyDiagram.id, fakeAiLlm as any);
+    const delta = await synthesizeDomainModel('haceme una base de datos para tienda de ropa', emptyDiagram.id, fakeAiLlm as any);
     expect(delta).not.toBeNull();
 
     const applied = applyDelta(emptyDiagram, delta!);
     expect(applied.ok).toBe(true);
     if (applied.ok) {
-      expect(applied.value.classes.map(c => c.name)).toEqual(['NaveEspacial', 'Piloto']);
+      expect(applied.value.classes.map(c => c.name)).toEqual(['Prenda', 'Categoria']);
       expect(applied.value.associations).toHaveLength(1);
       expect(applied.value.associations[0]!.directed).toBe(false);
     }
+  });
+
+  it('returns null when no LLM is present instead of falling back to fake canned templates', async () => {
+    const delta = await synthesizeDomainModel('diseñame un sistema de veterinaria', emptyDiagram.id, undefined);
+    expect(delta).toBeNull();
   });
 });

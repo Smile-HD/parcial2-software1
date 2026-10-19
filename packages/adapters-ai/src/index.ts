@@ -90,21 +90,33 @@ export class FakeLlm implements LlmPort {
 
     const refused = (reason: string): LlmResult => ({ kind: 'refused', reason });
 
-    // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE. Verificado antes
-    // del patrón create-class para que "add attribute x: int to the class Customer"
-    // no se interprete erróneamente como creación de clase (arreglo demo offline, unidad 9).
-    const addAttribute = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:attribute|atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
-    if (addAttribute) {
-      const classId = classIdByName(currentIr, addAttribute[3]!);
-      if (classId === null) return refused(`Unknown class "${addAttribute[3]}"`);
+    // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE.
+    // Soporta orden directo ("agrega atributo X a Y"), orden con clase al inicio ("editame la tabla Y, agregale un atributo llamado X")
+    // y orden invertido con destino al principio ("agregale a la tabla Y el atributo X").
+    const directAdd = /\b(?:add|agrega|agregá|agregale|agregále|añade|añadile|pon|ponele)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const invertedAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|pon|ponele|sumale)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+    const directToClassAdd = !directAdd && !invertedAdd && /\b(?:add|agrega|agregá|agregale|agregále|añade|pon|ponele)\b[\s\S]*?\b(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+
+    const isCreateWithAttr = /\b(?:with|con)\s+(?:attribute|atributo|attributes|atributos)\b/i.test(utterance);
+    const parsedAttr = !isCreateWithAttr && (directAdd
+      ? { targetClass: directAdd[3]!, attrName: directAdd[1]!, attrType: directAdd[2] }
+      : invertedAdd
+        ? { targetClass: invertedAdd[1]!, attrName: invertedAdd[2]!, attrType: invertedAdd[3] }
+        : directToClassAdd
+          ? { targetClass: directToClassAdd[1]!, attrName: directToClassAdd[2]!, attrType: directToClassAdd[3] }
+          : null);
+
+    if (parsedAttr) {
+      const classId = classIdByName(currentIr, parsedAttr.targetClass);
+      if (classId === null) return refused(`Unknown class "${parsedAttr.targetClass}"`);
       const delta: MemberDelta = {
         kind: 'member',
         op: 'addAttribute',
         ...deltaBase(currentIr),
         classId,
         memberId: crypto.randomUUID(),
-        name: addAttribute[1]!,
-        type: addAttribute[2] ?? 'string',
+        name: parsedAttr.attrName,
+        type: parsedAttr.attrType ?? 'string',
         ...adornments,
       };
       return { kind: 'delta', value: delta };
