@@ -769,8 +769,9 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         diagram = loaded.diagram;
       } catch {}
 
-      // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para edición y borrado directo)
-      if (diagram) {
+      // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como borrado o edición directa)
+      const isCompoundRequest = /\b(y|e|que|con|ademas|además|tambien|también|and|with|also|implement|asoci|conect|generaliz|hered)\b/i.test(parsed.data.content);
+      if (diagram && !isCompoundRequest) {
         try {
           const outcome = await interpretCommand(parsed.data.content.trim(), new FakeLlm(), diagram, pendingDeltas);
           if (outcome.status === 'pending') {
