@@ -787,13 +787,33 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
       // Nivel 2: Agente unificado en un solo turno (el modelo decide en una sola pasada si es propuesta o respuesta conceptual)
       if (!replyContent) {
+        // Recuperar historial reciente para que el modelo tenga memoria conversacional y contexto de turnos previos
+        let chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
+        try {
+          const recentMessages = await listChatMessages(
+            dbPool,
+            id,
+            parsed.data.channelType,
+            parsed.data.deviceId,
+            parsed.data.senderName
+          );
+          chatHistory = recentMessages
+            .filter((m) => m.id !== message.id)
+            .slice(-6)
+            .map((m) => ({
+              role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
+              content: `${m.senderName}: ${m.content}`,
+            }));
+        } catch {}
+
         const unified = await processUnifiedAmongusTurn(
           parsed.data.content,
           parsed.data.senderName,
           parsed.data.language ?? 'es',
           id,
           llm,
-          diagram
+          diagram,
+          chatHistory
         );
         if (unified.batchDelta) {
           const pending = pendingDeltas.put(id, unified.batchDelta);

@@ -297,7 +297,8 @@ export async function processUnifiedAmongusTurn(
   language: 'es' | 'en' = 'es',
   diagramId: string,
   llm?: any,
-  diagram?: any
+  diagram?: any,
+  chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Promise<UnifiedTurnResult> {
   const isEn = language === 'en';
 
@@ -328,6 +329,9 @@ export async function processUnifiedAmongusTurn(
         '   - If the user asks a QUESTION (conceptual OOAD, why classes are separated or disconnected, advice, or general conversation):',
         '     Respond in clear, natural, direct text explaining the technical reason based on the current canvas state.',
         '',
+        'NAME DISAMBIGUATION:',
+        '- In UML, "class" is the concept of an entity. But in this diagram the user also has a specific entity literally named "Clase" (lesson/course entity). Use the conversation context and history to differentiate between the OOP concept of class and the specific entity named "Clase".',
+        '',
         `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
       ].join('\n')
     : [
@@ -349,15 +353,21 @@ export async function processUnifiedAmongusTurn(
         '   - Si el usuario hace una PREGUNTA (conceptual de diseño, por que algo esta separado, consejos sobre relaciones, o saludo):',
         '     Responde en texto natural, claro y directo explicando la razon arquitectonica basada en el estado actual del lienzo.',
         '',
+        'DESAMBIGUACIÓN DE NOMBRES:',
+        '- En UML la palabra "clase" suele referirse al concepto de entidad/tabla. Pero en este dominio el usuario tiene además una entidad explícitamente nombrada "Clase" (para una clase o curso escolar, con profesor y materia). Usá el contexto y el historial de la conversación para discernir si el usuario habla del concepto general o de su entidad específica "Clase".',
+        '',
         `ESTADO ACTUAL DEL DIAGRAMA EN EL LIENZO:\n${diagramContext}`,
       ].join('\n');
 
   try {
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemPrompt },
+      ...(chatHistory ?? []),
+      { role: 'user', content: `${senderName}: ${userContent}` },
+    ];
+
     const raw = await llm.chat(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `${senderName}: ${userContent}` },
-      ],
+      messages,
       { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 60000, maxTokens: 800 }
     );
 
