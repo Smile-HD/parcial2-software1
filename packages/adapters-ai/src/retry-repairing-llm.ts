@@ -149,7 +149,12 @@ export class RetryRepairingLlmPort implements LlmPort {
 
   async chat(
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-    options?: { timeoutMs?: number; temperature?: number }
+    options?: {
+      timeoutMs?: number;
+      temperature?: number;
+      maxTokens?: number;
+      onChunk?: (chunk: string) => void;
+    }
   ): Promise<string> {
     if ('chat' in this.inner && typeof (this.inner as any).chat === 'function') {
       return (this.inner as any).chat(messages, options);

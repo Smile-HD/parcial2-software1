@@ -272,7 +272,7 @@ export async function generateAmongusReply(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `${senderName}: ${userContent}` },
         ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 45000 }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000 }
       );
       const clean = stripEmojis(response);
       if (clean.length > 0) {
@@ -298,7 +298,8 @@ export async function processUnifiedAmongusTurn(
   diagramId: string,
   llm?: any,
   diagram?: any,
-  chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+  chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  onChunk?: (chunk: string) => void
 ): Promise<UnifiedTurnResult> {
   const isEn = language === 'en';
 
@@ -408,7 +409,7 @@ export async function processUnifiedAmongusTurn(
 
     const raw = await llm.chat(
       messages,
-      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 60000, maxTokens: 800 }
+      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 800, onChunk }
     );
 
     // 1. Sanitizar prefijo Amongus: si el modelo lo colocó

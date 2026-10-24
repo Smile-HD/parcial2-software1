@@ -32,6 +32,54 @@ export interface ChatPanelProps {
   onToggleRecord?: () => void;
 }
 
+function renderStreamingContent(text: string, isEn: boolean) {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return (
+      <div className="chat-panel__thinking">
+        <span>{isEn ? 'Amongus is typing...' : 'Amongus está escribiendo...'}</span>
+      </div>
+    );
+  }
+
+  // Si detecta inicio de bloque JSON o estructura de modelado
+  const isModelingJson = trimmed.startsWith('{') || trimmed.includes('```json') || trimmed.includes('"action"');
+  if (isModelingJson) {
+    const matches = Array.from(trimmed.matchAll(/"name":\s*"([^"]+)"/g)).map((m) => m[1]);
+    const uniqueClasses = Array.from(new Set(matches)).filter((name) => name !== 'ClassName');
+    const textWithoutJson = trimmed.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/{[\s\S]*$/, '').trim();
+
+    return (
+      <div className="chat-panel__streaming-proposal">
+        <div className="chat-panel__streaming-title">
+          <span className="chat-panel__pulse-dot" />
+          <strong>{isEn ? 'Drafting UML Domain Model...' : 'Diseñando modelo UML en vivo...'}</strong>
+        </div>
+        {uniqueClasses.length > 0 && (
+          <div className="chat-panel__streaming-classes">
+            {uniqueClasses.map((cls) => (
+              <span key={cls} className="chat-panel__streaming-class-tag">
+                + {cls}
+              </span>
+            ))}
+          </div>
+        )}
+        {textWithoutJson.length > 0 && (
+          <p className="chat-panel__streaming-text">{textWithoutJson}</p>
+        )}
+      </div>
+    );
+  }
+
+  // Respuesta conversacional / teórica: texto en vivo con cursor parpadeante
+  return (
+    <div className="chat-panel__streaming-text">
+      {trimmed}
+      <span className="chat-panel__cursor">▊</span>
+    </div>
+  );
+}
+
 /**
  * Panel de Chat Colaborativo y Asistente Amongus Unificado.
  * Integra chat de equipo, canal directo con Amongus, entrada por voz,
@@ -69,6 +117,7 @@ export function ChatPanel({
     sendMessage,
     isLoading,
     error,
+    streamingBotMessage,
   } = useChat({ diagramId, userName, language: lang });
 
   const safeMessages = Array.isArray(messages) ? messages : [];
@@ -98,7 +147,7 @@ export function ChatPanel({
     if (isOpen && messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
-  }, [safeMessages.length, activeProposal?.deltaId, interpreterError, interpreterRefusal, isOpen]);
+  }, [safeMessages.length, activeProposal?.deltaId, interpreterError, interpreterRefusal, streamingBotMessage, isOpen]);
 
   // Actualizar previsualización fantasma en el lienzo cuando hay propuesta activa
   useEffect(() => {
@@ -419,6 +468,24 @@ export function ChatPanel({
             <div className="chat-message__body">
               <div className="chat-message__bubble chat-panel__thinking">
                 <span>{isEn ? 'Thinking...' : 'Pensando...'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Respuesta de Amongus en tiempo real (streaming progresivo) */}
+        {streamingBotMessage !== null && (
+          <div className="chat-message chat-message--bot" aria-live="polite">
+            <div className="chat-message__avatar-container">
+              <AmongusAvatar size={30} isAnimated={true} />
+            </div>
+            <div className="chat-message__body">
+              <div className="chat-message__header">
+                <span className="chat-message__sender">Amongus</span>
+                <span className="chat-message__tag-bot">Bot</span>
+              </div>
+              <div className="chat-message__bubble">
+                {renderStreamingContent(streamingBotMessage, isEn)}
               </div>
             </div>
           </div>

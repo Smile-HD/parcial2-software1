@@ -80,7 +80,7 @@ services:
       LLM_MODEL: ${LLM_MODEL:-gpt-4o}
       WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}   # transcripción de audio
       VISION_MODEL: ${VISION_MODEL:-gpt-4o}
-      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-45000}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-180000}
     depends_on:
       postgres:
         condition: service_healthy

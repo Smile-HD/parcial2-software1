@@ -3,6 +3,7 @@ import {
   fetchChatMessages,
   getDeviceId,
   sendChatMessage,
+  streamChatMessage,
   type ChatMessage,
 } from './chatApi';
 
@@ -25,6 +26,7 @@ export function useChat({
   const [error, setError] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [streamingBotMessage, setStreamingBotMessage] = useState<string | null>(null);
 
   const deviceIdRef = useRef<string>(getDeviceId());
   const prevCountRef = useRef<number>(0);
@@ -102,19 +104,65 @@ export function useChat({
       const trimmed = content.trim();
       if (!trimmed || !diagramId || !userName) return;
 
+      // Mensaje optimista para respuesta visual instantánea
+      const tempUserMsg: ChatMessage = {
+        id: 'temp-' + Date.now(),
+        diagramId,
+        deviceId: deviceIdRef.current,
+        senderName: userName,
+        senderType: 'user',
+        channelType: activeChannel,
+        targetUser: activeChannel === 'direct_bot' ? 'Amongus' : null,
+        content: trimmed,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, tempUserMsg]);
+
+      const expectsBot = activeChannel === 'direct_bot' || trimmed.includes('@Amongus');
+      if (expectsBot) {
+        setStreamingBotMessage('');
+      }
+
       try {
-        await sendChatMessage(diagramId, {
-          deviceId: deviceIdRef.current,
-          senderName: userName,
-          channelType: activeChannel,
-          content: trimmed,
-          language,
-        });
-        // Recargar inmediatamente después de enviar
-        await loadMessages();
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Error al enviar mensaje');
-        throw err;
+        await streamChatMessage(
+          diagramId,
+          {
+            deviceId: deviceIdRef.current,
+            senderName: userName,
+            channelType: activeChannel,
+            content: trimmed,
+            language,
+          },
+          {
+            onChunk: (chunk) => {
+              setStreamingBotMessage((prev) => (prev ?? '') + chunk);
+            },
+            onDone: () => {
+              setStreamingBotMessage(null);
+              void loadMessages();
+            },
+            onError: () => {
+              setStreamingBotMessage(null);
+            },
+          },
+        );
+      } catch {
+        // Fallback a envío REST estándar si SSE falló
+        try {
+          await sendChatMessage(diagramId, {
+            deviceId: deviceIdRef.current,
+            senderName: userName,
+            channelType: activeChannel,
+            content: trimmed,
+            language,
+          });
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Error al enviar mensaje');
+          throw err;
+        } finally {
+          setStreamingBotMessage(null);
+          await loadMessages();
+        }
       }
     },
     [diagramId, userName, activeChannel, language, loadMessages],
@@ -132,6 +180,7 @@ export function useChat({
     isLoading,
     error,
     sendMessage: send,
+    streamingBotMessage,
     deviceId: deviceIdRef.current,
   };
 }

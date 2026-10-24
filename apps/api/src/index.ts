@@ -755,6 +755,16 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
     const message = await insertChatMessage(dbPool, id, parsed.data);
 
+    const isStream = Boolean(request.headers.accept?.includes('text/event-stream'));
+    if (isStream) {
+      reply.raw.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders?.();
+      reply.raw.write(`event: user_message\ndata: ${JSON.stringify(message)}\n\n`);
+    }
+
     // Si es canal directo o menciona a Amongus, generamos respuesta contextual del asistente
     if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus')) {
       const isEn = parsed.data.language === 'en';
@@ -817,6 +827,14 @@ export function buildApp(options?: AppOptions): FastifyInstance {
             });
         } catch {}
 
+        const onChunk = isStream
+          ? (chunk: string) => {
+              try {
+                reply.raw.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+              } catch {}
+            }
+          : undefined;
+
         const unified = await processUnifiedAmongusTurn(
           parsed.data.content,
           parsed.data.senderName,
@@ -824,7 +842,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           id,
           llm,
           diagram,
-          chatHistory
+          chatHistory,
+          onChunk
         );
         if (unified.batchDelta) {
           const pending = pendingDeltas.put(id, unified.batchDelta);
@@ -834,7 +853,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         replyContent = unified.replyContent;
       }
 
-      await insertBotReply(
+      const botMessage = await insertBotReply(
         dbPool,
         id,
         parsed.data.deviceId,
@@ -844,6 +863,16 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         deltaId,
         delta
       );
+
+      if (isStream) {
+        reply.raw.write(`event: done\ndata: ${JSON.stringify(botMessage)}\n\n`);
+        reply.raw.end();
+        return;
+      }
+    } else if (isStream) {
+      reply.raw.write(`event: done\ndata: ${JSON.stringify({ status: 'ok' })}\n\n`);
+      reply.raw.end();
+      return;
     }
 
     return reply.status(201).send(message);

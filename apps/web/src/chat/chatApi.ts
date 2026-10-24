@@ -91,3 +91,85 @@ export async function sendChatMessage(
   }
   return response.json();
 }
+
+export interface StreamChatHandlers {
+  onUserMessage?: (userMsg: ChatMessage) => void;
+  onChunk?: (chunk: string) => void;
+  onDone?: (botMsg?: ChatMessage) => void;
+  onError?: (error: Error) => void;
+}
+
+/**
+ * Envía un mensaje con streaming SSE para ver la respuesta de Amongus en tiempo real.
+ */
+export async function streamChatMessage(
+  diagramId: string,
+  payload: SendMessagePayload,
+  handlers: StreamChatHandlers,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = new Error(`Error al enviar mensaje: ${response.status}`);
+    handlers.onError?.(err);
+    throw err;
+  }
+
+  if (!response.body) {
+    const data = await response.json();
+    handlers.onDone?.(data);
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() ?? '';
+
+      for (const eventStr of events) {
+        if (!eventStr.trim()) continue;
+        let eventType = 'message';
+        let dataStr = '';
+        for (const line of eventStr.split('\n')) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            dataStr = line.slice(5).trim();
+          }
+        }
+
+        if (!dataStr) continue;
+        try {
+          const parsed = JSON.parse(dataStr);
+          if (eventType === 'user_message') {
+            handlers.onUserMessage?.(parsed);
+          } else if (eventType === 'chunk') {
+            handlers.onChunk?.(parsed.text ?? '');
+          } else if (eventType === 'done') {
+            handlers.onDone?.(parsed);
+          }
+        } catch {
+          // Ignorar parsing parcial
+        }
+      }
+    }
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    handlers.onError?.(error);
+    throw error;
+  }
+}

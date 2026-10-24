@@ -710,8 +710,14 @@ export class OpenAiLlm implements LlmPort {
 
   async chat(
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-    options?: { timeoutMs?: number; temperature?: number }
+    options?: {
+      timeoutMs?: number;
+      temperature?: number;
+      maxTokens?: number;
+      onChunk?: (chunk: string) => void;
+    }
   ): Promise<string> {
+    const isStream = typeof options?.onChunk === 'function';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 15000);
     try {
@@ -726,12 +732,49 @@ export class OpenAiLlm implements LlmPort {
           messages,
           temperature: options?.temperature ?? 0.2,
           max_tokens: options?.maxTokens ?? 350,
+          stream: isStream,
         }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
         throw new Error(`LLM chat failed with status ${response.status}`);
+      }
+
+      if (isStream) {
+        if (!response.body) {
+          throw new Error('LLM streaming response had no body');
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let fullContent = '';
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) continue;
+            const dataStr = trimmed.slice(5).trim();
+            if (dataStr === '[DONE]') continue;
+            try {
+              const chunk = JSON.parse(dataStr);
+              const delta = chunk.choices?.[0]?.delta?.content;
+              if (delta) {
+                fullContent += delta;
+                options!.onChunk!(delta);
+              }
+            } catch {
+              // Ignorar líneas parciales
+            }
+          }
+        }
+        return fullContent;
       }
 
       const payload = (await response.json()) as {
