@@ -308,6 +308,8 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
+  const diagramContext = summarizeDiagramForPrompt(diagram);
+
   const normalized = userContent
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
