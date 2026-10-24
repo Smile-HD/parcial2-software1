@@ -732,6 +732,8 @@ export class OpenAiLlm implements LlmPort {
           messages,
           temperature: options?.temperature ?? 0.2,
           max_tokens: options?.maxTokens ?? 350,
+          frequency_penalty: (options as any)?.frequencyPenalty ?? 0.4,
+          presence_penalty: (options as any)?.presencePenalty ?? 0.2,
           stream: isStream,
         }),
         signal: controller.signal,

@@ -1,7 +1,6 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
-import type { BatchDelta } from '@app/core';
-import { robustParseDomainJson, expandSemanticDomainToDelta } from './domain-synthesizer.js';
+import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel } from './domain-synthesizer.js';
 
 export const ChatChannelTypeSchema = z.enum(['group', 'direct_bot']);
 export type ChatChannelType = z.infer<typeof ChatChannelTypeSchema>;
@@ -309,8 +308,21 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
-  const diagramContext = summarizeDiagramForPrompt(diagram);
-  const isAction = /(agreg|crea|dise[ñn]|model|conecta|relacion|asoci|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(userContent);
+  const normalized = userContent
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const isExplicitQuestion =
+    /^(que|por\s*que|como\s+funciona|cual|cuales|explic|diferencia|ayuda|significa|para\s+que|what|why|how|explain)/i.test(
+      normalized.replace(/^[¿?¡!\s]+/, '')
+    ) || (normalized.includes('?') && !/(hace|haz|crea|agrega|arma|genera|modela|inserta|pone|pon\b)/i.test(normalized));
+
+  const isAction =
+    !isExplicitQuestion &&
+    /(agreg|crea|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|arma|genera|constru|plante|propon|levant|diagrama|base de datos|sistema|dominio|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
+      normalized
+    );
 
   const systemPrompt = isEn
     ? [
@@ -321,29 +333,30 @@ export async function processUnifiedAmongusTurn(
         '2. THE USER NEVER WRITES JSON OR CODE: The user interacts visually or via conversational chat. NEVER output JSON tutorials, schema examples, or tell the user how to format JSON.',
         isAction
           ? [
-              '3. USER REQUESTED A MODELING ACTION OR CHANGE (classes, interfaces, attributes, methods, relations, inheritance, deletions):',
+              '3. USER REQUESTED TO CREATE, MODEL, OR MODIFY CLASSES OR A DOMAIN/SYSTEM (e.g. airline, store, hotel, hospital):',
+              '   STRICT: NEVER output class attributes or entities as plain text bullet points.',
               '   YOUR ENTIRE RESPONSE MUST START IMMEDIATELY WITH THE ```json BLOCK.',
-              '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT DRAW ASCII ART DIAGRAMS, DO NOT WRITE EXPLANATIONS BEFORE JSON.',
-              '   TOOLBOX OPERATIONS CATALOG:',
-              '   - Classes (normal/abstract): "classes": [{"name": "Animal", "isAbstract": true, "attributes": [{"name": "age", "type": "int"}], "methods": [{"name": "move", "returnType": "void"}]}]',
-              '   - Interfaces: "classes": [{"name": "Flyable", "isInterface": true, "methods": [{"name": "fly", "returnType": "void"}]}]',
-              '   - Modifying existing classes: include the same class name to append members or toggle "isAbstract": true without duplicating it.',
-              '   - Associations: "associations": [{"source": "Customer", "target": "Order", "sourceMultiplicity": "1", "targetMultiplicity": "0..*", "directed": false}]',
-              '   - Composition/Aggregation: "associations": [{"source": "Invoice", "target": "InvoiceItem", "aggregation": "composite", "aggregationEnd": "source"}] (or "aggregation": "shared")',
-              '   - Association class: "associations": [{"source": "Student", "target": "Course", "associationClass": "Enrollment"}]',
-              '   - Generalization (inheritance): "generalizations": [{"subclass": "Dog", "superclass": "Animal"}]',
-              '   - Realization (implements interface): "realizations": [{"clientClass": "Pigeon", "supplierInterface": "Flyable"}]',
-              '   - Dependency: "dependencies": [{"client": "Invoice", "supplier": "EmailService"}]',
-              '   - N-ary association (>= 3 classes): "naryAssociations": [{"name": "Contract", "members": [{"class": "Teacher"}, {"class": "University"}, {"class": "Union"}]}]',
-              '   - Deletions: "deletions": {"classes": ["ClassToDelete"], "attributes": [{"class": "Teacher", "attribute": "age"}], "methods": [{"class": "Teacher", "method": "oldMethod"}], "associations": [{"source": "A", "target": "B"}]}',
-              '   Output the real domain operations directly in JSON:',
+              '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT EXPLAIN IN PLAIN TEXT BEFORE OR INSTEAD OF JSON.',
+              '   Exact JSON output format required:',
               '   ```json',
               '   {',
               '     "action": "modify",',
-              '     "classes": [...],',
-              '     "associations": [...]',
+              '     "classes": [',
+              '       { "name": "Airline", "attributes": [{ "name": "name", "type": "string" }] },',
+              '       { "name": "Flight", "attributes": [{ "name": "code", "type": "string" }, { "name": "capacity", "type": "int" }] }',
+              '     ],',
+              '     "associations": [',
+              '       { "source": "Airline", "target": "Flight", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" }',
+              '     ]',
               '   }',
               '   ```',
+              '   CATALOG OF SUPPORTED OPERATIONS:',
+              '   - Classes: "classes": [{"name": "Animal", "attributes": [{"name": "age", "type": "int"}], "methods": [{"name": "move", "returnType": "void"}]}]',
+              '   - Interfaces: "classes": [{"name": "Flyable", "isInterface": true, "methods": [{"name": "fly", "returnType": "void"}]}]',
+              '   - Associations: "associations": [{"source": "Customer", "target": "Order", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]',
+              '   - Generalization: "generalizations": [{"subclass": "Dog", "superclass": "Animal"}]',
+              '   - Realization: "realizations": [{"clientClass": "Pigeon", "supplierInterface": "Flyable"}]',
+              '   - Deletions: "deletions": {"classes": ["DeletedClass"]}',
             ].join('\n')
           : [
               '3. THEORETICAL OR ADVICE QUESTION (e.g. what is aggregation vs composition?):',
@@ -364,29 +377,30 @@ export async function processUnifiedAmongusTurn(
         '2. EL USUARIO NUNCA ESCRIBE JSON NI CÓDIGO: El usuario interactúa de forma visual o mediante chat. NUNCA le des tutoriales de JSON ni le muestres cómo formatear JSON.',
         isAction
           ? [
-              '3. EL USUARIO SOLICITA UNA ACCIÓN O CAMBIO EN EL DIAGRAMA (clases, interfaces, atributos, métodos, relaciones, herencia, borrados):',
+              '3. EL USUARIO PIDE CREAR, MODIFICAR O MODELAR CLASES O UN DOMINIO/SISTEMA (ej. aerolíneas, tienda, hotel, ventas):',
+              '   ESTRICTO: NUNCA escribas los atributos ni las entidades como viñetas de texto plano.',
               '   TU RESPUESTA DEBE EMPEZAR INMEDIATAMENTE CON EL BLOQUE ```json.',
-              '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir saludos ("Claro...", "Hola..."), dibujar diagramas ASCII o cajas, dar explicaciones previas o tutoriales.',
-              '   CATÁLOGO DE OPERACIONES DISPONIBLES EN TU TOOLBOX:',
-              '   - Clases normales o abstractas: "classes": [{"name": "Animal", "isAbstract": true, "attributes": [{"name": "edad", "type": "int"}], "methods": [{"name": "moverse", "returnType": "void"}]}]',
-              '   - Interfaces: "classes": [{"name": "Volador", "isInterface": true, "methods": [{"name": "volar", "returnType": "void"}]}]',
-              '   - Modificar clase existente: incluí el mismo nombre de la clase para agregarle atributos/métodos o marcar "isAbstract": true sin duplicarla.',
-              '   - Asociaciones normales: "associations": [{"source": "Cliente", "target": "Pedido", "sourceMultiplicity": "1", "targetMultiplicity": "0..*", "directed": false}]',
-              '   - Agregación o Composición: "associations": [{"source": "Factura", "target": "ItemFactura", "aggregation": "composite", "aggregationEnd": "source"}] (o "aggregation": "shared")',
-              '   - Clase asociativa: "associations": [{"source": "Estudiante", "target": "Curso", "associationClass": "Inscripcion"}]',
-              '   - Generalización (herencia): "generalizations": [{"subclass": "Perro", "superclass": "Animal"}]',
-              '   - Realización (implementa interfaz): "realizations": [{"clientClass": "Paloma", "supplierInterface": "Volador"}]',
-              '   - Dependencia: "dependencies": [{"client": "Factura", "supplier": "ServicioEmail"}]',
-              '   - Asociación N-aria (3 o más clases): "naryAssociations": [{"name": "Contrato", "members": [{"class": "Docente"}, {"class": "Universidad"}, {"class": "Gremio"}]}]',
-              '   - Eliminaciones: "deletions": {"classes": ["ClaseABorrar"], "attributes": [{"class": "Profesor", "attribute": "edad"}], "methods": [{"class": "Profesor", "method": "metodoViejo"}], "associations": [{"source": "A", "target": "B"}]}',
-              '   Emití directamente el bloque JSON con las operaciones solicitadas:',
+              '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir texto común antes o en lugar del JSON. Si te piden un modelo o sistema, TODO debe ir estructurado en JSON.',
+              '   Formato exacto de salida requerido:',
               '   ```json',
               '   {',
               '     "action": "modify",',
-              '     "classes": [...],',
-              '     "associations": [...]',
+              '     "classes": [',
+              '       { "name": "Aerolinea", "attributes": [{ "name": "nombre", "type": "string" }] },',
+              '       { "name": "Vuelo", "attributes": [{ "name": "codigo", "type": "string" }, { "name": "capacidad", "type": "int" }] }',
+              '     ],',
+              '     "associations": [',
+              '       { "source": "Aerolinea", "target": "Vuelo", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" }',
+              '     ]',
               '   }',
               '   ```',
+              '   CATÁLOGO DE OPERACIONES:',
+              '   - Clases: "classes": [{"name": "Animal", "attributes": [{"name": "edad", "type": "int"}], "methods": [{"name": "moverse", "returnType": "void"}]}]',
+              '   - Interfaces: "classes": [{"name": "Volador", "isInterface": true, "methods": [{"name": "volar", "returnType": "void"}]}]',
+              '   - Asociaciones: "associations": [{"source": "Cliente", "target": "Pedido", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]',
+              '   - Generalización: "generalizations": [{"subclass": "Perro", "superclass": "Animal"}]',
+              '   - Realización: "realizations": [{"clientClass": "Paloma", "supplierInterface": "Volador"}]',
+              '   - Eliminaciones: "deletions": {"classes": ["ClaseABorrar"]}',
             ].join('\n')
           : [
               '3. PREGUNTA TEÓRICA O CONCEPTUAL (ej. ¿qué es agregación?, ¿por qué separar entidades?):',
@@ -412,8 +426,9 @@ export async function processUnifiedAmongusTurn(
       { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 800, onChunk }
     );
 
-    // 1. Sanitizar prefijo Amongus: si el modelo lo colocó
+    // 1. Sanitizar prefijo Amongus y colapsar bucles de repetición degenerativos (ej. "de emergencia de emergencia...")
     let clean = stripEmojis(raw).replace(/^Amongus:\s*/i, '').trim();
+    clean = clean.replace(/(.{4,40}?)\1{3,}/gi, '$1').trim();
 
     // 2. Si el modelo devolvió una propuesta de modelado estructurada en JSON
     const parsedModel = robustParseDomainJson(clean);
@@ -444,6 +459,23 @@ export async function processUnifiedAmongusTurn(
           batchDelta,
         };
       }
+    }
+
+    // 2b. Resiliencia: si el usuario solicitó modelar o crear un dominio/sistema pero el modelo no devolvió JSON,
+    // sintetizar la propuesta directamente para que el usuario reciba su tarjeta visual en lugar de texto plano
+    if (!hasAnyContent && isAction) {
+      try {
+        const synthesized = await synthesizeDomainModel(userContent, diagramId, llm);
+        if (synthesized && synthesized.deltas.length > 0) {
+          const defaultReply = isEn
+            ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'
+            : 'Preparé la propuesta para este cambio. Podés ver los elementos en el lienzo y confirmarla para que se construya en vivo.';
+          return {
+            replyContent: defaultReply,
+            batchDelta: synthesized,
+          };
+        }
+      } catch {}
     }
 
     // 3. Si no fue propuesta o fue una explicación conversacional:
