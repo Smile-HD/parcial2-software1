@@ -534,7 +534,7 @@ export async function processUnifiedAmongusTurn(
 
   const isAction =
     !isExplicitQuestion &&
-    /(agreg|crea|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|arma|genera|constru|plante|propon|levant|diagrama|base de datos|sistema|dominio|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
+    /(agreg|crea|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|arma|genera|constru|plante|propon|levant|falt|diagrama|base de datos|sistema|dominio|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
       normalized
     );
 

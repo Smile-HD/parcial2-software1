@@ -129,6 +129,17 @@ export function expandSemanticDomainToDelta(
     }
   }
 
+  const resolveClassId = (rawName?: string): string | undefined => {
+    if (!rawName) return undefined;
+    const lower = rawName.toLowerCase().trim().replace(/\s+/g, '');
+    if (classIdMap.has(lower)) return classIdMap.get(lower);
+    if (lower.endsWith('es') && classIdMap.has(lower.slice(0, -2))) return classIdMap.get(lower.slice(0, -2));
+    if (lower.endsWith('s') && classIdMap.has(lower.slice(0, -1))) return classIdMap.get(lower.slice(0, -1));
+    if (classIdMap.has(lower + 's')) return classIdMap.get(lower + 's');
+    if (classIdMap.has(lower + 'es')) return classIdMap.get(lower + 'es');
+    return undefined;
+  };
+
   // 1. Crear clases nuevas o modificar existentes
   const cols = 2;
   const existingCount = currentDiagram?.classes?.length ?? 0;
@@ -161,14 +172,30 @@ export function expandSemanticDomainToDelta(
         let x: number;
         let y: number;
         if (currentDiagram?.classes && currentDiagram.classes.length > 0) {
-          const maxX = Math.max(...currentDiagram.classes.map((c: any) => c.position?.x ?? 100));
-          const maxY = Math.max(...currentDiagram.classes.map((c: any) => c.position?.y ?? 100));
-          if (idx % 2 === 0) {
-            x = maxX + 320;
-            y = 120 + Math.floor(idx / 2) * 260;
+          let relatedExistingClass: any = null;
+          if (Array.isArray(model.associations)) {
+            const relatedAssoc = model.associations.find((a: any) => {
+              const src = (typeof a.source === 'object' ? a.source?.name : a.source)?.toLowerCase().trim();
+              const tgt = (typeof a.target === 'object' ? a.target?.name : a.target)?.toLowerCase().trim();
+              return src === lower || tgt === lower;
+            });
+            if (relatedAssoc) {
+              const src = (typeof relatedAssoc.source === 'object' ? relatedAssoc.source?.name : relatedAssoc.source)?.toLowerCase().trim();
+              const otherName = src === lower
+                ? (typeof relatedAssoc.target === 'object' ? relatedAssoc.target?.name : relatedAssoc.target)?.toLowerCase().trim()
+                : src;
+              relatedExistingClass = existingClassesMap.get(otherName);
+            }
+          }
+
+          if (relatedExistingClass?.position) {
+            x = (relatedExistingClass.position.x ?? 200) + 320;
+            y = (relatedExistingClass.position.y ?? 150) + idx * 80;
           } else {
-            x = 120;
-            y = maxY + 240 + Math.floor(idx / 2) * 260;
+            const maxX = Math.max(...currentDiagram.classes.map((c: any) => c.position?.x ?? 100));
+            const minY = Math.min(...currentDiagram.classes.map((c: any) => c.position?.y ?? 100));
+            x = maxX + 320;
+            y = minY + idx * 240;
           }
         } else {
           const posIdx = idx;
@@ -294,8 +321,8 @@ export function expandSemanticDomainToDelta(
   // 2. Asociaciones, composiciones y agregaciones
   if (Array.isArray(model.associations)) {
     model.associations.forEach((assoc) => {
-      const sourceId = classIdMap.get(assoc.source.toLowerCase().trim());
-      const targetId = classIdMap.get(assoc.target.toLowerCase().trim());
+      const sourceId = resolveClassId(assoc.source);
+      const targetId = resolveClassId(assoc.target);
 
       if (!sourceId || !targetId || sourceId === targetId) return;
 
@@ -348,7 +375,7 @@ export function expandSemanticDomainToDelta(
       }
 
       const assocClassId = assoc.associationClass
-        ? classIdMap.get(assoc.associationClass.toLowerCase().trim())
+        ? resolveClassId(assoc.associationClass)
         : undefined;
 
       const isComposite = assoc.aggregation === 'composite';
@@ -382,8 +409,8 @@ export function expandSemanticDomainToDelta(
   // 3. Generalizaciones explícitas
   if (Array.isArray(model.generalizations)) {
     model.generalizations.forEach((gen) => {
-      const subId = classIdMap.get(gen.subclass.toLowerCase().trim());
-      const superId = classIdMap.get(gen.superclass.toLowerCase().trim());
+      const subId = resolveClassId(gen.subclass);
+      const superId = resolveClassId(gen.superclass);
       if (!subId || !superId || subId === superId) return;
 
       deltas.push({
@@ -403,8 +430,8 @@ export function expandSemanticDomainToDelta(
   // 4. Realizaciones explícitas (implementación de interfaz)
   if (Array.isArray(model.realizations)) {
     model.realizations.forEach((r) => {
-      const client = classIdMap.get(r.clientClass.toLowerCase().trim());
-      const supplier = classIdMap.get(r.supplierInterface.toLowerCase().trim());
+      const client = resolveClassId(r.clientClass);
+      const supplier = resolveClassId(r.supplierInterface);
       if (!client || !supplier || client === supplier) return;
 
       deltas.push({
@@ -424,8 +451,8 @@ export function expandSemanticDomainToDelta(
   // 5. Dependencias explícitas
   if (Array.isArray(model.dependencies)) {
     model.dependencies.forEach((d) => {
-      const client = classIdMap.get(d.client.toLowerCase().trim());
-      const supplier = classIdMap.get(d.supplier.toLowerCase().trim());
+      const client = resolveClassId(d.client);
+      const supplier = resolveClassId(d.supplier);
       if (!client || !supplier || client === supplier) return;
 
       deltas.push({
@@ -768,8 +795,9 @@ export async function synthesizeDomainModel(
     'You are a senior UML software architect.',
     'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; airline: Vuelo, Pasajero, Reserva; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
     'CRITICAL: If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
-    'Provide the essential classes with 2 to 3 realistic attributes each.',
-    'Include essential relationships (associations) between them (or connecting to existing classes).',
+    'CRITICAL REQUIREMENT: If the user prompt or context mentions candidate classes or entities (for example: "Pasajero", "Reserva", "Factura", etc.), YOU MUST GENERATE ALL OF THEM in the "classes" array. Never omit any requested class. If multiple classes are discussed, every single one must be included.',
+    'Provide 2 to 3 realistic attributes each.',
+    'Include essential relationships (associations) connecting the classes together, and connecting them to existing classes if present.',
     contextHint,
     'Output ONLY a valid raw JSON object matching:',
     '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB"}]}',
