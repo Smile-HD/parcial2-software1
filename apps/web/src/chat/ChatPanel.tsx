@@ -27,6 +27,7 @@ export interface ChatPanelProps {
   onConfirmProposal?: (deltaId: string, delta: Delta) => Promise<void> | void;
   onRejectProposal?: (deltaId: string) => Promise<void> | void;
   onPreviewProposal?: (delta: Delta | null) => void;
+  onClearCanvas?: () => { ok: boolean; reason?: string } | void;
   buildingDeltaId?: string | null;
   activeProposal?: { deltaId: string; delta: Delta } | null;
   interpreterPhase?: 'idle' | 'thinking' | 'pending' | 'refused' | 'error';
@@ -103,6 +104,7 @@ export function ChatPanel({
   onConfirmProposal,
   onRejectProposal,
   onPreviewProposal,
+  onClearCanvas,
   buildingDeltaId = null,
   activeProposal = null,
   interpreterPhase = 'idle',
@@ -172,6 +174,7 @@ export function ChatPanel({
     }
   });
   const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const [dismissedRefusal, setDismissedRefusal] = useState<string | null>(null);
 
   const isAlreadyUsedError =
     Boolean(interpreterError) &&
@@ -183,6 +186,9 @@ export function ChatPanel({
   const visibleInterpreterError =
     !isAlreadyUsedError && interpreterError !== dismissedError ? interpreterError : null;
 
+  const visibleInterpreterRefusal =
+    interpreterRefusal && interpreterRefusal !== dismissedRefusal ? interpreterRefusal : null;
+
   // Auto-descartar error visual despues de 7 segundos
   useEffect(() => {
     if (visibleInterpreterError) {
@@ -192,6 +198,16 @@ export function ChatPanel({
       return () => clearTimeout(timer);
     }
   }, [visibleInterpreterError, interpreterError]);
+
+  // Auto-descartar rechazo visual despues de 7 segundos
+  useEffect(() => {
+    if (visibleInterpreterRefusal) {
+      const timer = setTimeout(() => {
+        setDismissedRefusal(interpreterRefusal);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [visibleInterpreterRefusal, interpreterRefusal]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -419,18 +435,45 @@ export function ChatPanel({
     }
 
     // 3. Comando de cliente: /clear (vaciado con propuesta de seguridad)
-    if (trimmed === '/clear') {
+    if (trimmed === '/clear' || trimmed === '/clear canvas' || trimmed === '/clear lienzo') {
       setDraft('');
+      setDismissedError(interpreterError);
+      setDismissedRefusal(interpreterRefusal);
       addLocalMessage({
         senderType: 'user',
         senderName: userName,
         content: trimmed,
       });
-      if (onSubmitCommand) {
-        await onSubmitCommand('eliminar todas las clases');
+      if (onClearCanvas) {
+        const res = onClearCanvas();
+        if (res && !res.ok && res.reason === 'empty') {
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'The canvas is already empty.' : 'El lienzo ya está vacío.',
+          });
+        }
       } else {
-        await sendMessage('eliminar todas las clases');
+        window.dispatchEvent(new CustomEvent('canvas:clear'));
       }
+      return;
+    }
+
+    if (trimmed === '/clear chat' || trimmed === '/clear context' || trimmed === '/clear contexto') {
+      setDraft('');
+      setDismissedError(interpreterError);
+      setDismissedRefusal(interpreterRefusal);
+      clearMessages();
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: isEn ? 'Chat context and view refreshed.' : 'Vista y contexto del chat reiniciados.',
+      });
       return;
     }
 
@@ -755,7 +798,7 @@ export function ChatPanel({
         )}
 
         {/* Mensaje de rechazo con rol de alerta */}
-        {interpreterRefusal && (
+        {visibleInterpreterRefusal && (
           <div className="chat-message chat-message--bot" role="alert">
             <div className="chat-message__avatar-container">
               <AmongusAvatar size={30} />
@@ -764,9 +807,18 @@ export function ChatPanel({
               <div className="chat-message__header">
                 <span className="chat-message__sender">Amongus</span>
                 <span className="chat-message__tag-bot">Bot</span>
+                <button
+                  type="button"
+                  onClick={() => setDismissedRefusal(interpreterRefusal)}
+                  className="chat-error-dismiss-btn"
+                  title={isEn ? 'Dismiss message' : 'Cerrar mensaje'}
+                  aria-label={isEn ? 'Dismiss message' : 'Cerrar mensaje'}
+                >
+                  &times;
+                </button>
               </div>
               <div className="chat-message__bubble interpreter-refusal">
-                {isEn ? `Refused: ${interpreterRefusal}` : `Rechazado: ${interpreterRefusal}`}
+                {isEn ? `Refused: ${visibleInterpreterRefusal}` : `Rechazado: ${visibleInterpreterRefusal}`}
               </div>
             </div>
           </div>

@@ -457,14 +457,14 @@ export async function processUnifiedAmongusTurn(
       ? [
           'You are Amongus, a senior software architecture tutor.',
           `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
-          'Suggest 2 or 3 missing entities, intermediary classes, or relationships that would complete this business model.',
-          'Provide clear, concise architectural explanations without code blocks or JSON.',
+          'Suggest exactly 2 or 3 essential missing entities or relationships (max 3) with a concise 2-line explanation each.',
+          'Provide clear architectural reasoning without code blocks or JSON, ensuring the reply is complete and concise.',
         ].join('\n')
       : [
           'Sos Amongus, tutor senior de arquitectura de software.',
           `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
-          'Sugerí 2 o 3 entidades faltantes, clases intermedias o relaciones clave que enriquecerían y completarían este modelo de negocio.',
-          'Explica claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON.',
+          'Sugerí exactamente 2 o 3 entidades clave faltantes o relaciones clave (máximo 3) con una explicación concisa de 2 líneas cada una.',
+          'Explicá claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON. Sé directo y asegurá que tu respuesta esté completa.',
         ].join('\n');
 
     let suggestChunks = '';
@@ -479,7 +479,7 @@ export async function processUnifiedAmongusTurn(
           { role: 'system', content: suggestPrompt },
           { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
         ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 350, onChunk: wrappedSuggestChunk }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 1000, onChunk: wrappedSuggestChunk }
       );
       return { replyContent: stripEmojis(suggestResult).trim() };
     } catch {

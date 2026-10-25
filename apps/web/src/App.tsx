@@ -506,19 +506,55 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       const current = projectYDocToDiagram(doc);
       if (!current.classes || current.classes.length === 0) return;
       const cols = Math.max(2, Math.ceil(Math.sqrt(current.classes.length)));
+      const timestamp = new Date().toISOString();
       current.classes.forEach((c, idx) => {
         const col = idx % cols;
         const row = Math.floor(idx / cols);
         applyDeltaToYDoc(doc, {
+          id: crypto.randomUUID(),
+          diagramId: current.id,
+          timestamp,
           kind: 'class',
           op: 'reposition',
           classId: c.id,
-          newPosition: { x: 120 + col * 280, y: 120 + row * 220 },
+          newPosition: { x: 120 + col * 340, y: 120 + row * 260 },
         });
       });
     };
     window.addEventListener('canvas:auto-layout', handleAutoLayout);
     return () => window.removeEventListener('canvas:auto-layout', handleAutoLayout);
+  }, [doc]);
+
+  const handleClearCanvas = (): { ok: boolean; reason?: string } => {
+    const current = projectYDocToDiagram(doc);
+    if (!current.classes || current.classes.length === 0) {
+      return { ok: false, reason: 'empty' };
+    }
+    const timestamp = new Date().toISOString();
+    const clearDelta: Delta = {
+      id: crypto.randomUUID(),
+      diagramId: current.id,
+      timestamp,
+      kind: 'batch',
+      deltas: current.classes.map((cls) => ({
+        id: crypto.randomUUID(),
+        diagramId: current.id,
+        timestamp,
+        kind: 'class' as const,
+        op: 'delete' as const,
+        classId: cls.id,
+      })),
+    };
+    const deltaId = crypto.randomUUID();
+    setGhostDelta(clearDelta);
+    setInterpreter({ phase: 'pending', deltaId, delta: clearDelta });
+    return { ok: true };
+  };
+
+  useEffect(() => {
+    const onClear = () => { handleClearCanvas(); };
+    window.addEventListener('canvas:clear', onClear);
+    return () => window.removeEventListener('canvas:clear', onClear);
   }, [doc]);
 
   // Entrada de voz (PR 8, tareas 8.3/8.4). La transcripción cae en el MISMO
@@ -675,6 +711,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             onConfirmProposal={handleConfirmDelta}
             onRejectProposal={handleRejectDelta}
             onPreviewProposal={setGhostDelta}
+            onClearCanvas={handleClearCanvas}
             buildingDeltaId={buildingDeltaId}
             activeProposal={activeProposal}
             interpreterPhase={interpreter.phase}
