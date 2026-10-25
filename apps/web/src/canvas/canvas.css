@@ -2044,11 +2044,41 @@ body {
 
 /* Previsualización fantasma de propuestas de IA */
 .class-node--ghost {
-  opacity: 0.85 !important;
-  border: 2px dashed #06b6d4 !important;
-  background: rgba(236, 254, 255, 0.92) !important;
-  box-shadow: 0 0 15px rgba(6, 182, 212, 0.35) !important;
   pointer-events: none !important;
+  z-index: 100 !important;
+}
+
+.class-node--ghost .uml-class {
+  background: linear-gradient(180deg, #ecfeff 0%, #cffafe 100%) !important;
+  border: 2.5px dashed #0891b2 !important;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.6), inset 0 0 12px rgba(6, 182, 212, 0.2) !important;
+  animation: ghost-pulse 2s ease-in-out infinite alternate !important;
+}
+
+.class-node--ghost .uml-class__compartment--name {
+  background: rgba(6, 182, 212, 0.15) !important;
+  color: #0e7490 !important;
+}
+
+.class-node--ghost .uml-class__name {
+  color: #0e7490 !important;
+  font-weight: 700 !important;
+}
+
+.class-node--ghost .uml-class__attribute,
+.class-node--ghost .uml-class__method {
+  color: #155e75 !important;
+}
+
+@keyframes ghost-pulse {
+  0% {
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+    opacity: 0.85;
+  }
+  100% {
+    box-shadow: 0 0 24px rgba(6, 182, 212, 0.8), 0 0 36px rgba(6, 182, 212, 0.3);
+    opacity: 0.98;
+  }
 }
 
 

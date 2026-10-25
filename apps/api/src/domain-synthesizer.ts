@@ -84,7 +84,7 @@ export interface SemanticDomainModel {
 }
 
 export function isDomainModelRequest(text: string): boolean {
-  return /(crea|crear|dise[ñn]|model|arma|armar|base de datos|sistema de|diagrama de|quiero un|necesito un|hazme|haceme|make|build|generate|design|model)\b/i.test(text);
+  return /(crea|crear|dise[ñn]|model|arma|armar|implement|aplica|agrega|inserta|pone|pon\b|hace|haz|constru|reserva|base de datos|sistema|diagrama|quiero un|necesito un|hazme|haceme|hacer|make|build|generate|design|model|add|apply)\b/i.test(text);
 }
 
 /**
@@ -158,9 +158,23 @@ export function expandSemanticDomainToDelta(
         classId = crypto.randomUUID();
         classIdMap.set(lower, classId);
 
-        const posIdx = existingCount + idx;
-        const x = 80 + (posIdx % cols) * 440;
-        const y = 80 + Math.floor(posIdx / cols) * 320;
+        let x: number;
+        let y: number;
+        if (currentDiagram?.classes && currentDiagram.classes.length > 0) {
+          const maxX = Math.max(...currentDiagram.classes.map((c: any) => c.position?.x ?? 100));
+          const maxY = Math.max(...currentDiagram.classes.map((c: any) => c.position?.y ?? 100));
+          if (idx % 2 === 0) {
+            x = maxX + 320;
+            y = 120 + Math.floor(idx / 2) * 260;
+          } else {
+            x = 120;
+            y = maxY + 240 + Math.floor(idx / 2) * 260;
+          }
+        } else {
+          const posIdx = idx;
+          x = 120 + (posIdx % cols) * 360;
+          y = 120 + Math.floor(posIdx / cols) * 260;
+        }
 
         deltas.push({
           id: crypto.randomUUID(),
@@ -732,9 +746,11 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
 export async function synthesizeDomainModel(
   text: string,
   diagramId: string,
-  llm?: LlmPort
+  llm?: LlmPort,
+  currentDiagram?: any,
+  force = false
 ): Promise<BatchDelta | null> {
-  if (!isDomainModelRequest(text)) {
+  if (!force && !isDomainModelRequest(text)) {
     return null;
   }
 
@@ -743,15 +759,21 @@ export async function synthesizeDomainModel(
     return null;
   }
 
+  const existingClassesList = currentDiagram?.classes?.map((c: any) => c.name).filter(Boolean) || [];
+  const contextHint = existingClassesList.length > 0
+    ? `\nThe current diagram already has these classes: ${existingClassesList.join(', ')}. Reuse these exact names if relating to them, and do not duplicate them unless creating distinct entities.`
+    : '';
+
   const systemPrompt = [
     'You are a senior UML software architect.',
-    'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
+    'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; airline: Vuelo, Pasajero, Reserva; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
     'CRITICAL: If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
-    'Provide exactly 3 to 4 essential classes with 2 to 3 realistic attributes each.',
-    'Include 2 essential relationships between them.',
+    'Provide the essential classes with 2 to 3 realistic attributes each.',
+    'Include essential relationships (associations) between them (or connecting to existing classes).',
+    contextHint,
     'Output ONLY a valid raw JSON object matching:',
     '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB"}]}',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   try {
     const response = await (llm as any).chat(
@@ -771,8 +793,8 @@ export async function synthesizeDomainModel(
       return null;
     }
 
-    const expanded = expandSemanticDomainToDelta(parsed, diagramId);
-    if (expanded && expanded.deltas.length >= 2) {
+    const expanded = expandSemanticDomainToDelta(parsed, diagramId, currentDiagram);
+    if (expanded && expanded.deltas.length >= 1) {
       return expanded;
     }
   } catch {

@@ -1557,23 +1557,44 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
 
   const ghostNodes = useMemo(() => {
     if (!ghostDelta) return [];
-    const createdClasses: { id: string; name: string; position: { x: number; y: number } }[] = [];
-    if (ghostDelta.kind === 'class' && ghostDelta.op === 'create') {
-      createdClasses.push({
-        id: `ghost-${ghostDelta.classId}`,
-        name: ghostDelta.name,
-        position: ghostDelta.position ?? { x: 250, y: 150 },
-      });
-    } else if (ghostDelta.kind === 'batch') {
+    const createdClasses: { id: string; name: string; position: { x: number; y: number }; attributes: any[] }[] = [];
+    const attrsByClassId = new Map<string, any[]>();
+
+    if (ghostDelta.kind === 'batch') {
+      for (const d of ghostDelta.deltas) {
+        if (d.kind === 'attribute' && d.op === 'create') {
+          if (!attrsByClassId.has(d.classId)) {
+            attrsByClassId.set(d.classId, []);
+          }
+          attrsByClassId.get(d.classId)!.push({
+            id: d.memberId || crypto.randomUUID(),
+            name: d.name,
+            type: d.attributeType || 'string',
+            visibility: d.adornments?.visibility ?? '+',
+            isStatic: d.adornments?.isStatic ?? false,
+            isDerived: d.adornments?.isDerived ?? false,
+            multiplicity: d.adornments?.multiplicity,
+          });
+        }
+      }
+
       for (const d of ghostDelta.deltas) {
         if (d.kind === 'class' && d.op === 'create') {
           createdClasses.push({
             id: `ghost-${d.classId}`,
             name: d.name,
             position: d.position ?? { x: 250, y: 150 },
+            attributes: attrsByClassId.get(d.classId) ?? [],
           });
         }
       }
+    } else if (ghostDelta.kind === 'class' && ghostDelta.op === 'create') {
+      createdClasses.push({
+        id: `ghost-${ghostDelta.classId}`,
+        name: ghostDelta.name,
+        position: ghostDelta.position ?? { x: 250, y: 150 },
+        attributes: [],
+      });
     }
 
     return createdClasses.map((gc) => ({
@@ -1583,7 +1604,7 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
       className: 'class-node--ghost',
       data: {
         name: `${gc.name} (Propuesta)`,
-        attributes: [],
+        attributes: gc.attributes,
         methods: [],
         kind: 'class' as const,
         isAbstract: false,
@@ -1608,6 +1629,51 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
       } satisfies ClassNodeData,
     }));
   }, [ghostDelta]);
+
+  const ghostEdges = useMemo<Edge[]>(() => {
+    if (!ghostDelta) return [];
+    const result: Edge[] = [];
+
+    const resolveNodeId = (rawId: string): string | null => {
+      if (diagram.classes.some((c) => c.id === rawId)) return rawId;
+      if (ghostNodes.some((gn) => gn.id === `ghost-${rawId}`)) return `ghost-${rawId}`;
+      if (ghostNodes.some((gn) => gn.id === rawId)) return rawId;
+      return null;
+    };
+
+    const processAssoc = (assoc: any) => {
+      const sourceId = resolveNodeId(assoc.sourceClassId);
+      const targetId = resolveNodeId(assoc.targetClassId);
+      if (!sourceId || !targetId) return;
+
+      result.push({
+        id: `ghost-edge-${assoc.id || crypto.randomUUID()}`,
+        source: sourceId,
+        target: targetId,
+        type: 'default',
+        animated: true,
+        style: {
+          stroke: '#0891b2',
+          strokeWidth: 2.5,
+          strokeDasharray: '6,4',
+        },
+        label: assoc.name || (assoc.targetMultiplicity ? `${assoc.sourceMultiplicity || ''} .. ${assoc.targetMultiplicity}` : 'propuesta'),
+        labelStyle: { fill: '#0891b2', fontWeight: 600, fontSize: 11 },
+      });
+    };
+
+    if (ghostDelta.kind === 'association' && ghostDelta.op === 'create') {
+      processAssoc(ghostDelta);
+    } else if (ghostDelta.kind === 'batch') {
+      for (const d of ghostDelta.deltas) {
+        if (d.kind === 'association' && d.op === 'create') {
+          processAssoc(d);
+        }
+      }
+    }
+
+    return result;
+  }, [ghostDelta, diagram.classes, ghostNodes]);
 
   const nodes = useMemo<(ClassFlowNode | NaryDiamondFlowNode)[]>(
     () => [
@@ -1875,8 +1941,9 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
           data: { end, naryAssociationId: nary.id },
         })),
       ),
+      ...ghostEdges,
     ],
-    [diagram, displayNodes, doc, edgeHandles],
+    [diagram, displayNodes, doc, edgeHandles, ghostEdges],
   );
 
   // unidad 13c — la arista seleccionada resuelta a partir de la proyección en vivo. Cuando la

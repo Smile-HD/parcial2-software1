@@ -385,7 +385,7 @@ export async function processUnifiedAmongusTurn(
           : 'Por favor indicá un tema de dominio, ej: /model aerolineas o /model hospital',
       };
     }
-    const synthesized = await synthesizeDomainModel(domainTopic, diagramId, llm);
+    const synthesized = await synthesizeDomainModel(domainTopic, diagramId, llm, diagram, true);
     if (synthesized && synthesized.deltas.length > 0) {
       return {
         replyContent: isEn
@@ -497,8 +497,16 @@ export async function processUnifiedAmongusTurn(
   if (trimmedLower === '/apply' || trimmedLower.startsWith('/apply ') || trimmedLower === '/aplicar' || trimmedLower.startsWith('/aplicar ')) {
     const specificTopic = userContent.trim().replace(/^\/(?:apply|aplicar)\s*/i, '').trim();
     const lastAssistantMsg = [...(chatHistory || [])].reverse().find((m) => m.role === 'assistant');
-    const topic = specificTopic || (lastAssistantMsg ? `las entidades sugeridas: ${lastAssistantMsg.content}` : 'entidades del dominio');
-    const synthesized = await synthesizeDomainModel(topic, diagramId, llm);
+    const recentHistory = (chatHistory || [])
+      .slice(-4)
+      .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
+      .join('\n');
+    const topic = specificTopic
+      ? specificTopic
+      : lastAssistantMsg
+        ? `Conversación previa:\n${recentHistory}\nImplementar lo sugerido: ${lastAssistantMsg.content}`
+        : 'entidades del dominio sugeridas';
+    const synthesized = await synthesizeDomainModel(topic, diagramId, llm, diagram, true);
     if (synthesized && synthesized.deltas.length > 0) {
       return {
         replyContent: isEn
@@ -671,7 +679,17 @@ export async function processUnifiedAmongusTurn(
     // sintetizar la propuesta directamente para que el usuario reciba su tarjeta visual en lugar de texto plano
     if (!hasAnyContent && isAction) {
       try {
-        const synthesized = await synthesizeDomainModel(userContent, diagramId, llm);
+        const recentHistory = (chatHistory || [])
+          .slice(-4)
+          .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
+          .join('\n');
+        const synthesisPrompt = [
+          `Historial reciente de la conversación:\n${recentHistory}`,
+          `Última explicación del asistente:\n${clean}`,
+          `Instrucción del usuario:\n${userContent}`,
+          'Generá el modelo de clases y asociaciones necesario para implementar lo solicitado o discutido en el chat.',
+        ].join('\n\n');
+        const synthesized = await synthesizeDomainModel(synthesisPrompt, diagramId, llm, diagram, true);
         if (synthesized && synthesized.deltas.length > 0) {
           const defaultReply = isEn
             ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'

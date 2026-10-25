@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Delta } from '@app/core';
 import { AmongusAvatar } from './AmongusAvatar';
 import { ProposalCard } from './ProposalCard';
@@ -204,18 +204,34 @@ export function ChatPanel({
     }
   }, [safeMessages.length, activeProposal?.deltaId, visibleInterpreterError, interpreterRefusal, streamingBotMessage, isOpen]);
 
-  // Actualizar previsualización fantasma en el lienzo cuando hay propuesta activa
-  useEffect(() => {
-    if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !rejectedDeltaIds.has(activeProposal.deltaId)) {
-      if (lastActiveProposalIdRef.current !== activeProposal.deltaId) {
-        lastActiveProposalIdRef.current = activeProposal.deltaId;
-        onPreviewProposal?.(activeProposal.delta);
+  // Determinar la propuesta pendiente más reciente (prioriza activeProposal o el último mensaje del chat con delta pendiente)
+  const pendingChatProposal = useMemo(() => {
+    for (let i = safeMessages.length - 1; i >= 0; i--) {
+      const m = safeMessages[i];
+      if (m?.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId)) {
+        return { deltaId: m.deltaId, delta: m.delta };
       }
-    } else if (!activeProposal && lastActiveProposalIdRef.current !== null) {
+    }
+    return null;
+  }, [safeMessages, appliedDeltaIds, rejectedDeltaIds]);
+
+  const currentPreviewProposal =
+    activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !rejectedDeltaIds.has(activeProposal.deltaId)
+      ? activeProposal
+      : pendingChatProposal;
+
+  // Actualizar previsualización fantasma en el lienzo cuando hay propuesta activa o en el chat
+  useEffect(() => {
+    if (currentPreviewProposal) {
+      if (lastActiveProposalIdRef.current !== currentPreviewProposal.deltaId) {
+        lastActiveProposalIdRef.current = currentPreviewProposal.deltaId;
+        onPreviewProposal?.(currentPreviewProposal.delta);
+      }
+    } else if (lastActiveProposalIdRef.current !== null) {
       lastActiveProposalIdRef.current = null;
       onPreviewProposal?.(null);
     }
-  }, [activeProposal?.deltaId, appliedDeltaIds, rejectedDeltaIds, onPreviewProposal]);
+  }, [currentPreviewProposal?.deltaId, onPreviewProposal]);
 
   if (!isOpen) return null;
 
