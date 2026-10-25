@@ -76,7 +76,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     descriptionEn: 'Show current context tokens and CPU speed indicator',
     usage: '/context',
     usageEn: '/context',
-    scope: 'client',
+    scope: 'server',
     category: 'tools',
     example: '/context',
     exampleEn: '/context',

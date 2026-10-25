@@ -41,17 +41,35 @@ export function useChat({
         userName,
       );
       setMessages((prev) => {
-        const next = Array.isArray(data) ? data : [];
-        if (prev.length === next.length) {
-          const isSame = prev.every(
-            (m, idx) =>
-              m.id === next[idx]?.id &&
-              m.content === next[idx]?.content &&
-              m.deltaId === next[idx]?.deltaId,
+        const serverMessages = Array.isArray(data) ? data : [];
+
+        // Preservar mensajes locales que no se persisten en backend
+        const localMessages = prev.filter((m) => m.id.startsWith('local-'));
+
+        // Preservar mensajes optimistas temporales que aún no se confirmaron en el servidor
+        const pendingTempMessages = prev.filter((m) => {
+          if (!m.id.startsWith('temp-')) return false;
+          return !serverMessages.some(
+            (sm) => sm.content === m.content && sm.senderName === m.senderName
           );
-          if (isSame) return prev;
+        });
+
+        // Fusión garantizada: servidor + locales + temporales pendientes
+        const merged = [...serverMessages, ...localMessages, ...pendingTempMessages];
+        merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+        if (
+          prev.length === merged.length &&
+          prev.every(
+            (m, idx) =>
+              m.id === merged[idx]?.id &&
+              m.content === merged[idx]?.content &&
+              m.deltaId === merged[idx]?.deltaId,
+          )
+        ) {
+          return prev;
         }
-        return next;
+        return merged;
       });
       setError(null);
 
@@ -134,10 +152,23 @@ export function useChat({
             language,
           },
           {
+            onUserMessage: (serverUserMsg: ChatMessage) => {
+              setMessages((prev) => {
+                const filtered = prev.filter((m) => m.id !== tempUserMsg.id);
+                if (filtered.some((m) => m.id === serverUserMsg.id)) return filtered;
+                return [...filtered, serverUserMsg];
+              });
+            },
             onChunk: (chunk) => {
               setStreamingBotMessage((prev) => (prev ?? '') + chunk);
             },
-            onDone: () => {
+            onDone: (botMessage?: ChatMessage) => {
+              if (botMessage && botMessage.id) {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === botMessage.id)) return prev;
+                  return [...prev, botMessage];
+                });
+              }
               setStreamingBotMessage(null);
               void loadMessages();
             },

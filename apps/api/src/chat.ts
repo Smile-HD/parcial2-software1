@@ -118,8 +118,7 @@ export async function listChatMessages(
              FROM chat_messages
              WHERE diagram_id = $1 
                AND channel_type = 'direct_bot'
-               AND device_id = $2
-               AND target_user = $3
+               AND (device_id = $2 OR target_user = $3 OR sender_name = $3)
                AND created_at >= NOW() - INTERVAL '7 days'
              ORDER BY created_at ASC`;
     params = [diagramId, deviceId, userName];

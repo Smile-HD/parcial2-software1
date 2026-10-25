@@ -219,9 +219,9 @@ export function ChatPanel({
 
   if (!isOpen) return null;
 
-  const handleSend = async (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent, textOverride?: string) => {
     if (e) e.preventDefault();
-    const trimmed = draft.trim();
+    const trimmed = (textOverride !== undefined ? textOverride : draft).trim();
     if (!trimmed || isSending || interpreterPhase === 'thinking') return;
 
     // 1. Comando de cliente: /help [comando]
@@ -257,22 +257,10 @@ export function ChatPanel({
       return;
     }
 
-    // 1c. Comando de cliente: /context (monitor de tokens y velocidad)
+    // 1c. Comando: /context (monitor de tokens y velocidad persistido en PostgreSQL)
     if (trimmed === '/context') {
       setDraft('');
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
-      const classNodes = document.querySelectorAll('.react-flow__node-class, [data-testid^="class-node"]');
-      const classCount = classNodes.length || 3;
-      const contextReport = buildContextReport(safeMessages.length, classCount, isEn);
-      addLocalMessage({
-        senderType: 'bot',
-        senderName: 'Amongus',
-        content: contextReport,
-      });
+      await sendMessage('/context');
       return;
     }
 
@@ -459,7 +447,8 @@ export function ChatPanel({
         e.preventDefault();
         const cmd = matchingCommands[selectedCommandIndex];
         if (cmd) {
-          if (cmd.name === 'audit' || cmd.name === 'suggest' || cmd.name === 'clear' || cmd.name === 'layout') {
+          const zeroArg = ['audit', 'suggest', 'context', 'layout', 'apply', 'reset', 'clear'];
+          if (zeroArg.includes(cmd.name)) {
             setDraft(`/${cmd.name}`);
           } else {
             setDraft(`/${cmd.name} `);
@@ -473,8 +462,11 @@ export function ChatPanel({
           e.preventDefault();
           const cmd = matchingCommands[selectedCommandIndex];
           if (cmd) {
-            if (cmd.name === 'audit' || cmd.name === 'suggest' || cmd.name === 'clear' || cmd.name === 'layout') {
-              setDraft(`/${cmd.name}`);
+            const zeroArg = ['audit', 'suggest', 'context', 'help', 'layout', 'apply', 'reset'];
+            if (zeroArg.includes(cmd.name)) {
+              setDraft('');
+              void handleSend(undefined, `/${cmd.name}`);
+              return;
             } else {
               setDraft(`/${cmd.name} `);
             }
