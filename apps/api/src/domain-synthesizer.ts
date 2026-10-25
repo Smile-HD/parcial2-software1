@@ -759,7 +759,7 @@ export async function synthesizeDomainModel(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
       ],
-      { timeoutMs: 60000, temperature: 0.1, maxTokens: 800 }
+      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, temperature: 0.1, maxTokens: 800 }
     );
 
     if (typeof response !== 'string') {

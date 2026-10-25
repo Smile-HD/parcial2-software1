@@ -467,6 +467,16 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       .catch((error: unknown) => {
         setVirtualPeer(null);
         setBuildingDeltaId(null);
+        const errMsg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+        if (
+          errMsg.includes('already used') ||
+          errMsg.includes('unknown or already used') ||
+          errMsg.includes('already apply') ||
+          errMsg.includes('already applied')
+        ) {
+          setInterpreter({ phase: 'idle' });
+          return;
+        }
         setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.confirmFailed')) });
       });
   };

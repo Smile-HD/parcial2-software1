@@ -155,8 +155,44 @@ export function ChatPanel({
   const [internalRecording, setInternalRecording] = useState(false);
   const activeRecording = recording !== undefined ? recording : internalRecording;
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [appliedDeltaIds, setAppliedDeltaIds] = useState<Set<string>>(new Set());
-  const [rejectedDeltaIds, setRejectedDeltaIds] = useState<Set<string>>(new Set());
+  const [appliedDeltaIds, setAppliedDeltaIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`amongus_applied_deltas_${diagramId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [rejectedDeltaIds, setRejectedDeltaIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`amongus_rejected_deltas_${diagramId}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
+
+  const isAlreadyUsedError =
+    Boolean(interpreterError) &&
+    (interpreterError!.toLowerCase().includes('already used') ||
+      interpreterError!.toLowerCase().includes('already apply') ||
+      interpreterError!.toLowerCase().includes('already applied') ||
+      interpreterError!.toLowerCase().includes('unknown or already used'));
+
+  const visibleInterpreterError =
+    !isAlreadyUsedError && interpreterError !== dismissedError ? interpreterError : null;
+
+  // Auto-descartar error visual despues de 7 segundos
+  useEffect(() => {
+    if (visibleInterpreterError) {
+      const timer = setTimeout(() => {
+        setDismissedError(interpreterError);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [visibleInterpreterError, interpreterError]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastActiveProposalIdRef = useRef<string | null>(null);
@@ -166,7 +202,7 @@ export function ChatPanel({
     if (isOpen && messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
-  }, [safeMessages.length, activeProposal?.deltaId, interpreterError, interpreterRefusal, streamingBotMessage, isOpen]);
+  }, [safeMessages.length, activeProposal?.deltaId, visibleInterpreterError, interpreterRefusal, streamingBotMessage, isOpen]);
 
   // Actualizar previsualización fantasma en el lienzo cuando hay propuesta activa
   useEffect(() => {
@@ -256,6 +292,48 @@ export function ChatPanel({
           ? 'Reorganized classes on the canvas into a clean, structured layout.'
           : 'Reorganicé las clases en el lienzo en una cuadrícula limpia y estructurada.',
       });
+      return;
+    }
+
+    // 1e. Comando de cliente: /apply (aplicar y materializar propuesta o sugerencia)
+    if (trimmed === '/apply' || trimmed === '/aplicar' || trimmed.startsWith('/apply ') || trimmed.startsWith('/aplicar ')) {
+      const specificArg = trimmed.replace(/^\/(?:apply|aplicar)\s*/i, '').trim();
+      setDraft('');
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+
+      // 1. Revisar si hay propuesta activa pendiente en lienzo
+      if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !specificArg) {
+        await handleConfirm(activeProposal.deltaId, activeProposal.delta);
+        return;
+      }
+
+      // 2. Buscar la última propuesta con delta no aplicada en el historial de mensajes
+      const pendingMsg = [...safeMessages]
+        .reverse()
+        .find((m) => m.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId));
+
+      if (pendingMsg && pendingMsg.deltaId && pendingMsg.delta && !specificArg) {
+        await handleConfirm(pendingMsg.deltaId, pendingMsg.delta);
+        return;
+      }
+
+      // 3. Si no hay propuesta activa ni en mensajes, o se especificó un argumento, pedir a Amongus que implemente
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: isEn
+          ? (specificArg ? `Preparing proposal to implement "${specificArg}" on the canvas...` : 'Synthesizing the latest suggestion into a model proposal on the canvas...')
+          : (specificArg ? `Preparando la propuesta para construir "${specificArg}" en el lienzo...` : 'Preparando la propuesta para construir las clases sugeridas en el lienzo...'),
+      });
+      await sendMessage(
+        specificArg
+          ? (isEn ? `Create and implement class ${specificArg}` : `Creá e implementá en el lienzo la clase ${specificArg}`)
+          : (isEn ? 'Implement the classes and relationships you just suggested' : 'Implementá en el lienzo las clases y relaciones que me acabas de sugerir')
+      );
       return;
     }
 
@@ -464,7 +542,14 @@ export function ChatPanel({
   };
 
   const handleConfirm = async (deltaId: string, delta: Delta) => {
-    setAppliedDeltaIds((prev) => new Set([...prev, deltaId]));
+    setAppliedDeltaIds((prev) => {
+      const next = new Set([...prev, deltaId]);
+      try {
+        localStorage.setItem(`amongus_applied_deltas_${diagramId}`, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+    setDismissedError(interpreterError);
     onPreviewProposal?.(null);
     if (onConfirmProposal) {
       await onConfirmProposal(deltaId, delta);
@@ -472,7 +557,14 @@ export function ChatPanel({
   };
 
   const handleReject = async (deltaId: string) => {
-    setRejectedDeltaIds((prev) => new Set([...prev, deltaId]));
+    setRejectedDeltaIds((prev) => {
+      const next = new Set([...prev, deltaId]);
+      try {
+        localStorage.setItem(`amongus_rejected_deltas_${diagramId}`, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+    setDismissedError(interpreterError);
     onPreviewProposal?.(null);
     if (onRejectProposal) {
       await onRejectProposal(deltaId);
@@ -626,7 +718,10 @@ export function ChatPanel({
         })}
 
         {/* Tarjeta de propuesta activa */}
-        {activeProposal && !safeMessages.some((m) => m.deltaId === activeProposal.deltaId) && (
+        {activeProposal &&
+          !appliedDeltaIds.has(activeProposal.deltaId) &&
+          !rejectedDeltaIds.has(activeProposal.deltaId) &&
+          !safeMessages.some((m) => m.deltaId === activeProposal.deltaId) && (
           <div className="chat-message chat-message--bot" data-testid="chat-active-proposal">
             <div className="chat-message__avatar-container">
               <AmongusAvatar size={30} isAnimated={buildingDeltaId === activeProposal.deltaId} />
@@ -670,7 +765,7 @@ export function ChatPanel({
         )}
 
         {/* Mensaje de error con rol de alerta */}
-        {interpreterError && (
+        {visibleInterpreterError && (
           <div className="chat-message chat-message--bot" role="alert">
             <div className="chat-message__avatar-container">
               <AmongusAvatar size={30} />
@@ -679,9 +774,18 @@ export function ChatPanel({
               <div className="chat-message__header">
                 <span className="chat-message__sender">Amongus</span>
                 <span className="chat-message__tag-bot">Bot</span>
+                <button
+                  type="button"
+                  onClick={() => setDismissedError(interpreterError)}
+                  className="chat-error-dismiss-btn"
+                  title={isEn ? 'Dismiss error' : 'Cerrar mensaje de error'}
+                  aria-label={isEn ? 'Dismiss error' : 'Cerrar error'}
+                >
+                  ✕
+                </button>
               </div>
               <div className="chat-message__bubble interpreter-error">
-                {interpreterError}
+                {visibleInterpreterError}
               </div>
             </div>
           </div>

@@ -114,6 +114,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     example: '/layout',
     exampleEn: '/layout',
   },
+  {
+    name: 'apply',
+    description: 'Aplica y construye la propuesta activa o última sugerencia en el lienzo',
+    descriptionEn: 'Apply and build the active proposal or latest suggestion on the canvas',
+    usage: '/apply',
+    usageEn: '/apply',
+    scope: 'client',
+    category: 'modeling',
+    example: '/apply',
+    exampleEn: '/apply',
+  },
 ];
 
 /**

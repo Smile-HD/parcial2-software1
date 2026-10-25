@@ -234,4 +234,68 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
     });
     expect(chatApi.sendChatMessage).not.toHaveBeenCalled();
   });
+
+  it('no muestra el banner de error cuando es un error de delta ya utilizado (already used)', () => {
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+        interpreterError="Unknown or already used delta id"
+      />
+    );
+
+    expect(screen.queryByText(/Unknown or already used/i)).toBeNull();
+  });
+
+  it('permite descartar manualmente el mensaje de error con el botón de cierre', async () => {
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+        interpreterError="Falla de conexión con el modelo"
+      />
+    );
+
+    expect(screen.getByText('Falla de conexión con el modelo')).toBeDefined();
+    const dismissBtn = screen.getByRole('button', { name: 'Cerrar error' });
+    fireEvent.click(dismissBtn);
+
+    expect(screen.queryByText('Falla de conexión con el modelo')).toBeNull();
+  });
+
+  it('ejecuta /apply para confirmar una propuesta activa pendiente', async () => {
+    const mockOnConfirm = vi.fn();
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+        onConfirmProposal={mockOnConfirm}
+        activeProposal={{
+          deltaId: 'proposal-999',
+          delta: {
+            kind: 'class',
+            op: 'create',
+            name: 'Devolucion',
+            attributes: [],
+            methods: [],
+            position: { x: 100, y: 100 },
+          },
+        }}
+      />
+    );
+
+    const input = screen.getByTestId('chat-input');
+    fireEvent.change(input, { target: { value: '/apply' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(mockOnConfirm).toHaveBeenCalledWith('proposal-999', expect.any(Object));
+    });
+  });
 });

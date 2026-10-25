@@ -323,6 +323,7 @@ export async function processUnifiedAmongusTurn(
           '• /model <topic> — Directly generate domain model proposal (e.g. /model airline)',
           '• /audit — Audit current diagram with OOAD quality principles',
           '• /suggest — Suggest missing entities to complete your domain',
+          '• /apply — Apply and build active proposal or latest suggestion',
           '• /clear — Safe proposal to clear the canvas (requires confirmation)',
           '• /export <spring|xmi|png> — Export project, XMI, or high-res image',
           '• /layout — Reorganize classes visually to avoid overlap',
@@ -335,6 +336,7 @@ export async function processUnifiedAmongusTurn(
           '• /model <tema> — Genera directamente la propuesta de dominio (ej. /model aerolineas)',
           '• /audit — Audita el diagrama con principios de calidad OOAD y buenas prácticas UML',
           '• /suggest — Sugiere entidades faltantes para enriquecer el modelo',
+          '• /apply — Aplica y construye la propuesta activa o última sugerencia en el lienzo',
           '• /clear — Propuesta segura para vaciar el lienzo (con confirmación)',
           '• /export <spring|xmi|png> — Exporta a Spring Boot, XMI 2.1 o imagen PNG',
           '• /layout — Reorganiza visualmente las clases para evitar solapamientos',
@@ -416,16 +418,25 @@ export async function processUnifiedAmongusTurn(
           '4. Mejoras Recomendadas: Próximos pasos concretos de arquitectura.',
         ].join('\n');
 
+    let auditChunks = '';
+    const wrappedAuditChunk = (chunk: string) => {
+      auditChunks += chunk;
+      onChunk?.(chunk);
+    };
+
     try {
       const auditResult = await llm.chat(
         [
           { role: 'system', content: auditPrompt },
           { role: 'user', content: 'Ejecutar auditoría OOAD del diagrama actual' },
         ],
-        { timeoutMs: 60000, maxTokens: 600, onChunk }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 450, onChunk: wrappedAuditChunk }
       );
       return { replyContent: stripEmojis(auditResult).trim() };
     } catch {
+      if (auditChunks.trim().length > 30) {
+        return { replyContent: stripEmojis(auditChunks).trim() };
+      }
       return {
         replyContent: isEn
           ? 'Could not complete the audit at this time. Please try again.'
@@ -457,22 +468,51 @@ export async function processUnifiedAmongusTurn(
           'Explica claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON.',
         ].join('\n');
 
+    let suggestChunks = '';
+    const wrappedSuggestChunk = (chunk: string) => {
+      suggestChunks += chunk;
+      onChunk?.(chunk);
+    };
+
     try {
       const suggestResult = await llm.chat(
         [
           { role: 'system', content: suggestPrompt },
           { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
         ],
-        { timeoutMs: 60000, maxTokens: 500, onChunk }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 350, onChunk: wrappedSuggestChunk }
       );
       return { replyContent: stripEmojis(suggestResult).trim() };
     } catch {
+      if (suggestChunks.trim().length > 30) {
+        return { replyContent: stripEmojis(suggestChunks).trim() };
+      }
       return {
         replyContent: isEn
           ? 'I suggest reviewing transaction details or intermediate entities for your model.'
           : 'Te sugiero revisar si tu modelo necesita clases intermedias para transacciones (como detalles de comprobante o historiales).',
       };
     }
+  }
+
+  if (trimmedLower === '/apply' || trimmedLower.startsWith('/apply ') || trimmedLower === '/aplicar' || trimmedLower.startsWith('/aplicar ')) {
+    const specificTopic = userContent.trim().replace(/^\/(?:apply|aplicar)\s*/i, '').trim();
+    const lastAssistantMsg = [...(chatHistory || [])].reverse().find((m) => m.role === 'assistant');
+    const topic = specificTopic || (lastAssistantMsg ? `las entidades sugeridas: ${lastAssistantMsg.content}` : 'entidades del dominio');
+    const synthesized = await synthesizeDomainModel(topic, diagramId, llm);
+    if (synthesized && synthesized.deltas.length > 0) {
+      return {
+        replyContent: isEn
+          ? 'I prepared the domain proposal for the suggested entities. You can preview it on the canvas and confirm to build.'
+          : 'Preparé la propuesta para las entidades sugeridas. Podés ver la previsualización en el lienzo y confirmarla.',
+        batchDelta: synthesized,
+      };
+    }
+    return {
+      replyContent: isEn
+        ? 'Could not generate an automatic proposal for this suggestion. You can specify: /model <topic>'
+        : 'No se pudo generar una propuesta automática para esta sugerencia. Podés especificar: /model <tema>',
+    };
   }
 
   const normalized = userContent
