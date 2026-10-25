@@ -168,6 +168,29 @@ export function useChat({
     [diagramId, userName, activeChannel, language, loadMessages],
   );
 
+  const addLocalMessage = useCallback(
+    (msg: { senderType: 'user' | 'bot'; senderName: string; content: string; deltaId?: string }) => {
+      const newMsg: ChatMessage = {
+        id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        diagramId,
+        deviceId: deviceIdRef.current,
+        senderName: msg.senderName,
+        senderType: msg.senderType,
+        channelType: activeChannel,
+        targetUser: null,
+        content: msg.content,
+        deltaId: msg.deltaId,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, newMsg]);
+    },
+    [diagramId, activeChannel]
+  );
+
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+  }, []);
+
   return {
     messages,
     activeChannel,
@@ -180,6 +203,8 @@ export function useChat({
     isLoading,
     error,
     sendMessage: send,
+    addLocalMessage,
+    clearMessages,
     streamingBotMessage,
     deviceId: deviceIdRef.current,
   };

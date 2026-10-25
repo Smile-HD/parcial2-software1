@@ -189,4 +189,49 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
     expect(screen.getByText('Team')).toBeDefined();
     expect(screen.getByPlaceholderText(/Write a message/i)).toBeDefined();
   });
+
+  it('despliega el popover de comandos al escribir / y permite autocompletar', async () => {
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+      />
+    );
+
+    const input = screen.getByTestId('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '/' } });
+
+    // El popover de comandos debe renderizarse
+    expect(screen.getByRole('listbox', { name: 'Comandos slash' })).toBeDefined();
+    expect(screen.getByText('/help [comando]')).toBeDefined();
+    expect(screen.getByText('/model <tema>')).toBeDefined();
+    expect(screen.getByText('/audit')).toBeDefined();
+
+    // Presionar Tab o hacer clic para autocompletar
+    fireEvent.keyDown(input, { key: 'Tab' });
+    expect(input.value).toBe('/help ');
+  });
+
+  it('ejecuta /help en el cliente mostrando la tarjeta de ayuda instantánea', async () => {
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+      />
+    );
+
+    const input = screen.getByTestId('chat-input');
+    fireEvent.change(input, { target: { value: '/help' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // Debe mostrar la respuesta de ayuda de Amongus sin llamar a la API
+    await waitFor(() => {
+      expect(screen.getByText(/Guía de Comandos de Amongus/i)).toBeDefined();
+    });
+    expect(chatApi.sendChatMessage).not.toHaveBeenCalled();
+  });
 });

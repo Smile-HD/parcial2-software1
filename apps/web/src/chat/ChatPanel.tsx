@@ -8,6 +8,13 @@ import { presenceInitials } from '../canvas/PresenceBar';
 import { useT } from '../i18n';
 import type { VoiceRecorder } from '../voice/recorder';
 import { transcribeAudio } from '../api/voiceApi';
+import {
+  SLASH_COMMANDS,
+  matchSlashCommands,
+  buildHelpContent,
+  buildContextReport,
+  type SlashCommand,
+} from './commands';
 import './chat.css';
 
 export interface ChatPanelProps {
@@ -115,6 +122,8 @@ export function ChatPanel({
     activeChannel,
     setActiveChannel,
     sendMessage,
+    addLocalMessage,
+    clearMessages,
     isLoading,
     error,
     streamingBotMessage,
@@ -131,6 +140,16 @@ export function ChatPanel({
       setInternalDraft(val);
     }
   };
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+
+  const isSlashQuery = draft.startsWith('/') && !draft.includes(' ');
+  const matchingCommands = isSlashQuery ? matchSlashCommands(draft) : [];
+
+  useEffect(() => {
+    setSelectedCommandIndex(0);
+  }, [draft]);
 
   const [isSending, setIsSending] = useState(false);
   const [internalRecording, setInternalRecording] = useState(false);
@@ -169,6 +188,151 @@ export function ChatPanel({
     const trimmed = draft.trim();
     if (!trimmed || isSending || interpreterPhase === 'thinking') return;
 
+    // 1. Comando de cliente: /help [comando]
+    if (trimmed === '/help' || trimmed.startsWith('/help ')) {
+      const arg = trimmed.slice(5).trim();
+      setDraft('');
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+      const helpContent = buildHelpContent(arg || undefined, isEn);
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: helpContent,
+      });
+      return;
+    }
+
+    // 1b. Comando de cliente: /reset (vaciar contexto de memoria)
+    if (trimmed === '/reset') {
+      setDraft('');
+      clearMessages();
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: isEn
+          ? 'Chat context reset. Conversational memory has been cleared to 0 tokens for maximum speed on CPU.'
+          : 'Contexto del chat reiniciado. La memoria conversacional se vació a 0 tokens para máxima velocidad en CPU.',
+      });
+      void sendMessage('/reset').catch(() => {});
+      return;
+    }
+
+    // 1c. Comando de cliente: /context (monitor de tokens y velocidad)
+    if (trimmed === '/context') {
+      setDraft('');
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+      const classNodes = document.querySelectorAll('.react-flow__node-class, [data-testid^="class-node"]');
+      const classCount = classNodes.length || 3;
+      const contextReport = buildContextReport(safeMessages.length, classCount, isEn);
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: contextReport,
+      });
+      return;
+    }
+
+    // 2. Comando de cliente: /export [formato]
+    if (trimmed === '/export' || trimmed.startsWith('/export ')) {
+      const arg = trimmed.slice(7).trim().toLowerCase();
+      setDraft('');
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+
+      if (arg === 'spring') {
+        const springBtn = document.querySelector('button[aria-label*="Spring"], button[title*="Spring"]') as HTMLButtonElement | null;
+        if (springBtn && !springBtn.disabled) {
+          springBtn.click();
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'Triggering Spring Boot project generation from the top toolbar...' : 'Iniciando generación de proyecto Spring Boot con entidades JPA...',
+          });
+        } else {
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'Spring Boot generation button is ready in the top toolbar.' : 'El botón de generar Spring Boot se encuentra disponible en la barra superior.',
+          });
+        }
+        return;
+      }
+
+      if (arg === 'xmi') {
+        const xmiBtn = document.querySelector('button[aria-label*="XMI"], button[title*="XMI"]') as HTMLButtonElement | null;
+        if (xmiBtn && !xmiBtn.disabled) {
+          xmiBtn.click();
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'Exporting Enterprise Architect XMI 2.1...' : 'Exportando diagrama en formato Enterprise Architect XMI 2.1...',
+          });
+        } else {
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'Export XMI button is ready in the top toolbar.' : 'Podes exportar a XMI 2.1 usando el botón "Exportar XMI" en la barra superior.',
+          });
+        }
+        return;
+      }
+
+      if (arg === 'png' || arg === 'jpeg' || arg === 'jpg') {
+        const imgBtn = document.querySelector('button[aria-label*="PNG"], button[title*="PNG"]') as HTMLButtonElement | null;
+        if (imgBtn && !imgBtn.disabled) {
+          imgBtn.click();
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'Exporting high-resolution PNG image of the canvas...' : 'Exportando imagen PNG de alta resolución del lienzo...',
+          });
+        } else {
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn ? 'Export PNG button is ready in the top toolbar.' : 'Podes exportar la imagen usando "Exportar PNG" en la barra superior.',
+          });
+        }
+        return;
+      }
+
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: isEn
+          ? 'Available export options:\n• /export spring — Generate executable Spring Boot project with JPA entities\n• /export xmi — Download Enterprise Architect XMI 2.1 file\n• /export png — Download high-resolution PNG snapshot of your diagram'
+          : 'Opciones de exportación disponibles:\n• /export spring — Genera proyecto ejecutable de Spring Boot con JPA\n• /export xmi — Descarga archivo XMI 2.1 para Enterprise Architect\n• /export png — Descarga captura PNG en alta resolución del lienzo',
+      });
+      return;
+    }
+
+    // 3. Comando de cliente: /clear (vaciado con propuesta de seguridad)
+    if (trimmed === '/clear') {
+      setDraft('');
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+      if (onSubmitCommand) {
+        await onSubmitCommand('eliminar todas las clases');
+      } else {
+        await sendMessage('eliminar todas las clases');
+      }
+      return;
+    }
+
     try {
       setIsSending(true);
       setDraft('');
@@ -183,6 +347,51 @@ export function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isSlashQuery && matchingCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedCommandIndex((prev) => (prev + 1) % matchingCommands.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedCommandIndex((prev) => (prev - 1 + matchingCommands.length) % matchingCommands.length);
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const cmd = matchingCommands[selectedCommandIndex];
+        if (cmd) {
+          if (cmd.name === 'audit' || cmd.name === 'suggest' || cmd.name === 'clear' || cmd.name === 'layout') {
+            setDraft(`/${cmd.name}`);
+          } else {
+            setDraft(`/${cmd.name} `);
+          }
+        }
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const exactMatch = matchingCommands.find((c) => `/${c.name}` === draft);
+        if (!exactMatch) {
+          e.preventDefault();
+          const cmd = matchingCommands[selectedCommandIndex];
+          if (cmd) {
+            if (cmd.name === 'audit' || cmd.name === 'suggest' || cmd.name === 'clear' || cmd.name === 'layout') {
+              setDraft(`/${cmd.name}`);
+            } else {
+              setDraft(`/${cmd.name} `);
+            }
+          }
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setDraft('');
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
@@ -504,9 +713,41 @@ export function ChatPanel({
       )}
 
       {/* Formulario de entrada con mic y send */}
-      <form onSubmit={handleSend} className="chat-panel__footer">
+      <form onSubmit={handleSend} className="chat-panel__footer" style={{ position: 'relative' }}>
+        {/* Popover de autocompletado de comandos slash */}
+        {isSlashQuery && matchingCommands.length > 0 && (
+          <div className="chat-panel__command-popover" role="listbox" aria-label={isEn ? 'Slash commands' : 'Comandos slash'}>
+            {matchingCommands.map((cmd, idx) => {
+              const isSelected = idx === selectedCommandIndex;
+              return (
+                <div
+                  key={cmd.name}
+                  className={`chat-panel__command-item ${isSelected ? 'chat-panel__command-item--active' : ''}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    if (cmd.name === 'audit' || cmd.name === 'suggest' || cmd.name === 'clear' || cmd.name === 'layout') {
+                      setDraft(`/${cmd.name}`);
+                    } else {
+                      setDraft(`/${cmd.name} `);
+                    }
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <span className="chat-panel__command-usage">{isEn ? cmd.usageEn : cmd.usage}</span>
+                  <span className="chat-panel__command-desc">{isEn ? cmd.descriptionEn : cmd.description}</span>
+                  <span className={`chat-panel__command-badge ${cmd.scope === 'server' ? 'chat-panel__command-badge--server' : ''}`}>
+                    {cmd.scope === 'server' ? 'IA' : '0ms'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div className="chat-panel__input-group">
           <input
+            ref={inputRef}
             type="text"
             className="chat-panel__input"
             value={draft}

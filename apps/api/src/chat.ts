@@ -310,6 +310,171 @@ export async function processUnifiedAmongusTurn(
 
   const diagramContext = summarizeDiagramForPrompt(diagram);
 
+  // 0. Manejo de Comandos Slash Explícitos (/help, /model, /audit, /suggest)
+  const trimmedLower = userContent.trim().toLowerCase();
+
+  if (trimmedLower === '/help' || trimmedLower.startsWith('/help ')) {
+    const helpLines = isEn
+      ? [
+          'Amongus Command Guide:',
+          '• /help [command] — Show interactive guide and command details',
+          '• /reset — Clear chat memory to 0 tokens for maximum CPU speed',
+          '• /context — View token count and CPU latency speed meter',
+          '• /model <topic> — Directly generate domain model proposal (e.g. /model airline)',
+          '• /audit — Audit current diagram with OOAD quality principles',
+          '• /suggest — Suggest missing entities to complete your domain',
+          '• /clear — Safe proposal to clear the canvas (requires confirmation)',
+          '• /export <spring|xmi|png> — Export project, XMI, or high-res image',
+          '• /layout — Reorganize classes visually to avoid overlap',
+        ].join('\n')
+      : [
+          'Guía de Comandos de Amongus:',
+          '• /help [comando] — Muestra la guía interactiva y detalles de cada comando',
+          '• /reset — Vacía la memoria del chat a 0 tokens para máxima velocidad en CPU',
+          '• /context — Muestra el total de tokens cargados y el semáforo de velocidad',
+          '• /model <tema> — Genera directamente la propuesta de dominio (ej. /model aerolineas)',
+          '• /audit — Audita el diagrama con principios de calidad OOAD y buenas prácticas UML',
+          '• /suggest — Sugiere entidades faltantes para enriquecer el modelo',
+          '• /clear — Propuesta segura para vaciar el lienzo (con confirmación)',
+          '• /export <spring|xmi|png> — Exporta a Spring Boot, XMI 2.1 o imagen PNG',
+          '• /layout — Reorganiza visualmente las clases para evitar solapamientos',
+        ].join('\n');
+    return { replyContent: helpLines };
+  }
+
+  if (trimmedLower === '/reset') {
+    return {
+      replyContent: isEn
+        ? 'Chat context reset. Conversational memory has been cleared to 0 tokens for maximum speed on CPU.'
+        : 'Contexto del chat reiniciado. La memoria conversacional se vació a 0 tokens para máxima velocidad en CPU.',
+    };
+  }
+
+  if (trimmedLower === '/context') {
+    const classCount = diagram?.classes?.length || 0;
+    const historyCount = chatHistory?.length || 0;
+    const baseTokens = 450;
+    const canvasTokens = classCount * 35;
+    const historyTokens = historyCount * 65;
+    const totalTokens = baseTokens + canvasTokens + historyTokens;
+
+    let latency = isEn ? '🟢 Fast (~3-6s on CPU)' : '🟢 Rápida (~3-6s en CPU)';
+    let tip = isEn ? 'Memory is optimal.' : 'Memoria óptima.';
+    if (totalTokens >= 2400) {
+      latency = isEn ? '🔴 Heavy (>30s on CPU)' : '🔴 Pesada (>30s en CPU)';
+      tip = isEn ? 'Use /reset to clear history.' : 'Usá /reset para limpiar el historial.';
+    } else if (totalTokens >= 1200) {
+      latency = isEn ? '🟡 Moderate (~10-20s on CPU)' : '🟡 Moderada (~10-20s en CPU)';
+      tip = isEn ? 'Acceptable speed.' : 'Velocidad aceptable.';
+    }
+
+    const reply = isEn
+      ? `📊 Context Status: ~${totalTokens} total tokens (Base: ${baseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}). Velocity: ${latency}. Tip: ${tip}`
+      : `📊 Estado del Contexto: ~${totalTokens} tokens totales (Base: ${baseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}). Velocidad: ${latency}. Consejo: ${tip}`;
+
+    return { replyContent: reply };
+  }
+
+  if (trimmedLower.startsWith('/model ') || trimmedLower === '/model') {
+    const domainTopic = userContent.trim().slice(6).trim();
+    if (!domainTopic) {
+      return {
+        replyContent: isEn
+          ? 'Please specify a domain topic, e.g. /model airline or /model hospital'
+          : 'Por favor indicá un tema de dominio, ej: /model aerolineas o /model hospital',
+      };
+    }
+    const synthesized = await synthesizeDomainModel(domainTopic, diagramId, llm);
+    if (synthesized && synthesized.deltas.length > 0) {
+      return {
+        replyContent: isEn
+          ? `Prepared domain proposal for "${domainTopic}". You can preview it on the canvas and confirm to apply.`
+          : `Preparé la propuesta de modelo para "${domainTopic}". Podés previsualizarla en el lienzo y confirmarla.`,
+        batchDelta: synthesized,
+      };
+    }
+  }
+
+  if (trimmedLower === '/audit') {
+    const auditPrompt = isEn
+      ? [
+          'You are Amongus, a senior software architect conducting a formal OOAD and UML quality audit of the current diagram.',
+          `CURRENT CANVAS STATE:\n${diagramContext}`,
+          'EVALUATE AND REPORT (under 3 concise sections, NO emojis, NO code blocks):',
+          '1. Structural Cohesion & Orphan Classes: Are there disconnected classes?',
+          '2. Responsibility & Complexity: Are any classes overloaded with attributes or methods?',
+          '3. Relationship Quality: Are compositions, aggregations, and multiplicities appropriate?',
+          '4. Recommended Improvements: Specific concrete architectural next steps.',
+        ].join('\n')
+      : [
+          'Sos Amongus, un arquitecto de software senior realizando una auditoría formal de calidad OOAD y UML del diagrama actual.',
+          `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
+          'EVALUÁ Y REPORTÁ (en 3 secciones claras y concisas, SIN emojis, SIN bloques de código):',
+          '1. Cohesión estructural y Clases huérfanas: ¿Hay clases desconectadas o aisladas?',
+          '2. Responsabilidad y Complejidad: ¿Hay clases sobrecargadas de atributos o métodos (God Classes)?',
+          '3. Calidad de Relaciones: ¿Las composiciones, agregaciones y multiplicidades son correctas?',
+          '4. Mejoras Recomendadas: Próximos pasos concretos de arquitectura.',
+        ].join('\n');
+
+    try {
+      const auditResult = await llm.chat(
+        [
+          { role: 'system', content: auditPrompt },
+          { role: 'user', content: 'Ejecutar auditoría OOAD del diagrama actual' },
+        ],
+        { timeoutMs: 60000, maxTokens: 600, onChunk }
+      );
+      return { replyContent: stripEmojis(auditResult).trim() };
+    } catch {
+      return {
+        replyContent: isEn
+          ? 'Could not complete the audit at this time. Please try again.'
+          : 'No se pudo completar la auditoría en este momento. Por favor intentá nuevamente.',
+      };
+    }
+  }
+
+  if (trimmedLower === '/suggest') {
+    if (!diagram || !diagram.classes || diagram.classes.length === 0) {
+      return {
+        replyContent: isEn
+          ? 'The canvas is currently empty. You can start by typing /model <topic> (e.g. /model ecommerce) or asking me to create your first class.'
+          : 'El lienzo está vacío actualmente. Podés arrancar usando /model <tema> (ej. /model ecommerce) o pidiéndome crear tu primera clase.',
+      };
+    }
+
+    const suggestPrompt = isEn
+      ? [
+          'You are Amongus, a senior software architecture tutor.',
+          `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
+          'Suggest 2 or 3 missing entities, intermediary classes, or relationships that would complete this business model.',
+          'Provide clear, concise architectural explanations without code blocks or JSON.',
+        ].join('\n')
+      : [
+          'Sos Amongus, tutor senior de arquitectura de software.',
+          `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
+          'Sugerí 2 o 3 entidades faltantes, clases intermedias o relaciones clave que enriquecerían y completarían este modelo de negocio.',
+          'Explica claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON.',
+        ].join('\n');
+
+    try {
+      const suggestResult = await llm.chat(
+        [
+          { role: 'system', content: suggestPrompt },
+          { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
+        ],
+        { timeoutMs: 60000, maxTokens: 500, onChunk }
+      );
+      return { replyContent: stripEmojis(suggestResult).trim() };
+    } catch {
+      return {
+        replyContent: isEn
+          ? 'I suggest reviewing transaction details or intermediate entities for your model.'
+          : 'Te sugiero revisar si tu modelo necesita clases intermedias para transacciones (como detalles de comprobante o historiales).',
+      };
+    }
+  }
+
   const normalized = userContent
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

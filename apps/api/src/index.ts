@@ -798,6 +798,20 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
       // Nivel 2: Agente unificado en un solo turno (el modelo decide en una sola pasada si es propuesta o respuesta conceptual)
       if (!replyContent) {
+        // Si el usuario envió /reset, purgar el historial previo en base de datos para arrancar limpios a 0 tokens
+        if (parsed.data.content.trim().toLowerCase() === '/reset') {
+          try {
+            await dbPool.query(
+              `DELETE FROM chat_messages 
+               WHERE diagram_id = $1 
+                 AND channel_type = 'direct_bot'
+                 AND (device_id = $2 OR target_user = $3 OR sender_name = $3)
+                 AND id != $4`,
+              [id, parsed.data.deviceId, parsed.data.senderName, message.id]
+            );
+          } catch {}
+        }
+
         // Recuperar historial reciente para que el modelo tenga memoria conversacional y contexto de turnos previos
         let chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
         try {
