@@ -490,6 +490,27 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       });
   };
 
+  // Auto-layout de nodos activado desde comando slash (/layout)
+  useEffect(() => {
+    const handleAutoLayout = () => {
+      const current = projectYDocToDiagram(doc);
+      if (!current.classes || current.classes.length === 0) return;
+      const cols = Math.max(2, Math.ceil(Math.sqrt(current.classes.length)));
+      current.classes.forEach((c, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        applyDeltaToYDoc(doc, {
+          kind: 'class',
+          op: 'reposition',
+          classId: c.id,
+          newPosition: { x: 120 + col * 280, y: 120 + row * 220 },
+        });
+      });
+    };
+    window.addEventListener('canvas:auto-layout', handleAutoLayout);
+    return () => window.removeEventListener('canvas:auto-layout', handleAutoLayout);
+  }, [doc]);
+
   // Entrada de voz (PR 8, tareas 8.3/8.4). La transcripción cae en el MISMO
   // input de comando (visible + editable — voice:R3): el usuario puede corregir un
   // nombre mal interpretado y presionar Enviar, reingresando al pipeline de texto idéntico

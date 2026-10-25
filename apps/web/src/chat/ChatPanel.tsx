@@ -240,6 +240,25 @@ export function ChatPanel({
       return;
     }
 
+    // 1d. Comando de cliente: /layout (auto-ordenamiento en cuadrícula)
+    if (trimmed === '/layout') {
+      setDraft('');
+      addLocalMessage({
+        senderType: 'user',
+        senderName: userName,
+        content: trimmed,
+      });
+      window.dispatchEvent(new CustomEvent('canvas:auto-layout'));
+      addLocalMessage({
+        senderType: 'bot',
+        senderName: 'Amongus',
+        content: isEn
+          ? 'Reorganized classes on the canvas into a clean, structured layout.'
+          : 'Reorganicé las clases en el lienzo en una cuadrícula limpia y estructurada.',
+      });
+      return;
+    }
+
     // 2. Comando de cliente: /export [formato]
     if (trimmed === '/export' || trimmed.startsWith('/export ')) {
       const arg = trimmed.slice(7).trim().toLowerCase();
