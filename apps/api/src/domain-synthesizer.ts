@@ -318,6 +318,56 @@ export function expandSemanticDomainToDelta(
     });
   }
 
+  // Helper para verificar si dos clases ya tienen cualquier relación directa entre sí
+  const areClassesConnected = (idA: string, idB: string): boolean => {
+    if (!idA || !idB || idA === idB) return true;
+    // Diagram associations
+    if (currentDiagram?.associations?.some(
+      (a: any) =>
+        (a.sourceClassId === idA && a.targetClassId === idB) ||
+        (a.sourceClassId === idB && a.targetClassId === idA)
+    )) return true;
+    // Diagram generalizations
+    if (currentDiagram?.generalizations?.some(
+      (g: any) =>
+        (g.subClassId === idA && g.superClassId === idB) ||
+        (g.subClassId === idB && g.superClassId === idA)
+    )) return true;
+    // Diagram realizations
+    if (currentDiagram?.realizations?.some(
+      (r: any) =>
+        (r.clientClassId === idA && r.supplierInterfaceId === idB) ||
+        (r.clientClassId === idB && r.supplierInterfaceId === idA)
+    )) return true;
+    // Diagram dependencies
+    if (currentDiagram?.dependencies?.some(
+      (d: any) =>
+        (d.clientClassId === idA && d.supplierClassId === idB) ||
+        (d.clientClassId === idB && d.supplierClassId === idA)
+    )) return true;
+    // Deltas in this batch
+    if (deltas.some((d: any) => {
+      if (d.kind === 'association') {
+        return (d.sourceClassId === idA && d.targetClassId === idB) ||
+               (d.sourceClassId === idB && d.targetClassId === idA);
+      }
+      if (d.kind === 'generalization') {
+        return (d.subClassId === idA && d.superClassId === idB) ||
+               (d.subClassId === idB && d.superClassId === idA);
+      }
+      if (d.kind === 'realization') {
+        return (d.clientClassId === idA && d.supplierInterfaceId === idB) ||
+               (d.clientClassId === idB && d.supplierInterfaceId === idA);
+      }
+      if (d.kind === 'dependency') {
+        return (d.clientClassId === idA && d.supplierClassId === idB) ||
+               (d.clientClassId === idB && d.supplierClassId === idA);
+      }
+      return false;
+    })) return true;
+    return false;
+  };
+
   // 2. Asociaciones, composiciones y agregaciones
   if (Array.isArray(model.associations)) {
     model.associations.forEach((assoc) => {
@@ -325,6 +375,7 @@ export function expandSemanticDomainToDelta(
       const targetId = resolveClassId(assoc.target);
 
       if (!sourceId || !targetId || sourceId === targetId) return;
+      if (areClassesConnected(sourceId, targetId)) return;
 
       // Si el nombre o tipo indica herencia/generalización
       const isGeneralization = assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name);
@@ -411,7 +462,7 @@ export function expandSemanticDomainToDelta(
     model.generalizations.forEach((gen) => {
       const subId = resolveClassId(gen.subclass);
       const superId = resolveClassId(gen.superclass);
-      if (!subId || !superId || subId === superId) return;
+      if (!subId || !superId || subId === superId || areClassesConnected(subId, superId)) return;
 
       deltas.push({
         id: crypto.randomUUID(),
@@ -432,7 +483,7 @@ export function expandSemanticDomainToDelta(
     model.realizations.forEach((r) => {
       const client = resolveClassId(r.clientClass);
       const supplier = resolveClassId(r.supplierInterface);
-      if (!client || !supplier || client === supplier) return;
+      if (!client || !supplier || client === supplier || areClassesConnected(client, supplier)) return;
 
       deltas.push({
         id: crypto.randomUUID(),
@@ -453,7 +504,7 @@ export function expandSemanticDomainToDelta(
     model.dependencies.forEach((d) => {
       const client = resolveClassId(d.client);
       const supplier = resolveClassId(d.supplier);
-      if (!client || !supplier || client === supplier) return;
+      if (!client || !supplier || client === supplier || areClassesConnected(client, supplier)) return;
 
       deltas.push({
         id: crypto.randomUUID(),
@@ -791,6 +842,16 @@ export async function synthesizeDomainModel(
     ? `\nThe current diagram already has these classes: ${existingClassesList.join(', ')}. Reuse these exact names if relating to them, and do not duplicate them unless creating distinct entities.`
     : '';
 
+  const existingAssocsList = currentDiagram?.associations?.map((a: any) => {
+    const src = currentDiagram.classes?.find((c: any) => c.id === a.sourceClassId)?.name;
+    const tgt = currentDiagram.classes?.find((c: any) => c.id === a.targetClassId)?.name;
+    return src && tgt ? `${src} <-> ${tgt}` : null;
+  }).filter(Boolean) || [];
+
+  const assocHint = existingAssocsList.length > 0
+    ? `\nExisting relationships already in the canvas: ${existingAssocsList.join(', ')}. CRITICAL: DO NOT duplicate or create redundant relationships between classes that already have an association! Only link new entities to existing ones without repeating existing links.`
+    : '';
+
   const systemPrompt = [
     'You are a senior UML software architect.',
     'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; airline: Vuelo, Pasajero, Reserva; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
@@ -799,6 +860,7 @@ export async function synthesizeDomainModel(
     'Provide 2 to 3 realistic attributes each.',
     'Include essential relationships (associations) connecting the classes together, and connecting them to existing classes if present.',
     contextHint,
+    assocHint,
     'Output ONLY a valid raw JSON object matching:',
     '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB"}]}',
   ].filter(Boolean).join('\n');

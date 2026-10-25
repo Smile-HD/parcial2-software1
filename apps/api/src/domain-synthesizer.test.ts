@@ -374,6 +374,56 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(diagram.associations).toHaveLength(0);
     }
   });
+
+  it('deduplicates associations when classes already have a relationship in the diagram or batch', () => {
+    const classAId = '01925b42-d690-7c28-9f12-9c98a3f80c01';
+    const classBId = '01925b42-d690-7c28-9f12-9c98a3f80c02';
+    const existingDiagramWithAssoc: Diagram = {
+      id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
+      name: 'Existing Assoc Diagram',
+      classes: [
+        { id: classAId, name: 'Vuelo', attributes: [], methods: [], position: { x: 0, y: 0 } },
+        { id: classBId, name: 'Pasajero', attributes: [], methods: [], position: { x: 300, y: 0 } },
+      ],
+      associations: [
+        {
+          id: '01925b42-d690-7c28-9f12-9c98a3f80c03',
+          sourceClassId: classAId,
+          targetClassId: classBId,
+          directed: false,
+          aggregation: 'none',
+          aggregationEnd: 'source',
+        },
+      ],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const modelWithDuplicateAssocs: SemanticDomainModel = {
+      classes: [
+        { name: 'Vuelo' },
+        { name: 'Pasajero' },
+        { name: 'Reserva' },
+      ],
+      associations: [
+        // Esta asociación entre Vuelo y Pasajero ya existe en el diagrama existente: debe ser descartada
+        { source: 'Vuelo', target: 'Pasajero' },
+        // Y si viene repetida en reversa en el mismo lote: debe ser descartada
+        { source: 'Pasajero', target: 'Vuelo' },
+        // Esta nueva relación hacia Reserva debe ser aceptada
+        { source: 'Pasajero', target: 'Reserva' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(modelWithDuplicateAssocs, existingDiagramWithAssoc.id, existingDiagramWithAssoc);
+    expect(delta).not.toBeNull();
+    const assocDeltas = delta!.deltas.filter((d: any) => d.kind === 'association');
+    // Solo 1 asociación permitida (Pasajero <-> Reserva). Las asociaciones duplicadas (Vuelo <-> Pasajero) deben descartarse.
+    expect(assocDeltas).toHaveLength(1);
+    expect(assocDeltas[0].sourceClassId === classBId || assocDeltas[0].targetClassId === classBId).toBe(true);
+  });
 });
 
 

@@ -545,12 +545,14 @@ export async function processUnifiedAmongusTurn(
         'CRITICAL RULES:',
         '1. NO EMOJIS or emoticons under any circumstance.',
         '2. THE USER NEVER WRITES JSON OR CODE: The user interacts visually or via conversational chat. NEVER output JSON tutorials, schema examples, or tell the user how to format JSON.',
+        '3. NEVER use the word "code" or say "here is the code". The user is interacting with an interactive visual UML diagramming canvas, not writing source code.',
         isAction
           ? [
-              '3. USER REQUESTED TO CREATE, MODEL, OR MODIFY CLASSES OR A DOMAIN/SYSTEM (e.g. airline, store, hotel, hospital):',
+              '4. USER REQUESTED TO CREATE, MODEL, OR MODIFY CLASSES OR A DOMAIN/SYSTEM (e.g. airline, store, hotel, hospital):',
               '   STRICT: NEVER output class attributes or entities as plain text bullet points.',
               '   YOUR ENTIRE RESPONSE MUST START IMMEDIATELY WITH THE ```json BLOCK.',
-              '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT EXPLAIN IN PLAIN TEXT BEFORE OR INSTEAD OF JSON.',
+              '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT SAY "HERE IS THE CODE".',
+              '   RELATION INTEGRITY: If classes already exist and are connected in the canvas, DO NOT duplicate or re-add relationships between them. Only link new entities without creating redundant relationships.',
               '   Exact JSON output format required:',
               '   ```json',
               '   {',
@@ -571,9 +573,10 @@ export async function processUnifiedAmongusTurn(
               '   - Generalization: "generalizations": [{"subclass": "Dog", "superclass": "Animal"}]',
               '   - Realization: "realizations": [{"clientClass": "Pigeon", "supplierInterface": "Flyable"}]',
               '   - Deletions: "deletions": {"classes": ["DeletedClass"]}',
+              '   STRICT: NEVER include code blocks, JSON syntax, or dummy placeholders in your conversational replies.',
             ].join('\n')
           : [
-              '3. THEORETICAL OR ADVICE QUESTION (e.g. what is aggregation vs composition?):',
+              '4. THEORETICAL OR ADVICE QUESTION (e.g. what is aggregation vs composition?):',
               '   Answer 100% in natural, pedagogical human language explaining the architecture.',
               '   STRICT: NEVER include code blocks, JSON syntax, or dummy placeholders in your conversational replies.',
             ].join('\n'),
@@ -589,12 +592,14 @@ export async function processUnifiedAmongusTurn(
         'REGLAS CRÍTICAS:',
         '1. NUNCA uses emojis ni emoticones bajo ninguna circunstancia.',
         '2. EL USUARIO NUNCA ESCRIBE JSON NI CÓDIGO: El usuario interactúa de forma visual o mediante chat. NUNCA le des tutoriales de JSON ni le muestres cómo formatear JSON.',
+        '3. NUNCA uses la palabra "código" ni digas "aquí tienes el código" o "acá tenés el código". El usuario interactúa con un lienzo visual interactivo de diagramas UML, no escribe código fuente.',
         isAction
           ? [
-              '3. EL USUARIO PIDE CREAR, MODIFICAR O MODELAR CLASES O UN DOMINIO/SISTEMA (ej. aerolíneas, tienda, hotel, ventas):',
+              '4. EL USUARIO PIDE CREAR, MODIFICAR O MODELAR CLASES O UN DOMINIO/SISTEMA (ej. aerolíneas, tienda, hotel, ventas):',
               '   ESTRICTO: NUNCA escribas los atributos ni las entidades como viñetas de texto plano.',
               '   TU RESPUESTA DEBE EMPEZAR INMEDIATAMENTE CON EL BLOQUE ```json.',
-              '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir texto común antes o en lugar del JSON. Si te piden un modelo o sistema, TODO debe ir estructurado en JSON.',
+              '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir introducciones, saludos o frases como "acá tenés el código". Si te piden un modelo o sistema, TODO debe ir estructurado en JSON.',
+              '   INTEGRIDAD DE RELACIONES: Si dos clases ya existen y están conectadas en el lienzo (ver "RELACIONES EN EL LIENZO"), ¡NO vuelvas a crear una relación entre ellas! Solo vinculá entidades nuevas sin duplicar relaciones existentes.',
               '   Formato exacto de salida requerido:',
               '   ```json',
               '   {',
@@ -617,7 +622,7 @@ export async function processUnifiedAmongusTurn(
               '   - Eliminaciones: "deletions": {"classes": ["ClaseABorrar"]}',
             ].join('\n')
           : [
-              '3. PREGUNTA TEÓRICA O CONCEPTUAL (ej. ¿qué es agregación?, ¿por qué separar entidades?):',
+              '4. PREGUNTA TEÓRICA O CONCEPTUAL (ej. ¿qué es agregación?, ¿por qué separar entidades?):',
               '   Respondé 100% en lenguaje natural humano, claro y pedagógico como arquitecto de software.',
               '   ESTRICTO: NUNCA incluyas bloques de código, JSON ni plantillas de ejemplo en tu respuesta conversacional.',
             ].join('\n'),
@@ -665,11 +670,12 @@ export async function processUnifiedAmongusTurn(
       const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram);
       if (batchDelta && batchDelta.deltas.length > 0) {
         const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
+        const mentionsCode = /c[oó]digo|code\b|aqu[ií]\s+tien|ac[aá]\s+ten|aqu[ií]\s+est[aá]|ac[aá]\s+est[aá]|a\s+continuaci[oó]n/i.test(textWithoutJson);
         const defaultReply = isEn
-          ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'
-          : 'Preparé la propuesta para este cambio. Podés ver los elementos en el lienzo y confirmarla para que se construya en vivo.';
+          ? 'I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to apply them.'
+          : 'Preparé la propuesta para este cambio. Podés previsualizar los elementos en el lienzo y confirmarla para que se construyan en vivo.';
         return {
-          replyContent: textWithoutJson.length > 10 ? textWithoutJson : defaultReply,
+          replyContent: (textWithoutJson.length > 15 && !mentionsCode) ? textWithoutJson : defaultReply,
           batchDelta,
         };
       }
