@@ -34,6 +34,7 @@ import {
 import { base64ToBytes, bytesToBase64 } from './api/base64';
 import { transcribeAudio } from './api/voiceApi';
 import { applyDeltaToYDoc } from './canvas/applyDeltaToYDoc';
+import { computeAutoLayout } from './canvas/autoLayout';
 import { createBrowserVoiceRecorder, type VoiceRecorder } from './voice/recorder';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { CanvasErrorBoundary } from './canvas/CanvasErrorBoundary';
@@ -505,20 +506,21 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     const handleAutoLayout = () => {
       const current = projectYDocToDiagram(doc);
       if (!current.classes || current.classes.length === 0) return;
-      const cols = Math.max(2, Math.ceil(Math.sqrt(current.classes.length)));
+      const positions = computeAutoLayout(current);
       const timestamp = new Date().toISOString();
-      current.classes.forEach((c, idx) => {
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-        applyDeltaToYDoc(doc, {
-          id: crypto.randomUUID(),
-          diagramId: current.id,
-          timestamp,
-          kind: 'class',
-          op: 'reposition',
-          classId: c.id,
-          newPosition: { x: 120 + col * 340, y: 120 + row * 260 },
-        });
+      current.classes.forEach((c) => {
+        const newPos = positions[c.id];
+        if (newPos) {
+          applyDeltaToYDoc(doc, {
+            id: crypto.randomUUID(),
+            diagramId: current.id,
+            timestamp,
+            kind: 'class',
+            op: 'reposition',
+            classId: c.id,
+            newPosition: newPos,
+          });
+        }
       });
     };
     window.addEventListener('canvas:auto-layout', handleAutoLayout);
