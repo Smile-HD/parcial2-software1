@@ -105,6 +105,7 @@ export function ExportXmiButton({ diagramId, disabled = false }: ExportXmiButton
     <span className="xmi-export-control">
       <button
         type="button"
+        data-testid="export-xmi"
         onClick={() => void handleExport()}
         disabled={disabled || diagramId === null || isBusy}
         aria-label={tr('xmi.exportAriaLabel')}

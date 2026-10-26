@@ -136,7 +136,8 @@ export function useChat({
       };
       setMessages((prev) => [...prev, tempUserMsg]);
 
-      const expectsBot = activeChannel === 'direct_bot' || trimmed.includes('@Amongus');
+      const isSlash = trimmed.startsWith('/');
+      const expectsBot = activeChannel === 'direct_bot' || trimmed.includes('@Amongus') || isSlash;
       if (expectsBot) {
         setStreamingBotMessage('');
       }
@@ -200,7 +201,7 @@ export function useChat({
   );
 
   const addLocalMessage = useCallback(
-    (msg: { senderType: 'user' | 'bot'; senderName: string; content: string; deltaId?: string }) => {
+    (msg: { senderType: 'user' | 'bot'; senderName: string; content: string; deltaId?: string; delta?: any }) => {
       const newMsg: ChatMessage = {
         id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
         diagramId,
@@ -211,6 +212,7 @@ export function useChat({
         targetUser: null,
         content: msg.content,
         deltaId: msg.deltaId,
+        delta: msg.delta,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, newMsg]);

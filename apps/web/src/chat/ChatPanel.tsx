@@ -27,7 +27,9 @@ export interface ChatPanelProps {
   onConfirmProposal?: (deltaId: string, delta: Delta) => Promise<void> | void;
   onRejectProposal?: (deltaId: string) => Promise<void> | void;
   onPreviewProposal?: (delta: Delta | null) => void;
-  onClearCanvas?: () => { ok: boolean; reason?: string } | void;
+  onClearCanvas?: () => { ok: boolean; reason?: string; deltaId?: string; delta?: Delta } | void;
+  onAutoLayout?: () => { ok: boolean; classCount: number };
+  canvasClassCount?: number;
   buildingDeltaId?: string | null;
   activeProposal?: { deltaId: string; delta: Delta } | null;
   interpreterPhase?: 'idle' | 'thinking' | 'pending' | 'refused' | 'error';
@@ -105,6 +107,8 @@ export function ChatPanel({
   onRejectProposal,
   onPreviewProposal,
   onClearCanvas,
+  onAutoLayout,
+  canvasClassCount = 0,
   buildingDeltaId = null,
   activeProposal = null,
   interpreterPhase = 'idle',
@@ -292,11 +296,24 @@ export function ChatPanel({
     // 1c. Comando: /context (monitor de tokens y velocidad persistido en PostgreSQL)
     if (trimmed === '/context') {
       setDraft('');
-      await sendMessage('/context');
+      try {
+        await sendMessage('/context');
+      } catch {
+        addLocalMessage({
+          senderType: 'user',
+          senderName: userName,
+          content: trimmed,
+        });
+        addLocalMessage({
+          senderType: 'bot',
+          senderName: 'Amongus',
+          content: buildContextReport(safeMessages.length, canvasClassCount, isEn),
+        });
+      }
       return;
     }
 
-    // 1d. Comando de cliente: /layout (auto-ordenamiento en cuadrícula)
+    // 1d. Comando de cliente: /layout (auto-ordenamiento estructurado)
     if (trimmed === '/layout') {
       setDraft('');
       addLocalMessage({
@@ -304,6 +321,27 @@ export function ChatPanel({
         senderName: userName,
         content: trimmed,
       });
+      if (onAutoLayout) {
+        const res = onAutoLayout();
+        if (!res.ok || res.classCount === 0) {
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn
+              ? 'The canvas is currently empty. Add classes before running /layout.'
+              : 'El lienzo está vacío actualmente. Agregá clases antes de ejecutar /layout.',
+          });
+          return;
+        }
+        addLocalMessage({
+          senderType: 'bot',
+          senderName: 'Amongus',
+          content: isEn
+            ? `Reorganized ${res.classCount} classes on the canvas into a structured layout.`
+            : `Reorganicé las ${res.classCount} clases en el lienzo de forma estructurada sin solapamientos.`,
+        });
+        return;
+      }
       window.dispatchEvent(new CustomEvent('canvas:auto-layout'));
       addLocalMessage({
         senderType: 'bot',
@@ -368,7 +406,7 @@ export function ChatPanel({
       });
 
       if (arg === 'spring') {
-        const springBtn = document.querySelector('button[aria-label*="Spring"], button[title*="Spring"]') as HTMLButtonElement | null;
+        const springBtn = document.querySelector('button[data-testid="export-spring"], button[aria-label*="Spring" i], button[title*="Spring" i]') as HTMLButtonElement | null;
         if (springBtn && !springBtn.disabled) {
           springBtn.click();
           addLocalMessage({
@@ -387,7 +425,7 @@ export function ChatPanel({
       }
 
       if (arg === 'xmi') {
-        const xmiBtn = document.querySelector('button[aria-label*="XMI"], button[title*="XMI"]') as HTMLButtonElement | null;
+        const xmiBtn = document.querySelector('button[data-testid="export-xmi"], button[aria-label*="XMI" i], button[title*="XMI" i]') as HTMLButtonElement | null;
         if (xmiBtn && !xmiBtn.disabled) {
           xmiBtn.click();
           addLocalMessage({
@@ -406,7 +444,7 @@ export function ChatPanel({
       }
 
       if (arg === 'png' || arg === 'jpeg' || arg === 'jpg') {
-        const imgBtn = document.querySelector('button[aria-label*="PNG"], button[title*="PNG"]') as HTMLButtonElement | null;
+        const imgBtn = document.querySelector('button[data-testid="export-png"], button[aria-label*="PNG" i], button[title*="PNG" i]') as HTMLButtonElement | null;
         if (imgBtn && !imgBtn.disabled) {
           imgBtn.click();
           addLocalMessage({
@@ -451,6 +489,16 @@ export function ChatPanel({
             senderType: 'bot',
             senderName: 'Amongus',
             content: isEn ? 'The canvas is already empty.' : 'El lienzo ya está vacío.',
+          });
+        } else if (res && res.ok && res.deltaId && res.delta) {
+          addLocalMessage({
+            senderType: 'bot',
+            senderName: 'Amongus',
+            content: isEn
+              ? 'Safety proposal to clear the canvas. Confirm below to delete all classes.'
+              : 'Propuesta de seguridad para vaciar el lienzo. Confirmá abajo para eliminar todas las clases.',
+            deltaId: res.deltaId,
+            delta: res.delta,
           });
         }
       } else {

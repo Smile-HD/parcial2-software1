@@ -164,6 +164,7 @@ export function GenerateSpringButton({ diagramId, disabled = false }: GenerateSp
     <span className="codegen-control">
       <button
         type="button"
+        data-testid="export-spring"
         onClick={() => {
           void handleClick();
         }}

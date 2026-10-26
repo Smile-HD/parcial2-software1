@@ -770,8 +770,9 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       reply.raw.write(`event: user_message\ndata: ${JSON.stringify(message)}\n\n`);
     }
 
-    // Si es canal directo o menciona a Amongus, generamos respuesta contextual del asistente
-    if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus')) {
+    // Si es canal directo, menciona a Amongus o es un comando slash (/), generamos respuesta contextual del asistente
+    const isSlashCommand = parsed.data.content.trim().startsWith('/');
+    if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus') || isSlashCommand) {
       const isEn = parsed.data.language === 'en';
       let deltaId: string | null = null;
       let delta: import('@app/core').Delta | null = null;

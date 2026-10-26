@@ -14,7 +14,7 @@
  * del cliente (guardado preservando blob) y reintentan ante conflictos de versión generados por las
  * escrituras con debounce de colaboración.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
@@ -448,36 +448,55 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     if (!deltaId) {
       return;
     }
+    const fallbackDelta = targetDelta ?? (interpreter.phase === 'pending' ? interpreter.delta : null);
     setInterpreter({ phase: 'thinking' });
     setGhostDelta(null);
     setBuildingDeltaId(deltaId);
 
+    const applyAndBuild = async (d: Delta) => {
+      applyDeltaToYDoc(doc, d);
+      await executeLiveAmongusBuild({
+        doc,
+        delta: d,
+        setVirtualPeer: (peer) => setVirtualPeer(peer),
+        stepDelayMs: 20,
+      });
+      setVirtualPeer(null);
+      setBuildingDeltaId(null);
+      setInterpreter({ phase: 'idle' });
+    };
+
     void confirmDelta(deltaId)
       .then(async (result) => {
-        applyDeltaToYDoc(doc, result.delta);
-        await executeLiveAmongusBuild({
-          doc,
-          delta: result.delta,
-          setVirtualPeer: (peer) => setVirtualPeer(peer),
-          stepDelayMs: 20,
-        });
-        setVirtualPeer(null);
-        setBuildingDeltaId(null);
-        setInterpreter({ phase: 'idle' });
+        await applyAndBuild(result.delta);
       })
       .catch((error: unknown) => {
-        setVirtualPeer(null);
-        setBuildingDeltaId(null);
         const errMsg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-        if (
+        const isClientOrAlreadyApplied =
           errMsg.includes('already used') ||
           errMsg.includes('unknown or already used') ||
           errMsg.includes('already apply') ||
-          errMsg.includes('already applied')
-        ) {
+          errMsg.includes('already applied') ||
+          errMsg.includes('not found') ||
+          errMsg.includes('404');
+
+        if (fallbackDelta && isClientOrAlreadyApplied) {
+          void applyAndBuild(fallbackDelta).catch(() => {
+            setVirtualPeer(null);
+            setBuildingDeltaId(null);
+            setInterpreter({ phase: 'idle' });
+          });
+          return;
+        }
+
+        setVirtualPeer(null);
+        setBuildingDeltaId(null);
+
+        if (isClientOrAlreadyApplied) {
           setInterpreter({ phase: 'idle' });
           return;
         }
+
         setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.confirmFailed')) });
       });
   };
@@ -501,33 +520,38 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       });
   };
 
-  // Auto-layout de nodos activado desde comando slash (/layout)
-  useEffect(() => {
-    const handleAutoLayout = () => {
-      const current = projectYDocToDiagram(doc);
-      if (!current.classes || current.classes.length === 0) return;
-      const positions = computeAutoLayout(current);
-      const timestamp = new Date().toISOString();
-      current.classes.forEach((c) => {
-        const newPos = positions[c.id];
-        if (newPos) {
-          applyDeltaToYDoc(doc, {
-            id: crypto.randomUUID(),
-            diagramId: current.id,
-            timestamp,
-            kind: 'class',
-            op: 'reposition',
-            classId: c.id,
-            newPosition: newPos,
-          });
-        }
-      });
-    };
-    window.addEventListener('canvas:auto-layout', handleAutoLayout);
-    return () => window.removeEventListener('canvas:auto-layout', handleAutoLayout);
+  const handleAutoLayout = useCallback((): { ok: boolean; classCount: number } => {
+    const current = projectYDocToDiagram(doc);
+    if (!current.classes || current.classes.length === 0) {
+      return { ok: false, classCount: 0 };
+    }
+    const positions = computeAutoLayout(current);
+    const timestamp = new Date().toISOString();
+    current.classes.forEach((c) => {
+      const newPos = positions[c.id];
+      if (newPos) {
+        applyDeltaToYDoc(doc, {
+          id: crypto.randomUUID(),
+          diagramId: current.id,
+          timestamp,
+          kind: 'class',
+          op: 'reposition',
+          classId: c.id,
+          newPosition: newPos,
+        });
+      }
+    });
+    return { ok: true, classCount: current.classes.length };
   }, [doc]);
 
-  const handleClearCanvas = (): { ok: boolean; reason?: string } => {
+  // Auto-layout de nodos activado desde comando slash (/layout)
+  useEffect(() => {
+    const onAutoLayoutEvent = () => { handleAutoLayout(); };
+    window.addEventListener('canvas:auto-layout', onAutoLayoutEvent);
+    return () => window.removeEventListener('canvas:auto-layout', onAutoLayoutEvent);
+  }, [handleAutoLayout]);
+
+  const handleClearCanvas = (): { ok: boolean; reason?: string; deltaId?: string; delta?: Delta } => {
     const current = projectYDocToDiagram(doc);
     if (!current.classes || current.classes.length === 0) {
       return { ok: false, reason: 'empty' };
@@ -550,7 +574,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     const deltaId = crypto.randomUUID();
     setGhostDelta(clearDelta);
     setInterpreter({ phase: 'pending', deltaId, delta: clearDelta });
-    return { ok: true };
+    return { ok: true, deltaId, delta: clearDelta };
   };
 
   useEffect(() => {
@@ -708,6 +732,8 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             onRejectProposal={handleRejectDelta}
             onPreviewProposal={setGhostDelta}
             onClearCanvas={handleClearCanvas}
+            onAutoLayout={handleAutoLayout}
+            canvasClassCount={projectYDocToDiagram(doc).classes?.length || 0}
             buildingDeltaId={buildingDeltaId}
             activeProposal={activeProposal}
             interpreterPhase={interpreter.phase}
