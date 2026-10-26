@@ -10,19 +10,27 @@ import { bytesToBase64 } from './base64';
 
 const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
-/** Resultado de POST /diagrams/:id/voice: transcripción + resultado del intérprete. */
-export type VoiceResponse = InterpretResponse & { transcript: string };
+/** Resultado de POST /diagrams/:id/voice: transcripción + resultado del intérprete o solo transcripción. */
+export type VoiceResponse = (InterpretResponse | { status: 'ok' }) & { transcript: string };
 
-/** POST /diagrams/:id/voice — bytes de audio → transcripción → resultado del intérprete. */
+/** POST /diagrams/:id/voice — bytes de audio → transcripción → resultado del intérprete o solo transcripción. */
 export async function transcribeAudio(
   diagramId: string,
   audio: Uint8Array,
   mimeType: string,
+  transcribeOnly?: boolean,
 ): Promise<VoiceResponse> {
+  const payload: { audio: string; mimeType: string; transcribeOnly?: boolean } = {
+    audio: bytesToBase64(audio),
+    mimeType,
+  };
+  if (transcribeOnly !== undefined) {
+    payload.transcribeOnly = transcribeOnly;
+  }
   const response = await fetch(`${API_BASE_URL}/diagrams/${diagramId}/voice`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ audio: bytesToBase64(audio), mimeType }),
+    body: JSON.stringify(payload),
   });
   const body = (await response.json().catch(() => null)) as
     | (VoiceResponse & { error?: string })

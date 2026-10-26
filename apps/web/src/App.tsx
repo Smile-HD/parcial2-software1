@@ -414,7 +414,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const apiFailureMessage = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : fallback;
 
-  const handleSubmitCommand = (customText?: string): void => {
+  const handleSubmitCommand = async (customText?: string): Promise<void> => {
     if (version === null || status !== 'ready' || roomId === null || interpreter.phase === 'thinking') {
       return;
     }
@@ -424,23 +424,23 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     }
     setInterpreter({ phase: 'thinking' });
     setGhostDelta(null);
-    void interpretCommand(roomId, text)
-      .then((outcome: InterpretResponse) => {
-        if (outcome.status === 'pending') {
-          setCommandDraft('');
-          setGhostDelta(outcome.delta);
-          setInterpreter({ phase: 'pending', deltaId: outcome.deltaId, delta: outcome.delta });
-          return;
-        }
-        if (outcome.status === 'refused') {
-          setInterpreter({ phase: 'refused', reason: outcome.reason });
-          return;
-        }
-        setInterpreter({ phase: 'error', message: outcome.message });
-      })
-      .catch((error: unknown) => {
-        setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.reachFailed')) });
-      });
+    try {
+      const outcome = await interpretCommand(roomId, text);
+      if (outcome.status === 'pending') {
+        setCommandDraft('');
+        setGhostDelta(outcome.delta);
+        setInterpreter({ phase: 'pending', deltaId: outcome.deltaId, delta: outcome.delta });
+        return;
+      }
+      if (outcome.status === 'refused') {
+        setCommandDraft('');
+        setInterpreter({ phase: 'refused', reason: outcome.reason });
+        return;
+      }
+      setInterpreter({ phase: 'error', message: outcome.message });
+    } catch (error: unknown) {
+      setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('interpreter.reachFailed')) });
+    }
   };
 
   const handleConfirmDelta = (targetDeltaId?: string, targetDelta?: Delta): void => {
@@ -584,19 +584,13 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
           return;
         }
         setInterpreter({ phase: 'thinking' });
-        void transcribeAudio(roomId, audio, mimeType)
+        void transcribeAudio(roomId, audio, mimeType, true)
           .then((response) => {
-            setCommandDraft(response.transcript);
-            if (response.status === 'pending') {
-              setGhostDelta(response.delta);
-              setInterpreter({ phase: 'pending', deltaId: response.deltaId, delta: response.delta });
-              return;
+            setInterpreter({ phase: 'idle' });
+            if (response.transcript) {
+              const text = response.transcript.trim();
+              setCommandDraft((prev) => (prev ? `${prev.trim()} ${text}` : text));
             }
-            if (response.status === 'refused') {
-              setInterpreter({ phase: 'refused', reason: response.reason });
-              return;
-            }
-            setInterpreter({ phase: 'error', message: response.message });
           })
           .catch((error: unknown) => {
             setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.sttFailed')) });

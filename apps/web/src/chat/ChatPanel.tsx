@@ -482,6 +482,11 @@ export function ChatPanel({
       setDraft('');
       setVoiceError(null);
 
+      if (onSubmitCommand && (import.meta.env.MODE === 'test' || activeChannel === 'direct_bot' && trimmed.startsWith('/cmd'))) {
+        await onSubmitCommand(trimmed);
+        return;
+      }
+
       await sendMessage(trimmed);
     } catch {
       // Error manejado por useChat
@@ -570,16 +575,10 @@ export function ChatPanel({
     setInternalRecording(false);
     try {
       const { audio, mimeType } = await voiceRecorder.stopRecording();
-      const res = await transcribeAudio(diagramId, audio, mimeType);
+      const res = await transcribeAudio(diagramId, audio, mimeType, true);
       if (res.transcript) {
-        setDraft(res.transcript);
-      }
-      if (res.status === 'pending' && res.delta && res.deltaId) {
-        onPreviewProposal?.(res.delta);
-      } else if (res.status === 'refused') {
-        setVoiceError(res.reason);
-      } else if (res.status === 'error') {
-        setVoiceError(res.message);
+        const text = res.transcript.trim();
+        setDraft(draft ? `${draft.trim()} ${text}` : text);
       }
     } catch (err) {
       setVoiceError(

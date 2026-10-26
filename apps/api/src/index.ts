@@ -572,7 +572,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
   // explícito que dirige al usuario al respaldo de entrada de comandos por texto.
   // voice:R2 — la transcripción reingresa a interpretCommand: almacén de pendientes
   // compartido, misma compuerta de confirmación, sin ruta privilegiada.
-  app.post<{ Params: { id: string }; Body: { audio?: string; mimeType?: string } }>(
+  app.post<{ Params: { id: string }; Body: { audio?: string; mimeType?: string; transcribeOnly?: boolean } }>(
     '/diagrams/:id/voice',
     async (request, reply) => {
       const { id } = request.params;
@@ -590,6 +590,22 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       }
       const row = result.rows[0];
 
+      let transcript: string;
+      try {
+        const audio = new Uint8Array(Buffer.from(audioBase64, 'base64'));
+        transcript = await stt.transcribe(audio, request.body?.mimeType ?? 'audio/webm');
+      } catch (error) {
+        const cause = error instanceof Error ? error.message : 'unknown error';
+        return reply.status(502).send({
+          error: `Speech-to-text unavailable: ${cause}. Use the text command input instead.`,
+        });
+      }
+
+      // Si se solicita únicamente transcripción de voz a texto (STT puro para el input del usuario)
+      if (request.body?.transcribeOnly) {
+        return reply.send({ transcript, status: 'ok' });
+      }
+
       let currentIr: Diagram;
       try {
         currentIr = (
@@ -603,17 +619,6 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         ).diagram;
       } catch (error) {
         return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
-      }
-
-      let transcript: string;
-      try {
-        const audio = new Uint8Array(Buffer.from(audioBase64, 'base64'));
-        transcript = await stt.transcribe(audio, request.body?.mimeType ?? 'audio/webm');
-      } catch (error) {
-        const cause = error instanceof Error ? error.message : 'unknown error';
-        return reply.status(502).send({
-          error: `Speech-to-text unavailable: ${cause}. Use the text command input instead.`,
-        });
       }
 
       try {
