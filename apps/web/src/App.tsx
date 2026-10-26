@@ -454,16 +454,20 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     setBuildingDeltaId(deltaId);
 
     const applyAndBuild = async (d: Delta) => {
-      applyDeltaToYDoc(doc, d);
-      await executeLiveAmongusBuild({
-        doc,
-        delta: d,
-        setVirtualPeer: (peer) => setVirtualPeer(peer),
-        stepDelayMs: 20,
-      });
-      setVirtualPeer(null);
-      setBuildingDeltaId(null);
-      setInterpreter({ phase: 'idle' });
+      try {
+        await executeLiveAmongusBuild({
+          doc,
+          delta: d,
+          setVirtualPeer: (peer) => setVirtualPeer(peer),
+          stepDelayMs: 20,
+        });
+      } catch {
+        applyDeltaToYDoc(doc, d);
+      } finally {
+        setVirtualPeer(null);
+        setBuildingDeltaId(null);
+        setInterpreter({ phase: 'idle' });
+      }
     };
 
     void confirmDelta(deltaId)

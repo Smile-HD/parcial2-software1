@@ -87,6 +87,19 @@ export function isDomainModelRequest(text: string): boolean {
   return /(crea|crear|dise[ñn]|model|arma|armar|implement|aplica|agrega|inserta|pone|pon\b|hace|haz|constru|reserva|base de datos|sistema|diagrama|quiero un|necesito un|hazme|haceme|hacer|make|build|generate|design|model|add|apply)\b/i.test(text);
 }
 
+export function cleanMultiplicity(val: unknown, fallback: string = '1'): string {
+  if (typeof val !== 'string') return fallback;
+  let s = val.trim().replace(/\s+/g, '');
+  if (!s) return fallback;
+  s = s.replace(/\b[nNmM]\b/g, '*');
+  s = s.replace(/\.\.[nNmM]/g, '..*');
+  s = s.replace(/[nNmM]\.\./g, '*..');
+  if (/^n-?to-?1$/i.test(s) || /^n:1$/i.test(s)) return '0..*';
+  if (/^1-?to-?n$/i.test(s) || /^1:n$/i.test(s)) return '1';
+  const isValid = /^\*|^\d+$|^\d+\.\.\d+$|^\d+\.\.\*$/.test(s);
+  return isValid ? s : fallback;
+}
+
 /**
  * Convierte un modelo de dominio semántico abstracto (generado dinámicamente por el LLM)
  * en un BatchDelta de metamodelo UML canónico y validado con coordenadas espaciales.
@@ -217,60 +230,82 @@ export function expandSemanticDomainToDelta(
         });
       }
 
-      // Atributos de la clase (soporta formato compacto "nombre:tipo" y formato objeto {name, type})
-      if (Array.isArray(cls.attributes)) {
-        cls.attributes.forEach((attr: any) => {
-          let name = '';
-          let type = 'string';
-          let visibility: '+' | '-' | '#' | '~' = '+';
-          let isStatic = false;
-          let isDerived = false;
-
-          if (typeof attr === 'string') {
-            const parts = attr.split(':');
-            name = parts[0]?.trim() ?? '';
-            type = parts[1]?.trim() ?? 'string';
-          } else if (attr && typeof attr === 'object') {
-            name = attr.name ?? '';
-            type = attr.type ?? 'string';
-            if (attr.visibility) visibility = attr.visibility;
-            if (attr.isStatic !== undefined) isStatic = !!attr.isStatic;
-            if (attr.isDerived !== undefined) isDerived = !!attr.isDerived;
+      // Atributos de la clase (soporta formato compacto "nombre:tipo", array de objetos, strings con comas y alias en español)
+      const rawAttrs = cls.attributes ?? (cls as any).atributos ?? (cls as any).properties ?? (cls as any).fields ?? (cls as any).campos;
+      const attrList: any[] = [];
+      if (Array.isArray(rawAttrs)) {
+        for (const item of rawAttrs) {
+          if (typeof item === 'string') {
+            const cleaned = item.replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+            const parts = cleaned.split(/,\s*(?=[a-zA-Z_])/);
+            for (const p of parts) {
+              const subParts = p.split(':');
+              const aName = subParts[0]?.trim().replace(/^[-+*#~]\s*/, '').replace(/^[\[\(\{]+/, '');
+              const aType = subParts[1]?.trim().replace(/[\]\)\}]+$/, '') || 'string';
+              if (aName) attrList.push({ name: aName, type: aType });
+            }
+          } else if (item && typeof item === 'object') {
+            attrList.push(item);
           }
-          name = name.replace(/\s+/g, '');
-          if (!name) return;
-          // Ignorar nombres de atributos que son placeholders literales del esquema como "name", "type", "string", "int", "attribute"
-          if (/^(name|nombre|type|tipo|string|int|float|boolean|attribute|attr)$/i.test(name)) return;
-
-          // Si la clase ya existía, evitar agregar atributos duplicados
-          if (existingClass && Array.isArray(existingClass.attributes)) {
-            const alreadyHasAttr = existingClass.attributes.some(
-              (ea: any) => ea.name && ea.name.toLowerCase().trim() === name.toLowerCase()
-            );
-            if (alreadyHasAttr) return;
-          }
-
-          const rawType = type.toLowerCase().trim().replace(/\[\]$/, '');
-          const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
-            ? rawType
-            : 'string';
-
-          deltas.push({
-            id: crypto.randomUUID(),
-            diagramId,
-            timestamp,
-            kind: 'member',
-            op: 'addAttribute',
-            classId,
-            memberId: crypto.randomUUID(),
-            name,
-            type: cleanType,
-            visibility,
-            isStatic,
-            isDerived,
-          });
-        });
+        }
+      } else if (rawAttrs && typeof rawAttrs === 'object') {
+        for (const [k, v] of Object.entries(rawAttrs)) {
+          attrList.push({ name: k, type: typeof v === 'string' ? v : 'string' });
+        }
       }
+
+      attrList.forEach((attr: any) => {
+        let name = '';
+        let type = 'string';
+        let visibility: '+' | '-' | '#' | '~' = '+';
+        let isStatic = false;
+        let isDerived = false;
+
+        if (typeof attr === 'string') {
+          const parts = attr.split(':');
+          name = parts[0]?.trim() ?? '';
+          type = parts[1]?.trim() ?? 'string';
+        } else if (attr && typeof attr === 'object') {
+          name = attr.name ?? '';
+          type = attr.type ?? 'string';
+          if (attr.visibility) visibility = attr.visibility;
+          if (attr.isStatic !== undefined) isStatic = !!attr.isStatic;
+          if (attr.isDerived !== undefined) isDerived = !!attr.isDerived;
+        }
+        name = name.replace(/\s+/g, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+        if (!name) return;
+        // Ignorar placeholders literales del esquema como "type", "string", "int", "attribute"
+        if (/^(type|tipo|string|int|float|boolean|attribute|attr)$/i.test(name)) return;
+        if (name.toLowerCase() === 'name' && type.toLowerCase() === 'string' && attrList.length > 3) return;
+
+        // Si la clase ya existía, evitar agregar atributos duplicados
+        if (existingClass && Array.isArray(existingClass.attributes)) {
+          const alreadyHasAttr = existingClass.attributes.some(
+            (ea: any) => ea.name && ea.name.toLowerCase().trim() === name.toLowerCase()
+          );
+          if (alreadyHasAttr) return;
+        }
+
+        const rawType = type.toLowerCase().trim().replace(/\[\]$/, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+        const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
+          ? rawType
+          : rawType === 'number' || rawType === 'double' || rawType === 'decimal' ? 'float' : 'string';
+
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'member',
+          op: 'addAttribute',
+          classId,
+          memberId: crypto.randomUUID(),
+          name,
+          type: cleanType,
+          visibility,
+          isStatic,
+          isDerived,
+        });
+      });
 
       // Métodos de la clase
       if (Array.isArray(cls.methods)) {
@@ -443,8 +478,8 @@ export function expandSemanticDomainToDelta(
         associationId: crypto.randomUUID(),
         sourceClassId: sourceId,
         targetClassId: targetId,
-        sourceMultiplicity: assoc.sourceMultiplicity ?? '1',
-        targetMultiplicity: assoc.targetMultiplicity ?? '0..*',
+        sourceMultiplicity: cleanMultiplicity(assoc.sourceMultiplicity, '1'),
+        targetMultiplicity: cleanMultiplicity(assoc.targetMultiplicity, '0..*'),
         directed: assoc.directed ?? false,
         aggregation: isComposite ? 'composite' : (isShared ? 'shared' : 'none'),
         aggregationEnd: (isComposite || isShared) ? (assoc.aggregationEnd ?? 'source') : 'source',
@@ -668,35 +703,97 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
   if (match) {
     try {
       const parsed = JSON.parse(match[0]);
-      let rawClasses: any[] = [];
-      if (Array.isArray(parsed.classes)) {
-        rawClasses = parsed.classes;
-      } else if (parsed.classes && typeof parsed.classes === 'object') {
-        rawClasses = Object.entries(parsed.classes).map(([className, classData]: [string, any]) => {
-          let attrs: any[] = [];
-          if (Array.isArray(classData?.attributes)) {
-            attrs = classData.attributes;
-          } else if (classData?.attributes && typeof classData.attributes === 'object') {
-            attrs = Object.entries(classData.attributes).map(([attrName, attrType]) => ({
-              name: attrName,
-              type: typeof attrType === 'string' ? attrType : 'string',
-            }));
+      const parseAttrs = (rawAttrs: any): any[] => {
+        if (!rawAttrs) return [];
+        if (Array.isArray(rawAttrs)) {
+          const list: any[] = [];
+          for (const item of rawAttrs) {
+            if (typeof item === 'string') {
+              const cleaned = item.replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+              const parts = cleaned.split(/,\s*(?=[a-zA-Z_])/);
+              for (const p of parts) {
+                const subParts = p.split(':');
+                const aName = subParts[0]?.trim().replace(/^[-+*#~]\s*/, '').replace(/^[\[\(\{]+/, '');
+                const aType = subParts[1]?.trim().replace(/[\]\)\}]+$/, '') || 'string';
+                if (aName) list.push({ name: aName, type: aType });
+              }
+            } else if (item && typeof item === 'object') {
+              list.push(item);
+            }
           }
-          return {
-            name: classData?.name || className,
-            isInterface: classData?.isInterface ?? false,
-            isAbstract: classData?.isAbstract ?? false,
-            attributes: attrs,
-            methods: classData?.methods,
-          };
-        });
+          return list;
+        } else if (typeof rawAttrs === 'object') {
+          return Object.entries(rawAttrs).map(([k, v]) => ({
+            name: k,
+            type: typeof v === 'string' ? v : 'string',
+          }));
+        } else if (typeof rawAttrs === 'string') {
+          const cleaned = rawAttrs.replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+          return cleaned.split(/,\s*(?=[a-zA-Z_])/).map((s) => {
+            const parts = s.split(':');
+            return {
+              name: parts[0]?.trim().replace(/^[-+*#~]\s*/, '') || '',
+              type: parts[1]?.trim() || 'string',
+            };
+          }).filter((a) => a.name);
+        }
+        return [];
+      };
+
+      const classesData = Array.isArray(parsed.classes)
+        ? parsed.classes
+        : Array.isArray(parsed.clases)
+          ? parsed.clases
+          : parsed.classes ?? parsed.clases;
+
+      let rawClasses: any[] = [];
+      if (Array.isArray(classesData)) {
+        rawClasses = classesData.map((cls: any) => ({
+          ...cls,
+          attributes: parseAttrs(cls.attributes ?? cls.atributos ?? cls.properties ?? cls.fields ?? cls.campos),
+          methods: cls.methods ?? cls.metodos ?? cls.operaciones,
+        }));
+      } else if (classesData && typeof classesData === 'object') {
+        rawClasses = Object.entries(classesData).map(([className, classData]: [string, any]) => ({
+          name: classData?.name || className,
+          isInterface: classData?.isInterface ?? false,
+          isAbstract: classData?.isAbstract ?? false,
+          attributes: parseAttrs(classData?.attributes ?? classData?.atributos ?? classData?.properties ?? classData?.fields ?? classData?.campos),
+          methods: classData?.methods ?? classData?.metodos,
+        }));
       }
 
-      const rawAssocs = Array.isArray(parsed.associations) ? parsed.associations : [];
-      const rawGens = Array.isArray(parsed.generalizations) ? parsed.generalizations : [];
-      const rawRealizations = Array.isArray(parsed.realizations) ? parsed.realizations : [];
-      const rawDependencies = Array.isArray(parsed.dependencies) ? parsed.dependencies : [];
-      const rawNary = Array.isArray(parsed.naryAssociations) ? parsed.naryAssociations : [];
+      const rawAssocs = Array.isArray(parsed.associations)
+        ? parsed.associations
+        : Array.isArray(parsed.asociaciones)
+          ? parsed.asociaciones
+          : Array.isArray(parsed.relaciones)
+            ? parsed.relaciones
+            : Array.isArray(parsed.relationships)
+              ? parsed.relationships
+              : [];
+      const rawGens = Array.isArray(parsed.generalizations)
+        ? parsed.generalizations
+        : Array.isArray(parsed.generalizaciones)
+          ? parsed.generalizaciones
+          : Array.isArray(parsed.herencias)
+            ? parsed.herencias
+            : [];
+      const rawRealizations = Array.isArray(parsed.realizations)
+        ? parsed.realizations
+        : Array.isArray(parsed.realizaciones)
+          ? parsed.realizaciones
+          : [];
+      const rawDependencies = Array.isArray(parsed.dependencies)
+        ? parsed.dependencies
+        : Array.isArray(parsed.dependencias)
+          ? parsed.dependencias
+          : [];
+      const rawNary = Array.isArray(parsed.naryAssociations)
+        ? parsed.naryAssociations
+        : Array.isArray(parsed.asociacionesNarias)
+          ? parsed.asociacionesNarias
+          : [];
 
       const classes = rawClasses.filter((c: any) => c.name && !isDummyName(c.name));
       const associations = rawAssocs
@@ -858,13 +955,14 @@ export async function synthesizeDomainModel(
     'You are a senior UML software architect.',
     'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; airline: Vuelo, Pasajero, Reserva; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
     'CRITICAL: If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
-    'CRITICAL REQUIREMENT: If the user prompt or context mentions candidate classes or entities (for example: "Pasajero", "Reserva", "Factura", etc.), YOU MUST GENERATE ALL OF THEM in the "classes" array. Never omit any requested class. If multiple classes are discussed, every single one must be included.',
-    'Provide 2 to 3 realistic attributes each.',
+    'CRITICAL REQUIREMENT: If the user prompt or context mentions candidate classes or entities (for example: "Pasajero", "Reserva", "Factura", "Proveedor", etc.), YOU MUST GENERATE ALL OF THEM in the "classes" array. Never omit any requested class.',
+    'CRITICAL ATTRIBUTES RULE: For EVERY SINGLE CLASS, you MUST provide 2 to 3 realistic attributes (e.g. Factura: [cliente:string, total:float, fecha:string]; Proveedor: [nombre:string, contacto:string, direccion:string]). NEVER leave attributes empty.',
+    'CRITICAL MULTIPLICITY RULE: Associations must use standard UML 2.5.1 multiplicities ONLY: "1", "0..1", "1..*", "0..*". NEVER output non-standard labels like "n", "n-to-1", "m", or "many".',
     'Include essential relationships (associations) connecting the classes together, and connecting them to existing classes if present.',
     contextHint,
     assocHint,
     'Output ONLY a valid raw JSON object matching:',
-    '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB"}]}',
+    '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB","sourceMultiplicity":"1","targetMultiplicity":"0..*"}]}',
   ].filter(Boolean).join('\n');
 
   try {

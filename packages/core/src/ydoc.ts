@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { type Diagram, type Class, type Association, type Generalization, type Realization, type Dependency, type NaryAssociation, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema, NaryAssociationSchema } from './ir.js';
+import { type Diagram, type Class, type Association, type Generalization, type Realization, type Dependency, type NaryAssociation, type Method, DiagramSchema, ClassSchema, AssociationSchema, GeneralizationSchema, RealizationSchema, DependencySchema, NaryAssociationSchema, MultiplicitySchema } from './ir.js';
 import { z } from 'zod';
 
 /**
@@ -262,10 +262,18 @@ export function projectYDocToDiagram(doc: Y.Doc): Diagram {
     const name = yAssoc.get('name') as string | undefined;
     const sourceRole = yAssoc.get('sourceRole') as string | undefined;
     const targetRole = yAssoc.get('targetRole') as string | undefined;
-    // Corrección unidad 13d C: claves ausentes se proyectan a extremos INDEFINIDOS
-    // (no especificado ≠ '1'); claves presentes hacen viaje de ida y vuelta exacto.
-    const sourceMultiplicity = yAssoc.get('sourceMultiplicity') as Association['sourceMultiplicity'];
-    const targetMultiplicity = yAssoc.get('targetMultiplicity') as Association['targetMultiplicity'];
+    const sanitizeMult = (val: unknown): string | undefined => {
+      if (typeof val !== 'string') return undefined;
+      let s = val.trim().replace(/\s+/g, '');
+      if (!s) return undefined;
+      s = s.replace(/\b[nNmM]\b/g, '*').replace(/\.\.[nNmM]/g, '..*').replace(/[nNmM]\.\./g, '*..');
+      if (/^n-?to-?1$/i.test(s) || /^n:1$/i.test(s)) return '0..*';
+      if (/^1-?to-?n$/i.test(s) || /^1:n$/i.test(s)) return '1';
+      return MultiplicitySchema.safeParse(s).success ? s : undefined;
+    };
+
+    const sourceMultiplicity = sanitizeMult(yAssoc.get('sourceMultiplicity'));
+    const targetMultiplicity = sanitizeMult(yAssoc.get('targetMultiplicity'));
 
     const associationClassId = yAssoc.get('associationClassId') as string | undefined;
 
