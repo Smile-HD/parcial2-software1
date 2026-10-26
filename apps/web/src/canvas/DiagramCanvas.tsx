@@ -1555,46 +1555,65 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
     applyDeltaToYDoc(doc, delta);
   };
 
-  const ghostNodes = useMemo(() => {
-    if (!ghostDelta) return [];
-    const createdClasses: { id: string; name: string; position: { x: number; y: number }; attributes: any[] }[] = [];
+  const ghostMembers = useMemo(() => {
     const attrsByClassId = new Map<string, any[]>();
+    const deletedClassIds = new Set<string>();
+
+    if (!ghostDelta) return { attrsByClassId, deletedClassIds };
+
+    const processDelta = (d: any) => {
+      if ((d.kind === 'member' && (d.op === 'addAttribute' || d.op === 'create')) ||
+          (d.kind === 'attribute' && d.op === 'create')) {
+        if (!attrsByClassId.has(d.classId)) {
+          attrsByClassId.set(d.classId, []);
+        }
+        attrsByClassId.get(d.classId)!.push({
+          id: d.memberId || crypto.randomUUID(),
+          name: d.name,
+          type: d.type || d.attributeType || 'string',
+          visibility: d.adornments?.visibility ?? d.visibility ?? '+',
+          isStatic: d.adornments?.isStatic ?? d.isStatic ?? false,
+          isDerived: d.adornments?.isDerived ?? d.isDerived ?? false,
+          multiplicity: d.adornments?.multiplicity ?? d.multiplicity,
+          isGhost: true,
+        });
+      } else if (d.kind === 'class' && d.op === 'delete') {
+        deletedClassIds.add(d.classId);
+      }
+    };
 
     if (ghostDelta.kind === 'batch') {
       for (const d of ghostDelta.deltas) {
-        if (d.kind === 'attribute' && d.op === 'create') {
-          if (!attrsByClassId.has(d.classId)) {
-            attrsByClassId.set(d.classId, []);
-          }
-          attrsByClassId.get(d.classId)!.push({
-            id: d.memberId || crypto.randomUUID(),
-            name: d.name,
-            type: d.attributeType || 'string',
-            visibility: d.adornments?.visibility ?? '+',
-            isStatic: d.adornments?.isStatic ?? false,
-            isDerived: d.adornments?.isDerived ?? false,
-            multiplicity: d.adornments?.multiplicity,
-          });
-        }
+        processDelta(d);
       }
+    } else {
+      processDelta(ghostDelta);
+    }
 
-      for (const d of ghostDelta.deltas) {
-        if (d.kind === 'class' && d.op === 'create') {
-          createdClasses.push({
-            id: `ghost-${d.classId}`,
-            name: d.name,
-            position: d.position ?? { x: 250, y: 150 },
-            attributes: attrsByClassId.get(d.classId) ?? [],
-          });
-        }
+    return { attrsByClassId, deletedClassIds };
+  }, [ghostDelta]);
+
+  const ghostNodes = useMemo(() => {
+    if (!ghostDelta) return [];
+    const createdClasses: { id: string; name: string; position: { x: number; y: number }; attributes: any[] }[] = [];
+
+    const processClass = (d: any) => {
+      if (d.kind === 'class' && d.op === 'create') {
+        createdClasses.push({
+          id: `ghost-${d.classId}`,
+          name: d.name,
+          position: d.position ?? { x: 250, y: 150 },
+          attributes: ghostMembers.attrsByClassId.get(d.classId) ?? [],
+        });
       }
-    } else if (ghostDelta.kind === 'class' && ghostDelta.op === 'create') {
-      createdClasses.push({
-        id: `ghost-${ghostDelta.classId}`,
-        name: ghostDelta.name,
-        position: ghostDelta.position ?? { x: 250, y: 150 },
-        attributes: [],
-      });
+    };
+
+    if (ghostDelta.kind === 'batch') {
+      for (const d of ghostDelta.deltas) {
+        processClass(d);
+      }
+    } else {
+      processClass(ghostDelta);
     }
 
     return createdClasses.map((gc) => ({
@@ -1628,7 +1647,7 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
         onQuickLinkStart: () => {},
       } satisfies ClassNodeData,
     }));
-  }, [ghostDelta]);
+  }, [ghostDelta, ghostMembers]);
 
   const ghostEdges = useMemo<Edge[]>(() => {
     if (!ghostDelta) return [];
@@ -1677,52 +1696,59 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
 
   const nodes = useMemo<(ClassFlowNode | NaryDiamondFlowNode)[]>(
     () => [
-      ...diagram.classes.map((cls) => ({
-        id: cls.id,
-        type: 'class' as const,
-        position: cls.position,
-        data: {
-          name: cls.name,
-          attributes: cls.attributes,
-          methods: cls.methods,
-          kind: cls.kind ?? 'class',
-          isAbstract: cls.isAbstract ?? false,
-          otherClasses: diagram.classes
-            .filter((other) => other.id !== cls.id)
-            .map((other) => ({ id: other.id, name: other.name })),
-          otherInterfaces: diagram.classes
-            .filter((other) => other.id !== cls.id && (other.kind ?? 'class') === 'interface')
-            .map((other) => ({ id: other.id, name: other.name })),
-          onRename: (newName: string) => handleRename(cls.id, newName),
-          onDelete: () => handleDeleteClass(cls.id),
-          onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) =>
-            handleAddAttribute(cls.id, name, type, adornments),
-          onEditAttribute: (memberId: string, name: string, type: string, adornments?: MemberAdornments) =>
-            handleEditAttribute(cls.id, memberId, name, type, adornments),
-          onRemoveAttribute: (memberId: string) => handleRemoveAttribute(cls.id, memberId),
-          onAddMethod: (name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
-            handleAddMethod(cls.id, name, returnType, parameters, adornments),
-          onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
-            handleEditMethod(cls.id, memberId, name, returnType, parameters, adornments),
-          onRemoveMethod: (memberId: string) => handleRemoveMethod(cls.id, memberId),
-          onMakeSubclass: (superClassId: string) =>
-            handleCreateGeneralization(doc, diagram.id, { subClassId: cls.id, superClassId }),
-          onToggleAbstract: (isAbstract: boolean) => handleSetAbstract(doc, diagram.id, cls.id, isAbstract),
-          onRealize: (supplierInterfaceId: string) =>
-            handleCreateRealization(doc, diagram.id, { clientClassId: cls.id, supplierInterfaceId }),
-          onDependOn: (supplierClassId: string) =>
-            handleCreateDependency(doc, diagram.id, { clientClassId: cls.id, supplierClassId }),
-          onSelect: () => setSelectedClassId(cls.id),
-          // unidad 13c — mientras una herramienta de arista está armada, el cuerpo del nodo
-          // se convierte en un inicio de conexión válido (conector superpuesto en todo el nodo).
-          connectArmed: edgeTool !== null,
-          // unidad 13d — la flecha de Quick Linker se renderiza solo en el nodo
-          // seleccionado; pointer-down sobre ella inicia el arrastre de enlace rápido.
-          selected: selectedClassId === cls.id,
-          onQuickLinkStart: (clientX: number, clientY: number) => startQuickLink(cls.id, clientX, clientY),
-          remoteSelection: remoteSelections.get(cls.id),
-        } satisfies ClassNodeData,
-      })),
+      ...diagram.classes.map((cls) => {
+        const ghostAttrs = ghostMembers.attrsByClassId.get(cls.id) ?? [];
+        const isDeleted = ghostMembers.deletedClassIds.has(cls.id);
+        const nodeClassName = isDeleted
+          ? 'class-node--ghost-delete'
+          : ghostAttrs.length > 0
+            ? 'class-node--ghost-pending'
+            : undefined;
+
+        return {
+          id: cls.id,
+          type: 'class' as const,
+          position: cls.position,
+          className: nodeClassName,
+          data: {
+            name: cls.name,
+            attributes: [...cls.attributes, ...ghostAttrs],
+            methods: cls.methods,
+            kind: cls.kind ?? 'class',
+            isAbstract: cls.isAbstract ?? false,
+            otherClasses: diagram.classes
+              .filter((other) => other.id !== cls.id)
+              .map((other) => ({ id: other.id, name: other.name })),
+            otherInterfaces: diagram.classes
+              .filter((other) => other.id !== cls.id && (other.kind ?? 'class') === 'interface')
+              .map((other) => ({ id: other.id, name: other.name })),
+            onRename: (newName: string) => handleRename(cls.id, newName),
+            onDelete: () => handleDeleteClass(cls.id),
+            onAddAttribute: (name: string, type: string, adornments?: MemberAdornments) =>
+              handleAddAttribute(cls.id, name, type, adornments),
+            onEditAttribute: (memberId: string, name: string, type: string, adornments?: MemberAdornments) =>
+              handleEditAttribute(cls.id, memberId, name, type, adornments),
+            onRemoveAttribute: (memberId: string) => handleRemoveAttribute(cls.id, memberId),
+            onAddMethod: (name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
+              handleAddMethod(cls.id, name, returnType, parameters, adornments),
+            onEditMethod: (memberId: string, name: string, returnType: string, parameters: Parameter[], adornments?: MemberAdornments) =>
+              handleEditMethod(cls.id, memberId, name, returnType, parameters, adornments),
+            onRemoveMethod: (memberId: string) => handleRemoveMethod(cls.id, memberId),
+            onMakeSubclass: (superClassId: string) =>
+              handleCreateGeneralization(doc, diagram.id, { subClassId: cls.id, superClassId }),
+            onToggleAbstract: (isAbstract: boolean) => handleSetAbstract(doc, diagram.id, cls.id, isAbstract),
+            onRealize: (supplierInterfaceId: string) =>
+              handleCreateRealization(doc, diagram.id, { clientClassId: cls.id, supplierInterfaceId }),
+            onDependOn: (supplierClassId: string) =>
+              handleCreateDependency(doc, diagram.id, { clientClassId: cls.id, supplierClassId }),
+            onSelect: () => setSelectedClassId(cls.id),
+            connectArmed: edgeTool !== null,
+            selected: selectedClassId === cls.id,
+            onQuickLinkStart: (clientX: number, clientY: number) => startQuickLink(cls.id, clientX, clientY),
+            remoteSelection: remoteSelections.get(cls.id),
+          } satisfies ClassNodeData,
+        };
+      }),
       // Unidad 13.2 — un nodo diamante por asociación n-aria, posicionado en el
       // centroide de sus clases miembros y vuelto a derivar en cada proyección
       // (draggable: false — el centroide ES su posición).
@@ -1746,10 +1772,7 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
         .filter((node): node is NaryDiamondFlowNode => node !== null),
       ...ghostNodes,
     ],
-    // unidad 13c — edgeTool se une a las dependencias: armar/desarmar conmuta las
-    // superposiciones de conexión en todo el nodo. unidad 13d — selectedClassId conmuta la
-    // flecha de la esquina de Quick Linker. unidad 21 — remoteSelections actualiza los halos.
-    [diagram, edgeTool, selectedClassId, remoteSelections, ghostNodes],
+    [diagram, edgeTool, selectedClassId, remoteSelections, ghostNodes, ghostMembers],
   );
 
   // unidad 13e.19 — transmisión colaborativa en vivo de arrastre (60/120 FPS).

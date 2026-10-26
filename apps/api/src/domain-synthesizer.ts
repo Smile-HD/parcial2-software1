@@ -239,6 +239,8 @@ export function expandSemanticDomainToDelta(
           }
           name = name.replace(/\s+/g, '');
           if (!name) return;
+          // Ignorar nombres de atributos que son placeholders literales del esquema como "name", "type", "string", "int", "attribute"
+          if (/^(name|nombre|type|tipo|string|int|float|boolean|attribute|attr)$/i.test(name)) return;
 
           // Si la clase ya existía, evitar agregar atributos duplicados
           if (existingClass && Array.isArray(existingClass.attributes)) {
@@ -871,7 +873,7 @@ export async function synthesizeDomainModel(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
       ],
-      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, temperature: 0.1, maxTokens: 800 }
+      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, temperature: 0.1, maxTokens: 2000 }
     );
 
     if (typeof response !== 'string') {

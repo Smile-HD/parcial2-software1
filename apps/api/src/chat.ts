@@ -429,7 +429,7 @@ export async function processUnifiedAmongusTurn(
           { role: 'system', content: auditPrompt },
           { role: 'user', content: 'Ejecutar auditoría OOAD del diagrama actual' },
         ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 450, onChunk: wrappedAuditChunk }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 2000, onChunk: wrappedAuditChunk }
       );
       return { replyContent: stripEmojis(auditResult).trim() };
     } catch {
@@ -479,7 +479,7 @@ export async function processUnifiedAmongusTurn(
           { role: 'system', content: suggestPrompt },
           { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
         ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 1000, onChunk: wrappedSuggestChunk }
+        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 2000, onChunk: wrappedSuggestChunk }
       );
       return { replyContent: stripEmojis(suggestResult).trim() };
     } catch {
@@ -494,8 +494,22 @@ export async function processUnifiedAmongusTurn(
     }
   }
 
-  if (trimmedLower === '/apply' || trimmedLower.startsWith('/apply ') || trimmedLower === '/aplicar' || trimmedLower.startsWith('/aplicar ')) {
-    const specificTopic = userContent.trim().replace(/^\/(?:apply|aplicar)\s*/i, '').trim();
+  const isApplyTrigger =
+    trimmedLower === '/apply' ||
+    trimmedLower.startsWith('/apply ') ||
+    trimmedLower === '/aplicar' ||
+    trimmedLower.startsWith('/aplicar ') ||
+    trimmedLower.startsWith('implement') ||
+    trimmedLower.startsWith('crea e implement') ||
+    trimmedLower.startsWith('creá e implement');
+
+  if (isApplyTrigger) {
+    const specificTopic = userContent
+      .trim()
+      .replace(/^\/(?:apply|aplicar)\s*/i, '')
+      .replace(/^implement(?:ar)?(?:\s+las?\s+clases?|\s+lo\s+sugerido|\s+the\s+classes)?/i, '')
+      .replace(/^cre[aá]\s+e\s+implement[aá]\s+(?:en\s+el\s+lienzo\s+)?(?:la\s+clase\s+)?/i, '')
+      .trim();
     const lastAssistantMsg = [...(chatHistory || [])].reverse().find((m) => m.role === 'assistant');
     const recentHistory = (chatHistory || [])
       .slice(-4)
@@ -558,8 +572,8 @@ export async function processUnifiedAmongusTurn(
               '   {',
               '     "action": "modify",',
               '     "classes": [',
-              '       { "name": "Airline", "attributes": [{ "name": "name", "type": "string" }] },',
-              '       { "name": "Flight", "attributes": [{ "name": "code", "type": "string" }, { "name": "capacity", "type": "int" }] }',
+              '       { "name": "Airline", "attributes": [{ "name": "airlineName", "type": "string" }] },',
+              '       { "name": "Flight", "attributes": [{ "name": "flightNumber", "type": "string" }, { "name": "capacity", "type": "int" }] }',
               '     ],',
               '     "associations": [',
               '       { "source": "Airline", "target": "Flight", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" }',
@@ -642,7 +656,7 @@ export async function processUnifiedAmongusTurn(
 
     const raw = await llm.chat(
       messages,
-      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 800, onChunk: isAction ? undefined : onChunk }
+      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 2000, onChunk: isAction ? undefined : onChunk }
     );
 
     // 1. Sanitizar prefijo Amongus y colapsar bucles de repetición degenerativos (ej. "de emergencia de emergencia...")

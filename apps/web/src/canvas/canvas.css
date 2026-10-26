@@ -2081,5 +2081,37 @@ body {
   }
 }
 
+/* Miembro propuesto / fantasma en clases existentes */
+.uml-class__member--ghost {
+  color: #0891b2 !important;
+  font-style: italic;
+  background: rgba(6, 182, 212, 0.12) !important;
+  border-left: 3px solid #0891b2 !important;
+  padding-left: 4px;
+  border-radius: 2px;
+}
+
+.uml-class__ghost-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #0891b2;
+  margin-left: 4px;
+}
+
+/* Clase existente con atributos/métodos fantasma pendientes */
+.class-node--ghost-pending .uml-class {
+  border: 2px dashed #0891b2 !important;
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.45) !important;
+}
+
+/* Clase existente con borrado pendiente (ej. /clear o eliminar clase) */
+.class-node--ghost-delete .uml-class {
+  border: 2.5px dashed #ef4444 !important;
+  background: rgba(254, 242, 242, 0.75) !important;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.5) !important;
+  opacity: 0.6 !important;
+  filter: grayscale(0.6);
+}
+
 
 

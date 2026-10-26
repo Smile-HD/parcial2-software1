@@ -836,8 +836,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
               if (m.senderType === 'bot') {
                 // Purgar bloques json o tutoriales largos previos para no contaminar el razonamiento del modelo
                 content = content.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
-                if (content.length > 120) {
-                  content = content.slice(0, 120) + '...';
+                if (content.length > 1500) {
+                  content = content.slice(0, 1500) + '...';
                 }
               }
               return {

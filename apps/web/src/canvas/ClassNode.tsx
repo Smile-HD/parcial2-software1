@@ -531,29 +531,37 @@ export function ClassNode({ data }: NodeProps<ClassFlowNode>) {
                 )}
               </div>
             ) : (
-              <div key={attr.id} className="uml-class__member">
+              <div
+                key={attr.id}
+                className={`uml-class__member ${(attr as any).isGhost ? 'uml-class__member--ghost' : ''}`}
+              >
                 <span
                   className={`uml-class__member-text${attr.isStatic ? ' uml-member--static' : ''}`}
                   data-testid={`attr-${attr.name}`}
                 >
                   {renderAttribute(attr)}
+                  {(attr as any).isGhost && <span className="uml-class__ghost-tag"> (propuesta)</span>}
                 </span>
-                <button
-                  type="button"
-                  className="uml-class__edit-button"
-                  aria-label={t('node.editAttrAria', { name: attr.name })}
-                  onClick={() => startEditAttribute(attr)}
-                >
-                  ✎
-                </button>
-                <button
-                  type="button"
-                  className="uml-class__remove"
-                  aria-label={t('node.removeAttrAria', { name: attr.name })}
-                  onClick={() => data.onRemoveAttribute(attr.id)}
-                >
-                  ×
-                </button>
+                {!(attr as any).isGhost && (
+                  <>
+                    <button
+                      type="button"
+                      className="uml-class__edit-button"
+                      aria-label={t('node.editAttrAria', { name: attr.name })}
+                      onClick={() => startEditAttribute(attr)}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="uml-class__remove"
+                      aria-label={t('node.removeAttrAria', { name: attr.name })}
+                      onClick={() => data.onRemoveAttribute(attr.id)}
+                    >
+                      ×
+                    </button>
+                  </>
+                )}
               </div>
             ),
           )}
