@@ -642,7 +642,7 @@ export async function processUnifiedAmongusTurn(
 
     const raw = await llm.chat(
       messages,
-      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 800, onChunk }
+      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 800, onChunk: isAction ? undefined : onChunk }
     );
 
     // 1. Sanitizar prefijo Amongus y colapsar bucles de repetición degenerativos (ej. "de emergencia de emergencia...")
