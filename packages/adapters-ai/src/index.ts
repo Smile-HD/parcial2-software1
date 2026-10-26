@@ -731,7 +731,7 @@ export class OpenAiLlm implements LlmPort {
           model: this.model,
           messages,
           temperature: options?.temperature ?? 0.2,
-          max_tokens: options?.maxTokens ?? 350,
+          max_tokens: options?.maxTokens ?? 2048,
           frequency_penalty: (options as any)?.frequencyPenalty ?? 0.4,
           presence_penalty: (options as any)?.presencePenalty ?? 0.2,
           stream: isStream,
@@ -905,7 +905,7 @@ export class OpenAiLlm implements LlmPort {
           { role: 'user', content: utterance },
         ],
         temperature: 0.1,
-        max_tokens: 350,
+        max_tokens: 2048,
       }),
     });
 

@@ -365,6 +365,11 @@ export function ChatPanel({
 
       // 1. Revisar si hay propuesta activa pendiente en lienzo
       if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !specificArg) {
+        addLocalMessage({
+          senderType: 'user',
+          senderName: userName,
+          content: trimmed,
+        });
         await handleConfirm(activeProposal.deltaId, activeProposal.delta);
         return;
       }
@@ -375,23 +380,18 @@ export function ChatPanel({
         .find((m) => m.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId));
 
       if (pendingMsg && pendingMsg.deltaId && pendingMsg.delta && !specificArg) {
+        addLocalMessage({
+          senderType: 'user',
+          senderName: userName,
+          content: trimmed,
+        });
         await handleConfirm(pendingMsg.deltaId, pendingMsg.delta);
         return;
       }
 
-      // 3. Si no hay propuesta activa ni en mensajes, o se especificó un argumento, pedir a Amongus que implemente
-      addLocalMessage({
-        senderType: 'bot',
-        senderName: 'Amongus',
-        content: isEn
-          ? (specificArg ? `Preparing proposal to implement "${specificArg}" on the canvas...` : 'Synthesizing the latest suggestion into a model proposal on the canvas...')
-          : (specificArg ? `Preparando la propuesta para construir "${specificArg}" en el lienzo...` : 'Preparando la propuesta para construir las clases sugeridas en el lienzo...'),
-      });
-      await sendMessage(
-        specificArg
-          ? (isEn ? `Create and implement class ${specificArg}` : `Creá e implementá en el lienzo la clase ${specificArg}`)
-          : (isEn ? 'Implement the classes and relationships you just suggested' : 'Implementá en el lienzo las clases y relaciones que me acabas de sugerir')
-      );
+      // 3. Si no hay propuesta activa ni en mensajes para confirmar, enviar el comando a Amongus
+      // para que sintetice la sugerencia previa y genere la propuesta de modelado fantasma en el lienzo
+      await sendMessage(trimmed);
       return;
     }
 

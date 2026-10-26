@@ -1660,13 +1660,33 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
       return null;
     };
 
-    const processAssoc = (assoc: any) => {
-      const sourceId = resolveNodeId(assoc.sourceClassId);
-      const targetId = resolveNodeId(assoc.targetClassId);
+    const processEdgeDelta = (d: any) => {
+      let sourceId: string | null = null;
+      let targetId: string | null = null;
+      let label = 'propuesta';
+
+      if (d.kind === 'association' && d.op === 'create') {
+        sourceId = resolveNodeId(d.sourceClassId);
+        targetId = resolveNodeId(d.targetClassId);
+        label = d.name || (d.targetMultiplicity ? `${d.sourceMultiplicity || ''} .. ${d.targetMultiplicity}` : 'propuesta');
+      } else if (d.kind === 'generalization' && d.op === 'create') {
+        sourceId = resolveNodeId(d.subClassId);
+        targetId = resolveNodeId(d.superClassId);
+        label = d.name || 'hereda (propuesta)';
+      } else if (d.kind === 'realization' && d.op === 'create') {
+        sourceId = resolveNodeId(d.clientClassId);
+        targetId = resolveNodeId(d.supplierInterfaceId);
+        label = d.name || 'realiza (propuesta)';
+      } else if (d.kind === 'dependency' && d.op === 'create') {
+        sourceId = resolveNodeId(d.clientClassId);
+        targetId = resolveNodeId(d.supplierClassId);
+        label = d.name || 'depende (propuesta)';
+      }
+
       if (!sourceId || !targetId) return;
 
       result.push({
-        id: `ghost-edge-${assoc.id || crypto.randomUUID()}`,
+        id: `ghost-edge-${d.id || crypto.randomUUID()}`,
         source: sourceId,
         target: targetId,
         type: 'default',
@@ -1676,19 +1696,17 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
           strokeWidth: 2.5,
           strokeDasharray: '6,4',
         },
-        label: assoc.name || (assoc.targetMultiplicity ? `${assoc.sourceMultiplicity || ''} .. ${assoc.targetMultiplicity}` : 'propuesta'),
+        label,
         labelStyle: { fill: '#0891b2', fontWeight: 600, fontSize: 11 },
       });
     };
 
-    if (ghostDelta.kind === 'association' && ghostDelta.op === 'create') {
-      processAssoc(ghostDelta);
-    } else if (ghostDelta.kind === 'batch') {
+    if (ghostDelta.kind === 'batch') {
       for (const d of ghostDelta.deltas) {
-        if (d.kind === 'association' && d.op === 'create') {
-          processAssoc(d);
-        }
+        processEdgeDelta(d);
       }
+    } else {
+      processEdgeDelta(ghostDelta);
     }
 
     return result;

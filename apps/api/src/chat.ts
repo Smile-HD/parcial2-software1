@@ -500,26 +500,43 @@ export async function processUnifiedAmongusTurn(
     trimmedLower === '/aplicar' ||
     trimmedLower.startsWith('/aplicar ') ||
     trimmedLower.startsWith('implement') ||
+    trimmedLower.startsWith('aplica') ||
     trimmedLower.startsWith('crea e implement') ||
-    trimmedLower.startsWith('creá e implement');
+    trimmedLower.startsWith('creá e implement') ||
+    /^(?:por\s+favor\s+)?(?:implement[aá]r?|aplic[aá]r?|constru[yí]r?|arm[aá]r?|cre[aá]r?)\b/i.test(trimmedLower);
 
   if (isApplyTrigger) {
-    const specificTopic = userContent
+    const cleanedTopic = userContent
       .trim()
       .replace(/^\/(?:apply|aplicar)\s*/i, '')
-      .replace(/^implement(?:ar)?(?:\s+las?\s+clases?|\s+lo\s+sugerido|\s+the\s+classes)?/i, '')
-      .replace(/^cre[aá]\s+e\s+implement[aá]\s+(?:en\s+el\s+lienzo\s+)?(?:la\s+clase\s+)?/i, '')
+      .replace(/^(?:por\s+favor\s+)?(?:implement[aá]r?|aplic[aá]r?|cre[aá]r?|arm[aá]r?|constru[yí]r?)(?:\s+e\s+implement[aá]r?)?\s+/i, '')
+      .replace(/^(?:en\s+el\s+lienzo\s+)?(?:las?\s+clases?\s+(?:y\s+relaciones?\s+)?(?:que\s+(?:me\s+)?acabas\s+de\s+sugerir|sugeridas?)|lo\s+sugerido|las?\s+sugerencias?|the\s+classes(?:\s+and\s+relationships)?(?:\s+you\s+just\s+suggested)?|the\s+suggestions?|what\s+you\s+(?:just\s+)?suggested)/i, '')
       .trim();
+
+    const isReferencingSuggestion =
+      !cleanedTopic ||
+      /^(?:en\s+el\s+lienzo|lo\s+sugerido|las\s+clases|las\s+sugerencias|las\s+entidades|lo\s+que\s+sugeriste|lo\s+que\s+me\s+dijiste|sugerencias?|todo|all|the\s+classes|the\s+suggestions?)/i.test(cleanedTopic) ||
+      /(sugerid|sugerist|sugerencia|acabas de sugerir|suggest)/i.test(userContent);
+
     const lastAssistantMsg = [...(chatHistory || [])].reverse().find((m) => m.role === 'assistant');
     const recentHistory = (chatHistory || [])
       .slice(-4)
       .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
       .join('\n');
-    const topic = specificTopic
-      ? specificTopic
-      : lastAssistantMsg
-        ? `Conversación previa:\n${recentHistory}\nImplementar lo sugerido: ${lastAssistantMsg.content}`
-        : 'entidades del dominio sugeridas';
+
+    let topic: string;
+    if (isReferencingSuggestion) {
+      if (lastAssistantMsg) {
+        topic = `Implementar y modelar las siguientes clases y entidades sugeridas previamente por el asistente:\n${lastAssistantMsg.content}\n\nContexto reciente:\n${recentHistory}`;
+      } else {
+        topic = 'entidades del dominio sugeridas';
+      }
+    } else {
+      topic = lastAssistantMsg
+        ? `Tema solicitado: ${cleanedTopic}\nContexto de conversación previa:\n${lastAssistantMsg.content}`
+        : cleanedTopic;
+    }
+
     const synthesized = await synthesizeDomainModel(topic, diagramId, llm, diagram, true);
     if (synthesized && synthesized.deltas.length > 0) {
       return {
