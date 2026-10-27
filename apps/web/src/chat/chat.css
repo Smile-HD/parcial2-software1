@@ -407,6 +407,40 @@
   border: 1px solid #e2e8f0;
 }
 
+.chat-class-card__rels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fdf4ff;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px dashed #f0abfc;
+}
+
+.chat-class-card__rels-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #a21caf;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-class-card__rel-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chat-class-card__rel-pill {
+  font-size: 11px;
+  background: #ffffff;
+  color: #701a75;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #f5d0fe;
+  font-weight: 500;
+}
+
 .chat-class-card__desc {
   font-size: 12px;
   color: #334155;
@@ -657,6 +691,126 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+.proposal-card__structured-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.proposal-card__classes-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proposal-card__class-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.proposal-card__class-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.proposal-card__class-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #ede9fe;
+  color: #6d28d9;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.proposal-card__class-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.proposal-card__attrs-row,
+.proposal-card__methods-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.proposal-card__section-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.proposal-card__attr-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.proposal-card__attr-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  background: #f1f5f9;
+  color: #1e293b;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+}
+
+.proposal-card__method-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid #bfdbfe;
+}
+
+.proposal-card__relations-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fdf4ff;
+  border: 1px dashed #f0abfc;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.proposal-card__relations-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.proposal-card__rel-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #701a75;
+  font-weight: 500;
+}
+
+.proposal-card__rel-icon {
+  font-size: 11px;
 }
 
 .proposal-card__item {

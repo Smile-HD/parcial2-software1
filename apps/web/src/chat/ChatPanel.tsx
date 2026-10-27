@@ -127,9 +127,17 @@ function renderFormattedContent(content: string, isEn: boolean): React.ReactNode
           const attrMatch = rest.match(/\(atributos:\s*\[(.*?)\]\)|atributos:\s*\[(.*?)\]|\[(.*?)\]/i);
           const rawAttrs = attrMatch ? (attrMatch[1] || attrMatch[2] || attrMatch[3]) : null;
 
-          let explanation = rest;
+          let restWithoutAttrs = rest;
           if (attrMatch) {
-            explanation = explanation.replace(attrMatch[0], '');
+            restWithoutAttrs = restWithoutAttrs.replace(attrMatch[0], '');
+          }
+
+          const relMatch = restWithoutAttrs.match(/\((?:relaciones|relaci[oó]n|relationships?):\s*\[(.*?)\]\)|\((?:relaciones|relaci[oó]n|relationships?):\s*([^)]+)\)|(?:relaciones|relaci[oó]n|relationships?):\s*\[(.*?)\]/i);
+          const rawRels = relMatch ? (relMatch[1] || relMatch[2] || relMatch[3]) : null;
+
+          let explanation = restWithoutAttrs;
+          if (relMatch) {
+            explanation = explanation.replace(relMatch[0], '');
           }
           explanation = explanation.replace(/^[\s-:–—]+(?:Explicación|Explicacion|Explanation)?[\s-:–—]*/i, '').trim();
 
@@ -147,6 +155,18 @@ function renderFormattedContent(content: string, isEn: boolean): React.ReactNode
                     {rawAttrs.split(',').map((a, aIdx) => (
                       <span key={aIdx} className="chat-class-card__attr-pill">
                         {a.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {rawRels && (
+                <div className="chat-class-card__rels">
+                  <span className="chat-class-card__rels-label">{isEn ? 'Relationships:' : 'Relaciones:'}</span>
+                  <div className="chat-class-card__rel-pills">
+                    {rawRels.split(',').map((r, rIdx) => (
+                      <span key={rIdx} className="chat-class-card__rel-pill">
+                        {r.trim()}
                       </span>
                     ))}
                   </div>
