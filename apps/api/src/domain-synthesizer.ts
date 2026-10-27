@@ -101,6 +101,104 @@ export function cleanMultiplicity(val: unknown, fallback: string = '1'): string 
 }
 
 /**
+ * Sanitiza nombres de clases eliminando prefijos comunes como "Clase ", comillas, asteriscos o corchetes,
+ * formateando a PascalCase limpio.
+ */
+export function cleanClassName(raw?: string): string {
+  if (!raw) return '';
+  let s = String(raw).trim();
+  // Quitar comillas, asteriscos (markdown bold), backticks y corchetes externos
+  s = s.replace(/^[\*"'`\[\(]+/, '').replace(/[\*"'`\]\)]+$/, '');
+  // Quitar prefijos literales generados por LLMs como "Clase ", "Class ", "Entidad ", "Entity "
+  s = s.replace(/^(?:clase|class|entidad|entity|interface|interfaz)\s+/i, '');
+  // Quitar comillas o asteriscos residuales
+  s = s.replace(/^[\*"'`]+/, '').replace(/[\*"'`]+$/, '');
+  // Eliminar espacios intermedios preservando mayúsculas iniciales (PascalCase)
+  const parts = s.split(/[\s_-]+/).filter(Boolean);
+  if (parts.length > 0) {
+    s = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+  }
+  return s;
+}
+
+/**
+ * Genera una clave canónica normalizada para búsqueda y deduplicación de clases (singular/plural, minúsculas).
+ */
+export function toCanonicalKey(raw?: string): string {
+  if (!raw) return '';
+  const cleaned = cleanClassName(raw).toLowerCase();
+  if (cleaned.endsWith('es') && cleaned.length > 4) return cleaned.slice(0, -2);
+  if (cleaned.endsWith('s') && cleaned.length > 3) return cleaned.slice(0, -1);
+  return cleaned;
+}
+
+/**
+ * Genera atributos de dominio realistas para evitar clases vacías cuando el LLM omite attributes.
+ */
+export function generateDefaultAttributesForClass(className: string): Array<{ name: string; type: string }> {
+  const lower = className.toLowerCase();
+  if (/(?:usuario|user|cliente|client|persona|person|profesor|docente|empleado|employee|alumno|estudiante|student|socio|member|chofer|driver|pasajero|passenger)/i.test(lower)) {
+    return [
+      { name: 'id', type: 'int' },
+      { name: 'nombre', type: 'string' },
+      { name: 'email', type: 'string' },
+      { name: 'estado', type: 'string' },
+    ];
+  }
+  if (/(?:producto|product|articulo|item|prenda|mercad|material|insumo|medicamento)/i.test(lower)) {
+    return [
+      { name: 'codigo', type: 'string' },
+      { name: 'nombre', type: 'string' },
+      { name: 'precio', type: 'float' },
+      { name: 'stock', type: 'int' },
+    ];
+  }
+  if (/(?:pedido|order|factura|invoice|venta|sale|compra|purchase|comprobante|recibo|ticket|reserva|booking|alquiler|renta)/i.test(lower)) {
+    return [
+      { name: 'numero', type: 'string' },
+      { name: 'fecha', type: 'date' },
+      { name: 'total', type: 'float' },
+      { name: 'estado', type: 'string' },
+    ];
+  }
+  if (/(?:detalle|detail|linea|itempedido|orderitem)/i.test(lower)) {
+    return [
+      { name: 'cantidad', type: 'int' },
+      { name: 'precioUnitario', type: 'float' },
+      { name: 'subtotal', type: 'float' },
+    ];
+  }
+  if (/(?:carrito|cart|cesta|basket)/i.test(lower)) {
+    return [
+      { name: 'id', type: 'int' },
+      { name: 'fechaCreacion', type: 'date' },
+      { name: 'total', type: 'float' },
+    ];
+  }
+  if (/(?:pago|payment|cobro|transaccion|transaction)/i.test(lower)) {
+    return [
+      { name: 'transaccionId', type: 'string' },
+      { name: 'monto', type: 'float' },
+      { name: 'metodo', type: 'string' },
+      { name: 'fecha', type: 'date' },
+    ];
+  }
+  if (/(?:categoria|category|departamento|seccion|area)/i.test(lower)) {
+    return [
+      { name: 'id', type: 'int' },
+      { name: 'nombre', type: 'string' },
+      { name: 'descripcion', type: 'string' },
+    ];
+  }
+  const cleanPrefix = lower.replace(/[^a-z0-9]/gi, '') || 'item';
+  return [
+    { name: `${cleanPrefix}Id`, type: 'int' },
+    { name: 'nombre', type: 'string' },
+    { name: 'estado', type: 'string' },
+  ];
+}
+
+/**
  * Convierte un modelo de dominio semántico abstracto (generado dinámicamente por el LLM)
  * en un BatchDelta de metamodelo UML canónico y validado con coordenadas espaciales.
  */
@@ -135,8 +233,12 @@ export function expandSemanticDomainToDelta(
   if (currentDiagram?.classes && Array.isArray(currentDiagram.classes)) {
     for (const ec of currentDiagram.classes) {
       if (ec.id && ec.name) {
-        const lower = ec.name.toLowerCase().trim();
+        const cleaned = cleanClassName(ec.name);
+        const lower = cleaned.toLowerCase();
+        const canon = toCanonicalKey(cleaned);
+        classIdMap.set(canon, ec.id);
         classIdMap.set(lower, ec.id);
+        existingClassesMap.set(canon, ec);
         existingClassesMap.set(lower, ec);
       }
     }
@@ -144,7 +246,10 @@ export function expandSemanticDomainToDelta(
 
   const resolveClassId = (rawName?: string): string | undefined => {
     if (!rawName) return undefined;
-    const lower = rawName.toLowerCase().trim().replace(/\s+/g, '');
+    const cleaned = cleanClassName(rawName);
+    const lower = cleaned.toLowerCase();
+    const canon = toCanonicalKey(cleaned);
+    if (classIdMap.has(canon)) return classIdMap.get(canon);
     if (classIdMap.has(lower)) return classIdMap.get(lower);
     if (lower.endsWith('es') && classIdMap.has(lower.slice(0, -2))) return classIdMap.get(lower.slice(0, -2));
     if (lower.endsWith('s') && classIdMap.has(lower.slice(0, -1))) return classIdMap.get(lower.slice(0, -1));
@@ -158,13 +263,17 @@ export function expandSemanticDomainToDelta(
   const existingCount = currentDiagram?.classes?.length ?? 0;
   if (hasClasses) {
     model.classes!.forEach((cls, idx) => {
-      const cleanName = cls.name.trim().replace(/\s+/g, '');
+      const cleanName = cleanClassName(cls.name);
+      if (!cleanName) return;
       const lower = cleanName.toLowerCase();
-      const existingClass = existingClassesMap.get(lower);
+      const canon = toCanonicalKey(cleanName);
+      const existingClass = existingClassesMap.get(canon) ?? existingClassesMap.get(lower);
 
       let classId: string;
       if (existingClass) {
         classId = existingClass.id;
+        classIdMap.set(canon, classId);
+        classIdMap.set(lower, classId);
         // Si pide marcar abstracta o cambiar a interfaz
         if (cls.isAbstract !== undefined || cls.isInterface !== undefined) {
           deltas.push({
@@ -180,6 +289,7 @@ export function expandSemanticDomainToDelta(
         }
       } else {
         classId = crypto.randomUUID();
+        classIdMap.set(canon, classId);
         classIdMap.set(lower, classId);
 
         let x: number;
@@ -188,16 +298,16 @@ export function expandSemanticDomainToDelta(
           let relatedExistingClass: any = null;
           if (Array.isArray(model.associations)) {
             const relatedAssoc = model.associations.find((a: any) => {
-              const src = (typeof a.source === 'object' ? a.source?.name : a.source)?.toLowerCase().trim();
-              const tgt = (typeof a.target === 'object' ? a.target?.name : a.target)?.toLowerCase().trim();
-              return src === lower || tgt === lower;
+              const src = toCanonicalKey(typeof a.source === 'object' ? a.source?.name : a.source);
+              const tgt = toCanonicalKey(typeof a.target === 'object' ? a.target?.name : a.target);
+              return src === canon || tgt === canon;
             });
             if (relatedAssoc) {
-              const src = (typeof relatedAssoc.source === 'object' ? relatedAssoc.source?.name : relatedAssoc.source)?.toLowerCase().trim();
-              const otherName = src === lower
-                ? (typeof relatedAssoc.target === 'object' ? relatedAssoc.target?.name : relatedAssoc.target)?.toLowerCase().trim()
+              const src = toCanonicalKey(typeof relatedAssoc.source === 'object' ? relatedAssoc.source?.name : relatedAssoc.source);
+              const otherCanon = src === canon
+                ? toCanonicalKey(typeof relatedAssoc.target === 'object' ? relatedAssoc.target?.name : relatedAssoc.target)
                 : src;
-              relatedExistingClass = existingClassesMap.get(otherName);
+              relatedExistingClass = existingClassesMap.get(otherCanon);
             }
           }
 
@@ -252,6 +362,11 @@ export function expandSemanticDomainToDelta(
         for (const [k, v] of Object.entries(rawAttrs)) {
           attrList.push({ name: k, type: typeof v === 'string' ? v : 'string' });
         }
+      }
+
+      // Si la clase no tiene atributos suficientes o vino vacía del LLM, asegurar atributos mínimos realistas
+      if (attrList.length === 0 && !existingClass) {
+        attrList.push(...generateDefaultAttributesForClass(cleanName));
       }
 
       attrList.forEach((attr: any) => {
@@ -355,112 +470,164 @@ export function expandSemanticDomainToDelta(
     });
   }
 
-  // Helper para verificar si dos clases ya tienen cualquier relación directa entre sí
-  const areClassesConnected = (idA: string, idB: string): boolean => {
-    if (!idA || !idB || idA === idB) return true;
-    // Diagram associations
-    if (currentDiagram?.associations?.some(
-      (a: any) =>
-        (a.sourceClassId === idA && a.targetClassId === idB) ||
-        (a.sourceClassId === idB && a.targetClassId === idA)
-    )) return true;
-    // Diagram generalizations
-    if (currentDiagram?.generalizations?.some(
-      (g: any) =>
-        (g.subClassId === idA && g.superClassId === idB) ||
-        (g.subClassId === idB && g.superClassId === idA)
-    )) return true;
-    // Diagram realizations
-    if (currentDiagram?.realizations?.some(
-      (r: any) =>
-        (r.clientClassId === idA && r.supplierInterfaceId === idB) ||
-        (r.clientClassId === idB && r.supplierInterfaceId === idA)
-    )) return true;
-    // Diagram dependencies
-    if (currentDiagram?.dependencies?.some(
-      (d: any) =>
-        (d.clientClassId === idA && d.supplierClassId === idB) ||
-        (d.clientClassId === idB && d.supplierClassId === idA)
-    )) return true;
-    // Deltas in this batch
-    if (deltas.some((d: any) => {
-      if (d.kind === 'association') {
-        return (d.sourceClassId === idA && d.targetClassId === idB) ||
-               (d.sourceClassId === idB && d.targetClassId === idA);
-      }
-      if (d.kind === 'generalization') {
-        return (d.subClassId === idA && d.superClassId === idB) ||
-               (d.subClassId === idB && d.superClassId === idA);
-      }
-      if (d.kind === 'realization') {
-        return (d.clientClassId === idA && d.supplierInterfaceId === idB) ||
-               (d.clientClassId === idB && d.supplierInterfaceId === idA);
-      }
-      if (d.kind === 'dependency') {
-        return (d.clientClassId === idA && d.supplierClassId === idB) ||
-               (d.clientClassId === idB && d.supplierClassId === idA);
-      }
-      return false;
-    })) return true;
-    return false;
-  };
+  // Clave canónica de pares para asegurar unicidad absoluta de aristas entre dos clases
+  const getPairKey = (idA: string, idB: string): string => [idA, idB].sort().join('::');
+  const seenConnectedPairs = new Set<string>();
 
-  // 2. Asociaciones, composiciones y agregaciones
+  // Pre-cargar todas las aristas existentes en el lienzo para no duplicar bajo ninguna condición
+  if (currentDiagram?.associations && Array.isArray(currentDiagram.associations)) {
+    for (const a of currentDiagram.associations) {
+      if (a.sourceClassId && a.targetClassId) {
+        seenConnectedPairs.add(getPairKey(a.sourceClassId, a.targetClassId));
+      }
+    }
+  }
+  if (currentDiagram?.generalizations && Array.isArray(currentDiagram.generalizations)) {
+    for (const g of currentDiagram.generalizations) {
+      if (g.subClassId && g.superClassId) {
+        seenConnectedPairs.add(getPairKey(g.subClassId, g.superClassId));
+      }
+    }
+  }
+  if (currentDiagram?.realizations && Array.isArray(currentDiagram.realizations)) {
+    for (const r of currentDiagram.realizations) {
+      if (r.clientClassId && r.supplierInterfaceId) {
+        seenConnectedPairs.add(getPairKey(r.clientClassId, r.supplierInterfaceId));
+      }
+    }
+  }
+  if (currentDiagram?.dependencies && Array.isArray(currentDiagram.dependencies)) {
+    for (const d of currentDiagram.dependencies) {
+      if (d.clientClassId && d.supplierClassId) {
+        seenConnectedPairs.add(getPairKey(d.clientClassId, d.supplierClassId));
+      }
+    }
+  }
+
+  // 2. Procesar primero las GENERALIZACIONES (herencia OOAD: "is-a")
+  // La herencia es la relación estructural más fuerte en OOAD: tiene precedencia absoluta sobre asociaciones
+  const pendingGeneralizations: Array<{ subclass: string; superclass: string; name?: string }> = [];
+
+  if (Array.isArray(model.generalizations)) {
+    for (const g of model.generalizations) {
+      if (g.subclass && g.superclass) {
+        pendingGeneralizations.push({
+          subclass: g.subclass,
+          superclass: g.superclass,
+          name: g.name,
+        });
+      }
+    }
+  }
+
+  // Si en model.associations el LLM etiquetó alguna relación como herencia/generalización
+  if (Array.isArray(model.associations)) {
+    for (const assoc of model.associations) {
+      const isGen =
+        (assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name)) ||
+        ((assoc as any).type && /^(generaliz|hered|herencia|is_a|subclass)/i.test((assoc as any).type));
+      if (isGen && assoc.source && assoc.target) {
+        pendingGeneralizations.push({
+          subclass: assoc.source,
+          superclass: assoc.target,
+          name: assoc.name,
+        });
+      }
+    }
+  }
+
+  for (const gen of pendingGeneralizations) {
+    const subId = resolveClassId(gen.subclass);
+    const superId = resolveClassId(gen.superclass);
+    if (!subId || !superId || subId === superId) continue;
+    const pair = getPairKey(subId, superId);
+    if (seenConnectedPairs.has(pair)) continue;
+
+    deltas.push({
+      id: crypto.randomUUID(),
+      diagramId,
+      timestamp,
+      kind: 'generalization',
+      op: 'create',
+      generalizationId: crypto.randomUUID(),
+      subClassId: subId,
+      superClassId: superId,
+      name: gen.name,
+    });
+    seenConnectedPairs.add(pair);
+  }
+
+  // 3. Realizaciones explícitas (implementación de interfaz)
+  if (Array.isArray(model.realizations)) {
+    model.realizations.forEach((r) => {
+      const client = resolveClassId(r.clientClass);
+      const supplier = resolveClassId(r.supplierInterface);
+      if (!client || !supplier || client === supplier) return;
+      const pair = getPairKey(client, supplier);
+      if (seenConnectedPairs.has(pair)) return;
+
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'realization',
+        op: 'create',
+        realizationId: crypto.randomUUID(),
+        clientClassId: client,
+        supplierInterfaceId: supplier,
+        name: r.name,
+      });
+      seenConnectedPairs.add(pair);
+    });
+  }
+
+  // 4. Dependencias explícitas
+  if (Array.isArray(model.dependencies)) {
+    model.dependencies.forEach((d) => {
+      const client = resolveClassId(d.client);
+      const supplier = resolveClassId(d.supplier);
+      if (!client || !supplier || client === supplier) return;
+      const pair = getPairKey(client, supplier);
+      if (seenConnectedPairs.has(pair)) return;
+
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'dependency',
+        op: 'create',
+        dependencyId: crypto.randomUUID(),
+        clientClassId: client,
+        supplierClassId: supplier,
+        name: d.name,
+      });
+      seenConnectedPairs.add(pair);
+    });
+  }
+
+  // 5. Asociaciones, composiciones y agregaciones
   if (Array.isArray(model.associations)) {
     model.associations.forEach((assoc) => {
+      // Si era una generalización o realización ya procesada
+      const isGen =
+        (assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name)) ||
+        ((assoc as any).type && /^(generaliz|hered|herencia|is_a|subclass)/i.test((assoc as any).type));
+      if (isGen) return;
+
+      const isRealiz = assoc.name && /^(implement|realiz)/i.test(assoc.name);
+      if (isRealiz) return;
+
+      const isDep = assoc.name && /^(depend|usa|uses)/i.test(assoc.name);
+      if (isDep) return;
+
       const sourceId = resolveClassId(assoc.source);
       const targetId = resolveClassId(assoc.target);
 
       if (!sourceId || !targetId || sourceId === targetId) return;
-      if (areClassesConnected(sourceId, targetId)) return;
 
-      // Si el nombre o tipo indica herencia/generalización
-      const isGeneralization = assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name);
-      if (isGeneralization) {
-        deltas.push({
-          id: crypto.randomUUID(),
-          diagramId,
-          timestamp,
-          kind: 'generalization',
-          op: 'create',
-          generalizationId: crypto.randomUUID(),
-          subClassId: sourceId,
-          superClassId: targetId,
-        });
-        return;
-      }
-
-      // Si el nombre o tipo indica realización/implementación
-      const isRealization = assoc.name && /^(implement|realiz)/i.test(assoc.name);
-      if (isRealization) {
-        deltas.push({
-          id: crypto.randomUUID(),
-          diagramId,
-          timestamp,
-          kind: 'realization',
-          op: 'create',
-          realizationId: crypto.randomUUID(),
-          clientClassId: sourceId,
-          supplierInterfaceId: targetId,
-        });
-        return;
-      }
-
-      // Si el nombre o tipo indica dependencia
-      const isDependency = assoc.name && /^(depend|usa|uses)/i.test(assoc.name);
-      if (isDependency) {
-        deltas.push({
-          id: crypto.randomUUID(),
-          diagramId,
-          timestamp,
-          kind: 'dependency',
-          op: 'create',
-          dependencyId: crypto.randomUUID(),
-          clientClassId: sourceId,
-          supplierClassId: targetId,
-        });
-        return;
-      }
+      const pair = getPairKey(sourceId, targetId);
+      // CERO DUPLICADOS: Si este par ya tiene generalización, realización o asociación previa, DESCARTAR
+      if (seenConnectedPairs.has(pair)) return;
 
       let assocClassId = assoc.associationClass
         ? resolveClassId(assoc.associationClass)
@@ -468,9 +635,11 @@ export function expandSemanticDomainToDelta(
 
       // Si la clase de asociación intermedia no fue creada aún, crearla explícitamente en el lote
       if (assoc.associationClass && !assocClassId) {
-        const acName = String(assoc.associationClass).trim().replace(/\s+/g, '');
+        const acName = cleanClassName(assoc.associationClass);
         const acLower = acName.toLowerCase();
+        const acCanon = toCanonicalKey(acName);
         assocClassId = crypto.randomUUID();
+        classIdMap.set(acCanon, assocClassId);
         classIdMap.set(acLower, assocClassId);
         deltas.push({
           id: crypto.randomUUID(),
@@ -484,23 +653,27 @@ export function expandSemanticDomainToDelta(
           isAbstract: false,
           position: { x: 360, y: 380 },
         });
-        deltas.push({
-          id: crypto.randomUUID(),
-          diagramId,
-          timestamp,
-          kind: 'member',
-          op: 'addAttribute',
-          classId: assocClassId,
-          memberId: crypto.randomUUID(),
-          name: 'id',
-          type: 'int',
-          visibility: '+',
-          isStatic: false,
-          isDerived: false,
-        });
+        const defaultAttrs = generateDefaultAttributesForClass(acName);
+        for (const da of defaultAttrs) {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'member',
+            op: 'addAttribute',
+            classId: assocClassId,
+            memberId: crypto.randomUUID(),
+            name: da.name,
+            type: da.type,
+            visibility: '+',
+            isStatic: false,
+            isDerived: false,
+          });
+        }
       }
 
       const isComposite = assoc.aggregation === 'composite';
+      // Solo permitir agregación compartida (shared) si se solicitó explícitamente y no es una simple referencia
       const isShared = assoc.aggregation === 'shared';
 
       const assocDelta: any = {
@@ -525,73 +698,55 @@ export function expandSemanticDomainToDelta(
       if (assocClassId) assocDelta.associationClassId = assocClassId;
 
       deltas.push(assocDelta);
+      seenConnectedPairs.add(pair);
     });
   }
 
-  // 3. Generalizaciones explícitas
-  if (Array.isArray(model.generalizations)) {
-    model.generalizations.forEach((gen) => {
-      const subId = resolveClassId(gen.subclass);
-      const superId = resolveClassId(gen.superclass);
-      if (!subId || !superId || subId === superId || areClassesConnected(subId, superId)) return;
+  // 6. Conectividad del grafo: ninguna clase creada debe quedar aislada ("volando sin relación")
+  if (hasClasses && model.classes!.length > 1) {
+    const createdClassIds = Array.from(new Set(
+      deltas.filter((d: any) => d.kind === 'class' && d.op === 'create').map((d: any) => d.classId)
+    ));
 
-      deltas.push({
-        id: crypto.randomUUID(),
-        diagramId,
-        timestamp,
-        kind: 'generalization',
-        op: 'create',
-        generalizationId: crypto.randomUUID(),
-        subClassId: subId,
-        superClassId: superId,
-        name: gen.name,
-      });
-    });
+    const anchorClassId = createdClassIds[0] || (currentDiagram?.classes?.[0]?.id as string | undefined);
+
+    if (anchorClassId) {
+      for (const cid of createdClassIds) {
+        if (cid === anchorClassId) continue;
+        let hasAnyConnection = false;
+        for (const pair of seenConnectedPairs) {
+          if (pair.includes(cid)) {
+            hasAnyConnection = true;
+            break;
+          }
+        }
+
+        if (!hasAnyConnection) {
+          const pair = getPairKey(anchorClassId, cid);
+          if (!seenConnectedPairs.has(pair)) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'association',
+              op: 'create',
+              associationId: crypto.randomUUID(),
+              sourceClassId: anchorClassId,
+              targetClassId: cid,
+              sourceMultiplicity: '1',
+              targetMultiplicity: '0..*',
+              directed: false,
+              aggregation: 'none',
+              aggregationEnd: 'source',
+            });
+            seenConnectedPairs.add(pair);
+          }
+        }
+      }
+    }
   }
 
-  // 4. Realizaciones explícitas (implementación de interfaz)
-  if (Array.isArray(model.realizations)) {
-    model.realizations.forEach((r) => {
-      const client = resolveClassId(r.clientClass);
-      const supplier = resolveClassId(r.supplierInterface);
-      if (!client || !supplier || client === supplier || areClassesConnected(client, supplier)) return;
-
-      deltas.push({
-        id: crypto.randomUUID(),
-        diagramId,
-        timestamp,
-        kind: 'realization',
-        op: 'create',
-        realizationId: crypto.randomUUID(),
-        clientClassId: client,
-        supplierInterfaceId: supplier,
-        name: r.name,
-      });
-    });
-  }
-
-  // 5. Dependencias explícitas
-  if (Array.isArray(model.dependencies)) {
-    model.dependencies.forEach((d) => {
-      const client = resolveClassId(d.client);
-      const supplier = resolveClassId(d.supplier);
-      if (!client || !supplier || client === supplier || areClassesConnected(client, supplier)) return;
-
-      deltas.push({
-        id: crypto.randomUUID(),
-        diagramId,
-        timestamp,
-        kind: 'dependency',
-        op: 'create',
-        dependencyId: crypto.randomUUID(),
-        clientClassId: client,
-        supplierClassId: supplier,
-        name: d.name,
-      });
-    });
-  }
-
-  // 6. Asociaciones N-arias (3 o más extremos con rombo central)
+  // 7. Asociaciones N-arias (3 o más extremos con rombo central)
   if (Array.isArray(model.naryAssociations)) {
     model.naryAssociations.forEach((n) => {
       if (!Array.isArray(n.members) || n.members.length < 3) return;
@@ -1008,14 +1163,16 @@ export async function synthesizeDomainModel(
     'You are a senior UML software architect and domain-driven design expert.',
     'Design a concise, realistic, and cohesive domain model tailored specifically to the user request.',
     'CRITICAL LANGUAGE RULE: If the prompt or context is in Spanish, name all classes, attributes, and roles in Spanish. If in English, name them in English.',
-    'CRITICAL ENTITIES RULE: If candidate classes or entities are requested or implied, you MUST include ALL of them in the "classes" array. For EVERY SINGLE CLASS, you MUST provide 2 to 3 realistic domain attributes with clean types (string, int, float, boolean, date). NEVER leave attributes empty.',
+    'CRITICAL ENTITIES RULE: If candidate classes or entities are requested or implied, you MUST include ALL of them in the "classes" array. For EVERY SINGLE CLASS, you MUST provide 2 to 4 realistic domain attributes with clean types (string, int, float, boolean, date). NEVER leave attributes empty.',
     'CRITICAL RELATIONSHIP TYPES RULES:',
-    '1. COMPOSITION (strong ownership/lifecycle dependency where the part cannot exist without the whole): Set "aggregation": "composite" on the association (e.g. Factura -> DetalleFactura, Pedido -> ItemPedido, Venta -> LineaVenta). The container/whole is the "source".',
-    '2. AGGREGATION (weak reference/independent lifecycle where parts can exist independently): Set "aggregation": "shared" on the association (e.g. Carrito -> Producto, Departamento -> Profesor, Empresa -> Empleado).',
-    '3. INTERMEDIATE ASSOCIATION CLASSES: When an M:N relationship between two entities carries its own attributes (e.g. DetalleVenta between Venta and Producto with cantidad/precio; Inscripcion between Estudiante and Curso with nota/fecha), specify "associationClass": "ClassName" on the association, and ALSO declare that intermediate class in the "classes" array with its attributes.',
-    '4. INHERITANCE / GENERALIZATION: For specialized subtypes (e.g. Perro is an Animal; Cliente is a Persona; TarjetaCredito is a MetodoPago), declare them in the "generalizations" array: [{"subclass": "Cliente", "superclass": "Persona"}].',
-    '5. STANDARD MULTIPLICITIES: Associations must use standard UML 2.5.1 multiplicities ONLY: "1", "0..1", "1..*", "0..*". NEVER output non-standard labels like "n", "m", or "n-to-1".',
-    'Include essential relationships connecting the classes together, and connecting them to existing classes if present.',
+    '1. DEFAULT TO PLAIN ASSOCIATION: Most relationships between classes are standard associations with "aggregation": "none" (e.g. Cliente -> Pedido, DetalleFactura -> Producto, Medico -> Paciente, Pasajero -> Vuelo).',
+    '2. COMPOSITION (strong whole-part lifecycle dependency: if the whole is deleted, parts cease to exist): Set "aggregation": "composite" on the association (e.g. Factura -> DetalleFactura, Pedido -> ItemPedido, Venta -> LineaVenta). The container/whole is the "source".',
+    '3. AGGREGATION (use SPARINGLY, ONLY when a container aggregates independent entities that survive without the container): Set "aggregation": "shared" (e.g. Biblioteca -> Libro, Departamento -> Empleado). Do NOT use aggregation for simple references.',
+    '4. INHERITANCE / GENERALIZATION: For specialized subtypes ("is-a" relationship, e.g. Perro is an Animal, TarjetaCredito is a MetodoPago), declare in "generalizations": [{"subclass": "TarjetaCredito", "superclass": "MetodoPago"}]. Subclasses inherit attributes from superclass; do NOT repeat inherited attributes in the subclass. NEVER create an association between a subclass and its superclass.',
+    '5. INTERMEDIATE ASSOCIATION CLASSES: When an M:N relationship carries its own attributes (e.g. DetalleVenta between Venta and Producto with cantidad/precio; Inscripcion between Estudiante and Curso with nota/fecha), specify "associationClass": "ClassName" on the association, and declare that class in "classes".',
+    '6. ZERO DUPLICATES: Between any two classes, create AT MOST ONE relationship. NEVER output multiple associations or association + aggregation or association + generalization between the same pair of classes.',
+    '7. GRAPH CONNECTIVITY: Every class MUST be connected to at least one other class. No isolated or floating classes.',
+    '8. STANDARD MULTIPLICITIES: Associations must use standard UML 2.5.1 multiplicities ONLY: "1", "0..1", "1..*", "0..*". NEVER output non-standard labels like "n", "m", or "n-to-1".',
     contextHint,
     assocHint,
     'Output ONLY a valid raw JSON object matching:',
@@ -1027,7 +1184,7 @@ export async function synthesizeDomainModel(
     '  ],',
     '  "associations": [',
     '    {"source": "Factura", "target": "DetalleFactura", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1..*"},',
-    '    {"source": "DetalleFactura", "target": "Producto", "aggregation": "shared", "sourceMultiplicity": "0..*", "targetMultiplicity": "1"}',
+    '    {"source": "DetalleFactura", "target": "Producto", "aggregation": "none", "sourceMultiplicity": "0..*", "targetMultiplicity": "1"}',
     '  ],',
     '  "generalizations": []',
     '}',

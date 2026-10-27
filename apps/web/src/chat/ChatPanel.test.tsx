@@ -301,4 +301,26 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
       expect(mockOnConfirm).toHaveBeenCalledWith('proposal-999', expect.any(Object));
     });
   });
+
+  it('delega /apply al backend mediante sendMessage sin duplicar mensajes locales cuando no hay propuesta activa', async () => {
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+      />
+    );
+
+    const input = screen.getByTestId('chat-input');
+    fireEvent.change(input, { target: { value: '/apply' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(chatApi.sendChatMessage).toHaveBeenCalledWith(
+        mockDiagramId,
+        expect.objectContaining({ content: '/apply' })
+      );
+    });
+  });
 });

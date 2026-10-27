@@ -358,14 +358,14 @@ export function ChatPanel({
     if (trimmed === '/apply' || trimmed === '/aplicar' || trimmed.startsWith('/apply ') || trimmed.startsWith('/aplicar ')) {
       const specificArg = trimmed.replace(/^\/(?:apply|aplicar)\s*/i, '').trim();
       setDraft('');
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
 
       // 1. Revisar si hay propuesta activa pendiente en lienzo
       if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !specificArg) {
+        addLocalMessage({
+          senderType: 'user',
+          senderName: userName,
+          content: trimmed,
+        });
         await handleConfirm(activeProposal.deltaId, activeProposal.delta);
         addLocalMessage({
           senderType: 'bot',
@@ -383,6 +383,11 @@ export function ChatPanel({
         .find((m) => m.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId));
 
       if (pendingMsg && pendingMsg.deltaId && pendingMsg.delta && !specificArg) {
+        addLocalMessage({
+          senderType: 'user',
+          senderName: userName,
+          content: trimmed,
+        });
         await handleConfirm(pendingMsg.deltaId, pendingMsg.delta);
         addLocalMessage({
           senderType: 'bot',
@@ -395,7 +400,8 @@ export function ChatPanel({
       }
 
       // 3. Si no hay propuesta activa ni en mensajes para confirmar, enviar el comando a Amongus
-      // para que sintetice la sugerencia previa y genere la propuesta de modelado fantasma en el lienzo
+      // para que sintetice la sugerencia previa y genere la propuesta de modelado fantasma en el lienzo.
+      // sendMessage ya crea el mensaje de usuario de forma optimista y lo persiste en backend sin duplicar.
       await sendMessage(trimmed);
       return;
     }

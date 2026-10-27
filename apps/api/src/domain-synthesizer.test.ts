@@ -424,6 +424,140 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect(assocDeltas).toHaveLength(1);
     expect(assocDeltas[0].sourceClassId === classBId || assocDeltas[0].targetClassId === classBId).toBe(true);
   });
+
+  it('auto-backfills realistic domain attributes for empty classes so no class is created with 0 attributes', () => {
+    const modelWithEmptyClasses: SemanticDomainModel = {
+      classes: [
+        { name: 'Producto' },
+        { name: 'Factura' },
+        { name: 'Cliente' },
+      ],
+      associations: [
+        { source: 'Cliente', target: 'Factura', aggregation: 'none' },
+        { source: 'Factura', target: 'Producto', aggregation: 'none' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(modelWithEmptyClasses, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const diagram = applied.value;
+      for (const cls of diagram.classes) {
+        expect(cls.attributes.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+
+  it('guarantees graph connectivity: connects isolated orphan classes to anchor class', () => {
+    const modelWithOrphan: SemanticDomainModel = {
+      classes: [
+        { name: 'Factura', attributes: [{ name: 'id', type: 'int' }] },
+        { name: 'DetalleFactura', attributes: [{ name: 'cantidad', type: 'int' }] },
+        // Esta clase queda completamente desconectada en el JSON del LLM
+        { name: 'Notificacion', attributes: [{ name: 'mensaje', type: 'string' }] },
+      ],
+      associations: [
+        { source: 'Factura', target: 'DetalleFactura', aggregation: 'composite' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(modelWithOrphan, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const diagram = applied.value;
+      const notifClass = diagram.classes.find((c) => c.name === 'Notificacion');
+      expect(notifClass).toBeDefined();
+
+      // Verificar que Notificacion no quedó aislada
+      const notifAssoc = diagram.associations.find(
+        (a) => a.sourceClassId === notifClass!.id || a.targetClassId === notifClass!.id
+      );
+      expect(notifAssoc).toBeDefined();
+    }
+  });
+
+  it('prevents relating the same class pair with 2 aggregations or duplicate edges', () => {
+    const modelWith2Aggregations: SemanticDomainModel = {
+      classes: [
+        { name: 'Carrito' },
+        { name: 'Producto' },
+      ],
+      associations: [
+        // Dos agregaciones entre el mismo par de clases
+        { source: 'Carrito', target: 'Producto', aggregation: 'shared' },
+        { source: 'Carrito', target: 'Producto', aggregation: 'shared' },
+        { source: 'Producto', target: 'Carrito', aggregation: 'none' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(modelWith2Aggregations, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const diagram = applied.value;
+      // Solo 1 asociación permitida entre Carrito y Producto
+      expect(diagram.associations).toHaveLength(1);
+      expect(diagram.associations[0].aggregation).toBe('shared');
+    }
+  });
+
+  it('prioritizes generalization over association when both are proposed between same classes', () => {
+    const modelWithGenAndAssoc: SemanticDomainModel = {
+      classes: [
+        { name: 'Animal', attributes: [{ name: 'nombre', type: 'string' }] },
+        { name: 'Perro', attributes: [{ name: 'raza', type: 'string' }] },
+      ],
+      generalizations: [
+        { subclass: 'Perro', superclass: 'Animal' },
+      ],
+      associations: [
+        // Esta asociación redundante debe ser descartada a favor de la generalización
+        { source: 'Perro', target: 'Animal', aggregation: 'none' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(modelWithGenAndAssoc, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const diagram = applied.value;
+      expect(diagram.generalizations).toHaveLength(1);
+      expect(diagram.associations).toHaveLength(0);
+    }
+  });
+
+  it('cleans class names with quotes, markdown bold, and prefixes like "Clase "', () => {
+    const modelWithMessyNames: SemanticDomainModel = {
+      classes: [
+        { name: 'Clase "Producto"' },
+        { name: '**Carrito**' },
+      ],
+      associations: [
+        { source: 'Clase "Carrito"', target: 'Producto', aggregation: 'shared' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(modelWithMessyNames, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const diagram = applied.value;
+      expect(diagram.classes.map((c) => c.name).sort()).toEqual(['Carrito', 'Producto']);
+      expect(diagram.associations).toHaveLength(1);
+    }
+  });
 });
 
 

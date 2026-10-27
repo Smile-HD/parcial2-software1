@@ -46,7 +46,16 @@ export function useChat({
         const serverMessages = Array.isArray(data) ? data : [];
 
         // Preservar mensajes locales que no se persisten en backend
-        const localMessages = prev.filter((m) => m.id.startsWith('local-'));
+        // Deduplicar si el servidor ya incluye un mensaje equivalente del mismo usuario
+        const localMessages = prev.filter((m) => {
+          if (!m.id.startsWith('local-')) return false;
+          if (m.senderType === 'user') {
+            return !serverMessages.some(
+              (sm) => sm.content === m.content && sm.senderName === m.senderName
+            );
+          }
+          return true;
+        });
 
         // Preservar mensajes optimistas temporales que aún no se confirmaron en el servidor
         const pendingTempMessages = prev.filter((m) => {
