@@ -85,8 +85,93 @@ function renderStreamingContent(text: string, isEn: boolean) {
   // Respuesta conversacional / teórica: texto en vivo con cursor parpadeante
   return (
     <div className="chat-panel__streaming-text">
-      {trimmed}
+      {renderFormattedContent(trimmed, isEn)}
       <span className="chat-panel__cursor">▊</span>
+    </div>
+  );
+}
+
+function parseInlineMarkdown(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      return <code key={i} className="chat-inline-code">{part.slice(1, -1)}</code>;
+    }
+    return part;
+  });
+}
+
+function renderFormattedContent(content: string, isEn: boolean): React.ReactNode {
+  if (!content) return null;
+
+  // Normaliza y separa items numerados o clases pegadas (ej. "...costo total. 5. **Clase...")
+  const normalized = content
+    .replace(/([.!?])\s*(?=\d+\.\s+\*\*)/g, '$1\n\n')
+    .replace(/(?:\r\n|\r|\n)/g, '\n');
+
+  const paragraphs = normalized.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+
+  return (
+    <div className="chat-formatted-body">
+      {paragraphs.map((p, pIdx) => {
+        // Detecta item estructurado de clase: ej. 1. **Clase "Nombre"** (atributos: [...]) - Explicación: ...
+        const classMatch = p.match(/^(\d+\.?\s*)?\*\*(?:Clase\s+)?["']?([^"'*]+)["']?\*\*(.*)$/i);
+        if (classMatch) {
+          const [, prefix, className, rest] = classMatch;
+          const attrMatch = rest.match(/\(atributos:\s*\[(.*?)\]\)|atributos:\s*\[(.*?)\]|\[(.*?)\]/i);
+          const rawAttrs = attrMatch ? (attrMatch[1] || attrMatch[2] || attrMatch[3]) : null;
+
+          let explanation = rest;
+          if (attrMatch) {
+            explanation = explanation.replace(attrMatch[0], '');
+          }
+          explanation = explanation.replace(/^[\s-:–—]+(?:Explicación|Explicacion|Explanation)?[\s-:–—]*/i, '').trim();
+
+          return (
+            <div key={pIdx} className="chat-class-card">
+              <div className="chat-class-card__header">
+                {prefix && <span className="chat-class-card__num">{prefix.trim()}</span>}
+                <span className="chat-class-card__badge">Clase</span>
+                <span className="chat-class-card__name">{className.trim()}</span>
+              </div>
+              {rawAttrs && (
+                <div className="chat-class-card__attrs">
+                  <span className="chat-class-card__attrs-label">{isEn ? 'Attributes:' : 'Atributos:'}</span>
+                  <div className="chat-class-card__attr-pills">
+                    {rawAttrs.split(',').map((a, aIdx) => (
+                      <span key={aIdx} className="chat-class-card__attr-pill">
+                        {a.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {explanation && (
+                <div className="chat-class-card__desc">
+                  {parseInlineMarkdown(explanation)}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <p key={pIdx} className="chat-formatted-p">
+            {p.split('\n').map((line, lIdx) => (
+              <React.Fragment key={lIdx}>
+                {lIdx > 0 && <br />}
+                {parseInlineMarkdown(line)}
+              </React.Fragment>
+            ))}
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -921,7 +1006,7 @@ export function ChatPanel({
                   </span>
                 </div>
                 <div className="chat-message__bubble">
-                  {msg.content}
+                  {renderFormattedContent(msg.content, isEn)}
                   {msg.delta && msg.deltaId && (
                     <ProposalCard
                       deltaId={msg.deltaId}

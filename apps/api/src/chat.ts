@@ -577,8 +577,10 @@ export async function processUnifiedAmongusTurn(
           'CRITICAL OOAD ARCHITECTURE RULES:',
           '- Every suggested entity MUST include 2 to 3 realistic domain attributes with clean types, e.g.: ClassName (attributes: [attr1: type, attr2: type]). NEVER suggest an empty class.',
           '- Most relationships are plain associations with aggregation: "none". Only suggest composition for strict whole-part lifecycle dependencies, and aggregation for independent collections.',
+          '- DO NOT invent intermediate relational database join tables (e.g. NEVER suggest "PatientDoctor" or "PrescriptionDoctor"). In OOAD/UML, model this as a direct association between the classes, NOT an artificial join entity.',
           '- In inheritance, clearly state who is subclass and who is superclass (e.g. Subclass inherits from Superclass). Subclasses inherit attributes and do not repeat them.',
           '- NEVER suggest duplicate relationships between classes that are already connected.',
+          '- FORMAT: Always separate each numbered entity suggestion with a blank line (double newline).',
           'Provide clear architectural reasoning without code blocks or JSON, ensuring the reply is complete and concise.',
         ].join('\n')
       : [
@@ -588,8 +590,10 @@ export async function processUnifiedAmongusTurn(
           'REGLAS CRÍTICAS DE ARQUITECTURA OOAD:',
           '- Cada entidad sugerida DEBE incluir 2 a 3 atributos de dominio con tipos, ej: NombreClase (atributos: [attr1: tipo, attr2: tipo]). NUNCA sugieras clases vacías sin atributos.',
           '- La gran mayoría de referencias son asociaciones simples (agregación: none). Usá composición solo para dependencias de ciclo de vida todo-parte, y agregación solo para colecciones independientes.',
+          '- NO inventes tablas intermedias de base de datos relacional (ej. NUNCA inventes "PacienteMedico" o "RecetaMedico"). En OOAD/UML eso se modela como una Asociación directa entre clases, NO como una clase intermedia artificial, a menos que sea un evento/transacción con atributos propios (ej. Consulta).',
           '- En herencia, especificá claramente quién es la subclase y quién la superclase (ej. Subclase hereda de Superclase). Las subclases heredan y no repiten atributos.',
           '- NUNCA sugieras relaciones redundantes entre clases que ya están conectadas.',
+          '- FORMATO: Separá SIEMPRE cada entidad sugerida con un renglón en blanco (doble salto de línea).',
           'Explicá claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON. Sé directo y asegurá que tu respuesta esté completa.',
         ].join('\n');
 
