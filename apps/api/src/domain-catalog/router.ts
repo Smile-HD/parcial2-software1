@@ -9,10 +9,31 @@ function normalize(text: string): string {
     .trim();
 }
 
+function levenshtein(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let curr = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        curr[j] = prev[j - 1];
+      } else {
+        curr[j] = 1 + Math.min(prev[j - 1], prev[j], curr[j - 1]);
+      }
+    }
+    const temp = prev;
+    prev = curr;
+    curr = temp;
+  }
+  return prev[b.length];
+}
+
 /**
  * Enrutador léxico en memoria de latencia ultra-baja (< 0.1 ms).
- * Utiliza un índice invertido O(1) para emparejar consultas en español e inglés
- * con el catálogo de más de 1.500 modelos canónicos.
+ * Utiliza un índice invertido O(1) con tolerancia a faltas ortográficas (fuzzy matching)
+ * para emparejar consultas en español e inglés con el catálogo de más de 1.500 modelos canónicos.
  */
 export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMatchResult | null {
   if (!query || query.trim().length === 0) {
@@ -81,6 +102,35 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
           if (!entry.matchedKeywords.has(hit.originalKeyword)) {
             if (hit.originalKeyword.startsWith(token) || token.startsWith(hit.originalKeyword)) {
               entry.score += hit.weight;
+              entry.matchedKeywords.add(hit.originalKeyword);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Tolerancia a faltas ortográficas (Fuzzy Matching Levenshtein)
+  // Solo se activa como respaldo si no hubo coincidencia exacta ni de n-gramas
+  if (scores.size === 0) {
+    for (const token of queryTokens) {
+      if (token.length < 5) continue;
+      const maxAllowedDist = token.length >= 7 ? 2 : 1;
+
+      for (const [kw, entries] of exactTokenMap.entries()) {
+        if (Math.abs(kw.length - token.length) > maxAllowedDist) continue;
+
+        const dist = levenshtein(token, kw);
+        if (dist <= maxAllowedDist) {
+          const weight = dist === 1 ? 0.9 : 0.7;
+          for (const hit of entries) {
+            let entry = scores.get(hit.id);
+            if (!entry) {
+              entry = { score: 0, matchedKeywords: new Set() };
+              scores.set(hit.id, entry);
+            }
+            if (!entry.matchedKeywords.has(hit.originalKeyword)) {
+              entry.score += weight;
               entry.matchedKeywords.add(hit.originalKeyword);
             }
           }

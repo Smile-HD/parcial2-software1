@@ -55,4 +55,21 @@ describe('Domain Catalog In-Memory Router (RAG Tier 1)', () => {
     expect(promptEn).toContain('EXPERT CANONICAL BLUEPRINT');
     expect(promptEn).toContain('Mascota');
   });
+
+  it('evalua tolerancia a faltas ortograficas y typos en ingles y espanol', () => {
+    // 1. Tildes, diacríticos y mayúsculas
+    const resTildes = matchCanonicalDomain('CLÍNICA MÉDICA Y CIRUGÍA');
+    expect(resTildes).not.toBeNull();
+    expect(resTildes?.domain.id).toBe('hospital_clinic');
+
+    // 2. Errores tipográficos en español (falta de letras / distancia de Levenshtein <= 2)
+    const resTypoEs = matchCanonicalDomain('quiero diseñar una vetrinaria');
+    expect(resTypoEs).not.toBeNull();
+    expect(resTypoEs?.domain.id).toBe('veterinary_clinic');
+
+    // 3. Errores tipográficos en inglés
+    const resTypoEn = matchCanonicalDomain('build an ecommerce stor with chekout');
+    expect(resTypoEn).not.toBeNull();
+    expect(resTypoEn?.domain.id).toBe('ecommerce_store');
+  });
 });
