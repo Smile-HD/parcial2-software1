@@ -68,9 +68,74 @@ export function getDomainIndex(): DomainIndexItem[] {
   return cachedIndex;
 }
 
+export interface InvertedIndexEntry {
+  id: string;
+  weight: number;
+  originalKeyword: string;
+}
+
+export interface InvertedIndex {
+  exactTokenMap: Map<string, InvertedIndexEntry[]>;
+  phraseMap: Map<string, InvertedIndexEntry[]>;
+  prefixMap: Map<string, InvertedIndexEntry[]>;
+}
+
+let cachedInvertedIndex: InvertedIndex | null = null;
+
+/**
+ * Genera y almacena en caché un índice invertido para búsquedas de latencia ultra-baja (sub-milisegundo).
+ * Permite buscar entre más de 1.500 modelos canónicos en O(1) por token y n-gramas.
+ */
+export function getInvertedIndex(): InvertedIndex {
+  if (cachedInvertedIndex) {
+    return cachedInvertedIndex;
+  }
+
+  const index = getDomainIndex();
+  const exactTokenMap = new Map<string, InvertedIndexEntry[]>();
+  const phraseMap = new Map<string, InvertedIndexEntry[]>();
+  const prefixMap = new Map<string, InvertedIndexEntry[]>();
+
+  for (const item of index) {
+    for (const kw of item.normalizedKeywords) {
+      if (kw.includes(' ')) {
+        // Frase compuesta indexada por hash para búsqueda de n-gramas O(1)
+        let phraseArr = phraseMap.get(kw);
+        if (!phraseArr) {
+          phraseArr = [];
+          phraseMap.set(kw, phraseArr);
+        }
+        phraseArr.push({ id: item.id, weight: 1.5, originalKeyword: kw });
+      } else {
+        // Coincidencia exacta de token
+        let exactArr = exactTokenMap.get(kw);
+        if (!exactArr) {
+          exactArr = [];
+          exactTokenMap.set(kw, exactArr);
+        }
+        exactArr.push({ id: item.id, weight: 1.0, originalKeyword: kw });
+
+        // Coincidencia por prefijo/raíz léxica (tokens >= 4 caracteres)
+        if (kw.length >= 4) {
+          const pfx = kw.slice(0, 4);
+          let pfxArr = prefixMap.get(pfx);
+          if (!pfxArr) {
+            pfxArr = [];
+            prefixMap.set(pfx, pfxArr);
+          }
+          pfxArr.push({ id: item.id, weight: 0.6, originalKeyword: kw });
+        }
+      }
+    }
+  }
+
+  cachedInvertedIndex = { exactTokenMap, phraseMap, prefixMap };
+  return cachedInvertedIndex;
+}
+
 /**
  * Carga bajo demanda (Lazy-Loading) el esquema completo de un dominio por ID.
- * Utiliza una caché en memoria para que consultas repetidas tomen 0 ms.
+ * En la primera lectura de disco puebla la memoria para que todas las consultas subsiguientes tomen 0 ms.
  */
 export function getDomainSchema(id: string): CanonicalDomainModel | null {
   if (schemaCache.has(id)) {
@@ -84,15 +149,15 @@ export function getDomainSchema(id: string): CanonicalDomainModel | null {
     return baseMatch;
   }
 
-  // 2. Probar desde schemas.json en disco
+  // 2. Probar desde schemas.json en disco con carga diferida completa
   try {
     if (fs.existsSync(SCHEMAS_FILE)) {
       const raw = fs.readFileSync(SCHEMAS_FILE, 'utf-8');
       const allSchemas: Record<string, CanonicalDomainModel> = JSON.parse(raw);
-      if (allSchemas[id]) {
-        schemaCache.set(id, allSchemas[id]);
-        return allSchemas[id];
+      for (const [key, val] of Object.entries(allSchemas)) {
+        schemaCache.set(key, val);
       }
+      return schemaCache.get(id) || null;
     }
   } catch (err) {
     console.warn(`[DomainCatalog] No se pudo cargar bajo demanda el esquema para "${id}":`, err);
