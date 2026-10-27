@@ -1,12 +1,12 @@
 /**
  * scripts/ingest-domain-blueprints.ts
  *
- * ETL Ingestion Pipeline:
- * Generates and compiles hundreds of industry-standard domain blueprints
- * based on Fowler Analysis Patterns, Microsoft Common Data Model, and Database Answers.
- * Produces:
- * - apps/api/src/domain-catalog/data/index.json  (lightweight index for in-memory router)
- * - apps/api/src/domain-catalog/data/schemas.json (full schemas for on-demand lazy loading)
+ * Pipeline de Ingesta ETL:
+ * Genera y compila decenas de esquemas de dominio estándar de la industria
+ * basados en Analysis Patterns de Martin Fowler, Microsoft Common Data Model y Database Answers.
+ * Produce:
+ * - apps/api/src/domain-catalog/data/index.json  (índice liviano para el enrutador en memoria)
+ * - apps/api/src/domain-catalog/data/schemas.json (esquemas completos para carga bajo demanda / lazy loading)
  */
 
 import fs from 'node:fs';
@@ -37,7 +37,7 @@ interface SectorBlueprintTemplate {
 }
 
 const TEMPLATES: SectorBlueprintTemplate[] = [
-  // HEALTH & WELLNESS
+  // SALUD Y BIENESTAR
   {
     subsector: 'dental_clinic',
     category: 'health',
@@ -147,7 +147,7 @@ const TEMPLATES: SectorBlueprintTemplate[] = [
     ],
   },
 
-  // ENTERTAINMENT & STREAMING
+  // ENTRETENIMIENTO Y STREAMING
   {
     subsector: 'movie_streaming',
     category: 'media',
@@ -191,7 +191,7 @@ const TEMPLATES: SectorBlueprintTemplate[] = [
     ],
   },
 
-  // SERVICES & REAL ESTATE
+  // SERVICIOS Y TRANSPORTE
   {
     subsector: 'parking_lot',
     category: 'transport',
@@ -231,7 +231,7 @@ const TEMPLATES: SectorBlueprintTemplate[] = [
     ],
   },
 
-  // CIVIC & EDUCATION
+  // EDUCACIÓN Y DEPORTES
   {
     subsector: 'kindergarten',
     category: 'education',
@@ -277,7 +277,7 @@ const TEMPLATES: SectorBlueprintTemplate[] = [
 ];
 
 export async function runIngestion(): Promise<void> {
-  console.log('[ETL] Starting Domain Blueprints Ingestion Pipeline...');
+  console.log('[ETL] Iniciando pipeline de ingesta de esquemas de dominio...');
 
   if (!fs.existsSync(OUTPUT_DIR)) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -285,12 +285,12 @@ export async function runIngestion(): Promise<void> {
 
   const catalogMap: Record<string, CanonicalDomainModel> = {};
 
-  // 1. Ingest base verified canonical domains
+  // 1. Ingerir dominios canónicos base verificados
   for (const d of CANONICAL_DOMAINS) {
     catalogMap[d.id] = d;
   }
 
-  // 2. Ingest structured sector templates
+  // 2. Ingerir plantillas de sectores estructuradas
   for (const t of TEMPLATES) {
     const domainModel: CanonicalDomainModel = {
       id: t.subsector,
@@ -315,7 +315,7 @@ export async function runIngestion(): Promise<void> {
     catalogMap[t.subsector] = domainModel;
   }
 
-  // 3. Generate variations for related sub-niches (e.g. veterinaria -> zoo, petshop, criadero)
+  // 3. Generar índice liviano y persistir archivos de datos
   const allDomains = Object.values(catalogMap);
   const index = allDomains.map((d) => ({
     id: d.id,
@@ -327,16 +327,17 @@ export async function runIngestion(): Promise<void> {
   fs.writeFileSync(SCHEMAS_OUT, JSON.stringify(catalogMap, null, 2), 'utf-8');
   fs.writeFileSync(INDEX_OUT, JSON.stringify(index, null, 2), 'utf-8');
 
-  console.log(`[ETL] Ingestion complete:`);
-  console.log(`  - Total Canonical Domains: ${allDomains.length}`);
-  console.log(`  - Output Index: ${INDEX_OUT} (${(fs.statSync(INDEX_OUT).size / 1024).toFixed(1)} KB)`);
-  console.log(`  - Output Schemas: ${SCHEMAS_OUT} (${(fs.statSync(SCHEMAS_OUT).size / 1024).toFixed(1)} KB)`);
+  console.log(`[ETL] Ingesta completada con éxito:`);
+  console.log(`  - Total de dominios canónicos: ${allDomains.length}`);
+  console.log(`  - Archivo de índice: ${INDEX_OUT} (${(fs.statSync(INDEX_OUT).size / 1024).toFixed(1)} KB)`);
+  console.log(`  - Archivo de esquemas: ${SCHEMAS_OUT} (${(fs.statSync(SCHEMAS_OUT).size / 1024).toFixed(1)} KB)`);
 }
 
-// Auto-run if executed directly
+// Ejecutar automáticamente si se invoca de forma directa
 if (process.argv[1] && process.argv[1].endsWith('ingest-domain-blueprints.ts')) {
   runIngestion().catch((err) => {
-    console.error('[ETL] Fatal ingestion error:', err);
+    console.error('[ETL] Error fatal durante la ingesta:', err);
     process.exit(1);
   });
 }
+

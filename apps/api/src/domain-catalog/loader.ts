@@ -18,6 +18,21 @@ export interface DomainIndexItem {
     es: string[];
     en: string[];
   };
+  normalizedKeywords: string[];
+}
+
+function normalize(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function attachNormalizedKeywords(items: any[]): DomainIndexItem[] {
+  return items.map((item) => ({
+    ...item,
+    normalizedKeywords: [
+      ...(item.keywords?.es || []).map(normalize),
+      ...(item.keywords?.en || []).map(normalize),
+    ],
+  }));
 }
 
 let cachedIndex: DomainIndexItem[] | null = null;
@@ -35,19 +50,21 @@ export function getDomainIndex(): DomainIndexItem[] {
   try {
     if (fs.existsSync(INDEX_FILE)) {
       const content = fs.readFileSync(INDEX_FILE, 'utf-8');
-      cachedIndex = JSON.parse(content);
-      return cachedIndex!;
+      const parsed = JSON.parse(content);
+      cachedIndex = attachNormalizedKeywords(parsed);
+      return cachedIndex;
     }
   } catch (err) {
-    console.warn('[DomainCatalog] Could not read index.json, falling back to base domains:', err);
+    console.warn('[DomainCatalog] No se pudo leer index.json, usando dominios base en memoria:', err);
   }
 
-  cachedIndex = CANONICAL_DOMAINS.map((d) => ({
+  const baseItems = CANONICAL_DOMAINS.map((d) => ({
     id: d.id,
     title: d.title,
     category: d.category,
     keywords: d.keywords,
   }));
+  cachedIndex = attachNormalizedKeywords(baseItems);
   return cachedIndex;
 }
 
@@ -78,7 +95,7 @@ export function getDomainSchema(id: string): CanonicalDomainModel | null {
       }
     }
   } catch (err) {
-    console.warn(`[DomainCatalog] Failed to lazy-load schema for "${id}":`, err);
+    console.warn(`[DomainCatalog] No se pudo cargar bajo demanda el esquema para "${id}":`, err);
   }
 
   return null;

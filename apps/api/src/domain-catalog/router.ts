@@ -32,10 +32,7 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
   let highestScore = 0;
 
   for (const item of index) {
-    const allKeywords = [
-      ...item.keywords.es.map(normalize),
-      ...item.keywords.en.map(normalize),
-    ];
+    const allKeywords = item.normalizedKeywords;
     let score = 0;
     const matched: string[] = [];
 
