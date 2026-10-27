@@ -44,14 +44,27 @@ import {
   processUnifiedAmongusTurn,
 } from './chat.js';
 
-// Carga apps/api/.env cuando está presente para que la configuración del proveedor
-// compatible con OpenAI (OPENAI_API_KEY / OPENAI_BASE_URL / LLM_MODEL / WHISPER_MODEL)
-// y DATABASE_URL sobrevivan a los reinicios sin configuración de terminal. Si falta el
-// archivo no hay problema — las variables de entorno aún pueden provenir del entorno del proceso.
-try {
-  process.loadEnvFile();
-} catch {
-  // No hay .env en el directorio actual — se confía en el entorno del proceso.
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// Carga .env de múltiples ubicaciones candidatas (raíz del monorepo, apps/api/.env, deploy/.env)
+// para garantizar que la configuración (STT_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, etc.)
+// se cargue independientemente del directorio de trabajo actual (process.cwd()).
+const envCandidates = [
+  resolve(process.cwd(), '.env'),
+  resolve(process.cwd(), 'apps/api/.env'),
+  resolve(process.cwd(), 'deploy/.env'),
+  resolve(import.meta.dirname ?? '.', '../.env'),
+  resolve(import.meta.dirname ?? '.', '../../.env'),
+];
+for (const envPath of envCandidates) {
+  if (existsSync(envPath)) {
+    try {
+      process.loadEnvFile(envPath);
+    } catch {
+      // Continuar con otros candidatos
+    }
+  }
 }
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/ai_uml';

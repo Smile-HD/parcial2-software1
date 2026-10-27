@@ -40,6 +40,7 @@ export interface ChatPanelProps {
   onCommandDraftChange?: (value: string) => void;
   recording?: boolean;
   onToggleRecord?: () => void;
+  isTranscribing?: boolean;
 }
 
 function renderStreamingContent(text: string, isEn: boolean) {
@@ -119,6 +120,7 @@ export function ChatPanel({
   onCommandDraftChange,
   recording,
   onToggleRecord,
+  isTranscribing: propIsTranscribing = false,
 }: ChatPanelProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
@@ -159,6 +161,40 @@ export function ChatPanel({
 
   const [isSending, setIsSending] = useState(false);
   const [internalRecording, setInternalRecording] = useState(false);
+  const [internalTranscribing, setInternalTranscribing] = useState(false);
+  const isTranscribing = propIsTranscribing || internalTranscribing;
+  const [speakingText, setSpeakingText] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const handleSpeakText = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (speakingText === text) {
+      window.speechSynthesis.cancel();
+      setSpeakingText(null);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const clean = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/^#+\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = isEn ? 'en-US' : 'es-ES';
+    utterance.onend = () => setSpeakingText(null);
+    utterance.onerror = () => setSpeakingText(null);
+    setSpeakingText(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const recognitionRef = useRef<any>(null);
   const activeRecording = recording !== undefined ? recording : internalRecording;
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -686,6 +722,7 @@ export function ChatPanel({
 
     if (voiceRecorder) {
       try {
+        setInternalTranscribing(true);
         const { audio, mimeType } = await voiceRecorder.stopRecording();
         const res = await transcribeAudio(diagramId, audio, mimeType, true);
         if (res.transcript) {
@@ -700,6 +737,8 @@ export function ChatPanel({
               ? 'Speech-to-text unavailable: service down. Use the text command input instead.'
               : 'Reconocimiento de voz no disponible. Use la entrada de texto en su lugar.',
         );
+      } finally {
+        setInternalTranscribing(false);
       }
     }
   };
@@ -857,6 +896,26 @@ export function ChatPanel({
                     {isSelf ? (isEn ? 'You' : 'Vos') : msg.senderName}
                   </span>
                   {isBot && <span className="chat-message__tag-bot">Bot</span>}
+                  {isBot && Boolean(msg.content) && (
+                    <button
+                      type="button"
+                      onClick={() => handleSpeakText(msg.content)}
+                      className="chat-message__speak-btn"
+                      title={speakingText === msg.content ? (isEn ? 'Stop listening' : 'Detener audio') : (isEn ? 'Listen message' : 'Escuchar mensaje')}
+                      aria-label={speakingText === msg.content ? (isEn ? 'Stop listening' : 'Detener audio') : (isEn ? 'Listen message' : 'Escuchar mensaje')}
+                    >
+                      {speakingText === msg.content ? (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                        </svg>
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
                   <span className="chat-message__time">
                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -1049,30 +1108,48 @@ export function ChatPanel({
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              activeChannel === 'group'
+              isTranscribing
                 ? isEn
-                  ? 'Write a message or command...'
-                  : 'Escribí un mensaje o comando...'
-                : isEn
-                  ? 'Ask a question or type a UML command...'
-                  : 'Hacé una pregunta o comando UML...'
+                  ? 'Transcribing audio with Groq Whisper...'
+                  : 'Transcribiendo audio con Groq Whisper...'
+                : activeChannel === 'group'
+                  ? isEn
+                    ? 'Write a message or command...'
+                    : 'Escribí un mensaje o comando...'
+                  : isEn
+                    ? 'Ask a question or type a UML command...'
+                    : 'Hacé una pregunta o comando UML...'
             }
             aria-label={isEn ? 'Natural language command' : 'Comando en lenguaje natural'}
             data-testid="chat-input"
-            disabled={isSending || interpreterPhase === 'thinking'}
+            disabled={isSending || interpreterPhase === 'thinking' || isTranscribing}
           />
 
           {voiceRecorder !== null && (
             <button
               type="button"
               onClick={onToggleRecord ?? handleInternalToggleRecord}
-              disabled={isSending || interpreterPhase === 'thinking'}
-              className={`chat-panel__record-btn ${activeRecording ? 'chat-panel__record-btn--active' : ''}`}
-              aria-label={activeRecording ? (isEn ? 'Stop' : 'Detener') : (isEn ? 'Record' : 'Grabar')}
-              title={activeRecording ? (isEn ? 'Stop recording' : 'Detener grabación') : (isEn ? 'Record voice' : 'Grabar voz')}
+              disabled={isSending || interpreterPhase === 'thinking' || isTranscribing}
+              className={`chat-panel__record-btn ${activeRecording ? 'chat-panel__record-btn--active' : ''} ${isTranscribing ? 'chat-panel__record-btn--transcribing' : ''}`}
+              aria-label={
+                isTranscribing
+                  ? isEn ? 'Transcribing' : 'Transcribiendo'
+                  : activeRecording
+                    ? isEn ? 'Stop' : 'Detener'
+                    : isEn ? 'Record' : 'Grabar'
+              }
+              title={
+                isTranscribing
+                  ? isEn ? 'Transcribing with Groq Whisper...' : 'Transcribiendo con Groq Whisper...'
+                  : activeRecording
+                    ? isEn ? 'Stop recording' : 'Detener grabación'
+                    : isEn ? 'Record voice' : 'Grabar voz'
+              }
               data-testid="chat-record-btn"
             >
-              {activeRecording ? (
+              {isTranscribing ? (
+                <div className="chat-panel__transcribe-spinner" />
+              ) : activeRecording ? (
                 <>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="5" y="5" width="14" height="14" rx="2" />

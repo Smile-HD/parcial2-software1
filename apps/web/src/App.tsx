@@ -220,6 +220,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const [buildingDeltaId, setBuildingDeltaId] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const speechRecognitionRef = useRef<any>(null);
 
@@ -666,25 +667,28 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
     }
 
     if (activeRecorder) {
+      setIsTranscribing(true);
       void activeRecorder.stopRecording().then(
         ({ audio, mimeType }) => {
           if (version === null || roomId === null) {
+            setIsTranscribing(false);
             return;
           }
-          setInterpreter({ phase: 'thinking' });
           void transcribeAudio(roomId, audio, mimeType, true)
             .then((response) => {
-              setInterpreter({ phase: 'idle' });
+              setIsTranscribing(false);
               if (response.transcript) {
                 const text = response.transcript.trim();
                 setCommandDraft((prev) => (prev ? `${prev.trim()} ${text}` : text));
               }
             })
             .catch((error: unknown) => {
+              setIsTranscribing(false);
               setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.sttFailed')) });
             });
         },
         (error: unknown) => {
+          setIsTranscribing(false);
           setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.recordingFailed')) });
         },
       );
@@ -809,6 +813,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             onCommandDraftChange={setCommandDraft}
             recording={recording}
             onToggleRecord={handleToggleRecord}
+            isTranscribing={isTranscribing}
           />
           <TutorialModal
             isOpen={isTutorialOpen}

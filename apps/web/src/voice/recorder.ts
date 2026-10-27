@@ -40,14 +40,18 @@ export function createBrowserVoiceRecorder(): VoiceRecorder | null {
           .then((mediaStream) => {
             stream = mediaStream;
             chunks = [];
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : undefined;
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+              ? 'audio/webm'
+              : MediaRecorder.isTypeSupported('audio/mp4')
+                ? 'audio/mp4'
+                : undefined;
             recorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
             recorder.ondataavailable = (event: BlobEvent) => {
-              if (event.data.size > 0) {
+              if (event.data && event.data.size > 0) {
                 chunks.push(event.data);
               }
             };
-            recorder.start();
+            recorder.start(250);
             resolve();
           })
           .catch(reject);
@@ -63,15 +67,24 @@ export function createBrowserVoiceRecorder(): VoiceRecorder | null {
         }
         current.onstop = () => {
           stream?.getTracks().forEach((track) => track.stop());
-          const blob = new Blob(chunks, { type: current.mimeType || 'audio/webm' });
+          const resolvedMimeType = current.mimeType || (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4');
+          const blob = new Blob(chunks, { type: resolvedMimeType });
+          if (blob.size === 0) {
+            reject(new Error('Audio recording is empty. Please speak clearly into the microphone.'));
+            return;
+          }
           void blob
             .arrayBuffer()
             .then((buffer) => {
-              resolve({ audio: new Uint8Array(buffer), mimeType: blob.type || 'audio/webm' });
+              resolve({ audio: new Uint8Array(buffer), mimeType: resolvedMimeType });
             })
             .catch(reject);
         };
-        current.stop();
+        if (current.state !== 'inactive') {
+          current.stop();
+        } else {
+          current.onstop?.(new Event('stop'));
+        }
       });
     },
   };

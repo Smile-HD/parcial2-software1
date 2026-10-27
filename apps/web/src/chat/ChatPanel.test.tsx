@@ -323,4 +323,77 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
       );
     });
   });
+
+  it('muestra estado de transcripción con Groq Whisper cuando isTranscribing es true', () => {
+    const mockRecorder = {
+      startRecording: vi.fn(),
+      stopRecording: vi.fn(),
+    };
+
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+        voiceRecorder={mockRecorder}
+        isTranscribing={true}
+      />
+    );
+
+    const input = screen.getByTestId('chat-input') as HTMLInputElement;
+    expect(input.placeholder).toContain('Transcribiendo');
+    expect(input.disabled).toBe(true);
+
+    const recordBtn = screen.getByTestId('chat-record-btn');
+    expect(recordBtn.getAttribute('aria-label')).toBe('Transcribiendo');
+    expect(recordBtn.querySelector('.chat-panel__transcribe-spinner')).not.toBeNull();
+  });
+
+  it('permite escuchar respuestas del bot mediante el botón de lectura de voz', async () => {
+    vi.mocked(chatApi.fetchChatMessages).mockResolvedValueOnce([
+      {
+        id: 'bot-1',
+        diagramId: mockDiagramId,
+        deviceId: 'bot-device',
+        senderName: 'Amongus',
+        senderType: 'bot',
+        channelType: 'group',
+        targetUser: null,
+        content: 'Hola, ¿en qué te ayudo?',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    const speakMock = vi.fn();
+    const cancelMock = vi.fn();
+    window.speechSynthesis = {
+      speak: speakMock,
+      cancel: cancelMock,
+    } as any;
+    (global as any).SpeechSynthesisUtterance = function (this: any, text: string) {
+      this.text = text;
+      this.lang = 'es-ES';
+    };
+
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Hola, ¿en qué te ayudo?')).toBeDefined();
+    });
+
+    const speakBtn = screen.getByRole('button', { name: /Escuchar mensaje/i });
+    expect(speakBtn).toBeDefined();
+    fireEvent.click(speakBtn);
+
+    expect(cancelMock).toHaveBeenCalled();
+    expect(speakMock).toHaveBeenCalled();
+  });
 });

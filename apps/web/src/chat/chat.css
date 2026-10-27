@@ -420,6 +420,50 @@
   filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.5));
 }
 
+.chat-panel__record-btn--transcribing {
+  color: #6366f1 !important;
+  animation: pulse-transcribing 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-transcribing {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+}
+
+.chat-panel__transcribe-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e0e7ff;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.chat-message__speak-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.chat-message__speak-btn:hover {
+  color: #4f46e5;
+  background-color: #f1f5f9;
+}
+
 .chat-panel__recording-indicator {
   display: flex;
   align-items: center;

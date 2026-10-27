@@ -54,9 +54,9 @@ export interface WhisperSttConfig {
 }
 
 export class WhisperStt implements SttPort {
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  private readonly model: string;
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
 
   constructor(config: WhisperSttConfig) {
     this.apiKey = config.apiKey;
@@ -68,10 +68,13 @@ export class WhisperStt implements SttPort {
   }
 
   static fromEnv(): WhisperStt | null {
-    const apiKey = process.env.STT_API_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = process.env.STT_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
-    const isGroq = apiKey.startsWith('gsk_') || Boolean(process.env.STT_BASE_URL && /groq\.com/i.test(process.env.STT_BASE_URL));
-    const baseUrl = process.env.STT_BASE_URL || (apiKey.startsWith('gsk_') ? 'https://api.groq.com/openai/v1' : process.env.OPENAI_BASE_URL);
+    const isGroq =
+      apiKey.startsWith('gsk_') ||
+      Boolean(process.env.GROQ_API_KEY && apiKey === process.env.GROQ_API_KEY) ||
+      Boolean((process.env.STT_BASE_URL || process.env.OPENAI_BASE_URL) && /groq\.com/i.test(process.env.STT_BASE_URL || process.env.OPENAI_BASE_URL || ''));
+    const baseUrl = process.env.STT_BASE_URL || (isGroq ? 'https://api.groq.com/openai/v1' : process.env.OPENAI_BASE_URL);
     // Los endpoints de Ollama (ej. puerto 11434) no tienen endpoint de transcripción Whisper STT
     if (!process.env.STT_BASE_URL && baseUrl && /:11434/i.test(baseUrl)) {
       return null;
@@ -89,7 +92,10 @@ export class WhisperStt implements SttPort {
   }
 
   async transcribe(audio: Uint8Array, mimeType: string): Promise<string> {
-    let extension = mimeType.split('/')[1]?.split(';')[0] ?? 'webm';
+    if (!audio || audio.byteLength === 0) {
+      throw new SttUnavailableError('Audio recording is empty or not received. Please record again.');
+    }
+    let extension = mimeType.toLowerCase().split('/')[1]?.split(';')[0]?.trim() ?? 'webm';
     if (extension === 'x-matroska' || extension === 'matroska') extension = 'mkv';
     if (extension === 'octet-stream') extension = 'webm';
     const form = new FormData();

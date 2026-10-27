@@ -92,13 +92,24 @@ describe('WhisperStt', () => {
     expect(stt.baseUrl).toBe('https://api.groq.com/openai/v1');
   });
 
-  it('overrides whisper-1 default if target baseUrl is Groq', () => {
+  it('defaults to Groq when GROQ_API_KEY is configured directly', () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.STT_API_KEY;
+    delete process.env.STT_BASE_URL;
+    process.env.GROQ_API_KEY = 'gsk_direct_groq';
+    const stt = WhisperStt.fromEnv()!;
+    expect(stt).not.toBeNull();
+    expect(stt.model).toBe('whisper-large-v3-turbo');
+    expect(stt.baseUrl).toBe('https://api.groq.com/openai/v1');
+    delete process.env.GROQ_API_KEY;
+  });
+
+  it('rejects empty audio buffer with SttUnavailableError', async () => {
     const stt = new WhisperStt({
       apiKey: 'gsk_test',
       baseUrl: 'https://api.groq.com/openai/v1',
     });
-    // @ts-expect-error private property access for test
-    expect(stt.model).toBe('whisper-large-v3-turbo');
+    await expect(stt.transcribe(new Uint8Array(0), 'audio/webm')).rejects.toThrow(SttUnavailableError);
   });
 });
 
