@@ -79,4 +79,26 @@ describe('WhisperStt', () => {
     const stt = WhisperStt.fromEnv()!;
     await expect(stt.transcribe(new Uint8Array([1]), 'audio/webm')).rejects.toThrow(SttUnavailableError);
   });
+
+  it('defaults model to whisper-large-v3-turbo when STT_BASE_URL is Groq', () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.STT_API_KEY = 'gsk_test';
+    process.env.STT_BASE_URL = 'https://api.groq.com/openai/v1';
+    const stt = WhisperStt.fromEnv()!;
+    expect(stt).not.toBeNull();
+    // @ts-expect-error private property access for test
+    expect(stt.model).toBe('whisper-large-v3-turbo');
+    // @ts-expect-error private property access for test
+    expect(stt.baseUrl).toBe('https://api.groq.com/openai/v1');
+  });
+
+  it('overrides whisper-1 default if target baseUrl is Groq', () => {
+    const stt = new WhisperStt({
+      apiKey: 'gsk_test',
+      baseUrl: 'https://api.groq.com/openai/v1',
+    });
+    // @ts-expect-error private property access for test
+    expect(stt.model).toBe('whisper-large-v3-turbo');
+  });
 });
+

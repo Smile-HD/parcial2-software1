@@ -61,26 +61,37 @@ export class WhisperStt implements SttPort {
   constructor(config: WhisperSttConfig) {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl ?? 'https://api.openai.com/v1';
-    this.model = config.model ?? 'whisper-1';
+    const isGroq = /groq\.com/i.test(this.baseUrl) || config.apiKey.startsWith('gsk_');
+    this.model = config.model && config.model !== 'whisper-1'
+      ? config.model
+      : (isGroq ? 'whisper-large-v3-turbo' : (config.model ?? 'whisper-1'));
   }
 
   static fromEnv(): WhisperStt | null {
     const apiKey = process.env.STT_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
-    const baseUrl = process.env.STT_BASE_URL || process.env.OPENAI_BASE_URL;
+    const isGroq = apiKey.startsWith('gsk_') || Boolean(process.env.STT_BASE_URL && /groq\.com/i.test(process.env.STT_BASE_URL));
+    const baseUrl = process.env.STT_BASE_URL || (apiKey.startsWith('gsk_') ? 'https://api.groq.com/openai/v1' : process.env.OPENAI_BASE_URL);
     // Los endpoints de Ollama (ej. puerto 11434) no tienen endpoint de transcripción Whisper STT
     if (!process.env.STT_BASE_URL && baseUrl && /:11434/i.test(baseUrl)) {
       return null;
     }
+    const envModel = process.env.WHISPER_MODEL;
+    const model = (envModel && (!isGroq || envModel !== 'whisper-1'))
+      ? envModel
+      : (isGroq ? 'whisper-large-v3-turbo' : 'whisper-1');
+
     return new WhisperStt({
       apiKey,
       baseUrl,
-      model: process.env.WHISPER_MODEL,
+      model,
     });
   }
 
   async transcribe(audio: Uint8Array, mimeType: string): Promise<string> {
-    const extension = mimeType.split('/')[1]?.split(';')[0] ?? 'webm';
+    let extension = mimeType.split('/')[1]?.split(';')[0] ?? 'webm';
+    if (extension === 'x-matroska' || extension === 'matroska') extension = 'mkv';
+    if (extension === 'octet-stream') extension = 'webm';
     const form = new FormData();
     form.set('file', new File([new Uint8Array(audio)], `audio.${extension}`, { type: mimeType }));
     form.set('model', this.model);
@@ -99,7 +110,8 @@ export class WhisperStt implements SttPort {
     }
 
     if (!response.ok) {
-      throw new SttUnavailableError(`Speech-to-text request failed with status ${response.status}`);
+      const errBody = await response.text().catch(() => '');
+      throw new SttUnavailableError(`Speech-to-text request failed with status ${response.status}: ${errBody}`);
     }
 
     const payload = (await response.json().catch(() => null)) as { text?: unknown } | null;

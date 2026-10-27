@@ -133,7 +133,7 @@ export function ChatPanel({
     isLoading,
     error,
     streamingBotMessage,
-  } = useChat({ diagramId, userName, language: lang });
+  } = useChat({ diagramId, userName, language: lang, peerUsers });
 
   const safeMessages = Array.isArray(messages) ? messages : [];
 
@@ -608,12 +608,24 @@ export function ChatPanel({
     if (isSending || interpreterPhase === 'thinking') return;
     setVoiceError(null);
 
-    const SpeechRec =
-      typeof window !== 'undefined'
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        : null;
-
     if (!internalRecording) {
+      // 1. Prioridad: voiceRecorder (MediaRecorder) -> Backend Groq Whisper API (whisper-large-v3-turbo)
+      if (voiceRecorder) {
+        try {
+          setInternalRecording(true);
+          await voiceRecorder.startRecording();
+          return;
+        } catch (err) {
+          console.warn('VoiceRecorder start failed, falling back to Web Speech API:', err);
+        }
+      }
+
+      // 2. Respaldo secundario: API Web Speech del navegador
+      const SpeechRec =
+        typeof window !== 'undefined'
+          ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+          : null;
+
       if (SpeechRec) {
         try {
           const rec = new SpeechRec();
@@ -647,23 +659,12 @@ export function ChatPanel({
           setInternalRecording(true);
           return;
         } catch {
-          // Fall through a voiceRecorder
+          // Fall through a error
         }
       }
 
-      if (voiceRecorder) {
-        try {
-          setInternalRecording(true);
-          await voiceRecorder.startRecording();
-        } catch (err) {
-          setInternalRecording(false);
-          setVoiceError(
-            err instanceof Error
-              ? err.message
-              : isEn ? 'Microphone unavailable' : 'Micrófono no disponible',
-          );
-        }
-      }
+      setInternalRecording(false);
+      setVoiceError(isEn ? 'Microphone unavailable' : 'Micrófono no disponible');
       return;
     }
 

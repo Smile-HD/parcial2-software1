@@ -26,6 +26,7 @@ export interface SendMessagePayload {
   channelType: 'group' | 'direct_bot';
   content: string;
   language?: 'es' | 'en';
+  peerUsers?: readonly string[];
 }
 
 /**

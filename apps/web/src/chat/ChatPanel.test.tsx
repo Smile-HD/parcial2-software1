@@ -149,13 +149,16 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
     fireEvent.click(sendBtn);
 
     await waitFor(() => {
-      expect(chatApi.sendChatMessage).toHaveBeenCalledWith(mockDiagramId, {
-        deviceId: 'test-device-uuid',
-        senderName: mockUserName,
-        channelType: 'group',
-        content: 'Nuevo mensaje para el equipo',
-        language: 'es',
-      });
+      expect(chatApi.sendChatMessage).toHaveBeenCalledWith(
+        mockDiagramId,
+        expect.objectContaining({
+          deviceId: 'test-device-uuid',
+          senderName: mockUserName,
+          channelType: 'group',
+          content: 'Nuevo mensaje para el equipo',
+          language: 'es',
+        }),
+      );
     });
   });
 

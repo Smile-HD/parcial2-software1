@@ -14,6 +14,7 @@ export const CreateChatMessageSchema = z.object({
   channelType: ChatChannelTypeSchema,
   content: z.string().min(1),
   language: z.enum(['es', 'en']).optional(),
+  peerUsers: z.array(z.string()).optional(),
 });
 export type CreateChatMessageInput = z.infer<typeof CreateChatMessageSchema>;
 
@@ -150,11 +151,66 @@ export async function purgeExpiredChatMessages(pool: Pool): Promise<number> {
 export function generateAmongusContextualReply(
   userContent: string,
   senderName: string,
-  language: 'es' | 'en' = 'es'
+  language: 'es' | 'en' = 'es',
+  peerUsers?: readonly string[]
 ): string {
-  const text = userContent.toLowerCase().trim();
+  const text = userContent
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
-  if (language === 'en') {
+  const isEn = language === 'en';
+
+  // 1. Consultas de presencia de usuarios conectados
+  const isPresenceQuery =
+    /cu[aá]nt[ao]s?\s+(?:personas?|usuarios?|compa[ñn]eros?|miembros?|gente|conectad[ao]s?)|qui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:conectad[ao]s?|en\s+la\s+sala|en\s+el\s+diagrama|en\s+la\s+sesi[oó]n|ac[aá]|aqu[ií])|how\s+many\s+(?:users?|people|peers?|members?)|who\s+is\s+(?:connected|online|in\s+the\s+room|in\s+the\s+session)/i.test(
+      text
+    );
+
+  if (isPresenceQuery) {
+    const peers = peerUsers && peerUsers.length > 0
+      ? Array.from(new Set(peerUsers))
+      : [senderName];
+    if (!peers.includes(senderName)) peers.push(senderName);
+    const count = peers.length;
+    const namesList = peers.join(', ');
+
+    if (isEn) {
+      return count === 1
+        ? `Currently you are the only one connected in this room (${senderName}). You can share the diagram URL to collaborate with others in real time.`
+        : `Currently there are ${count} people connected in this room: ${namesList}. (You are connected as ${senderName}).`;
+    }
+    return count === 1
+      ? `Actualmente sos el único conectado en esta sala (${senderName}). Podés compartir el enlace del diagrama para colaborar en tiempo real.`
+      : `Actualmente hay ${count} personas conectadas en esta sala: ${namesList}. (Vos estás conectado como ${senderName}).`;
+  }
+
+  // 2. Solicitudes ambiguas o indeterminadas
+  const isAmbiguous =
+    /^(?:agreg[aá]|cre[aá]|dise[ñn][aá]|model[aá]|arm[aá]|gener[aá]|constru[yí]|hac[eé]|haz)\s+(?:algo|cosas|entidades|clases|el\s+sistema|un\s+sistema|un\s+modelo|un\s+diagrama|lo\s+que\s+sea|todo)?$/i.test(
+      text
+    ) ||
+    /^(?:conect[aá]|conectal[ao]s|relacion[aá]|relacional[ao]s|vincul[aá]|vinculal[ao]s)$/i.test(
+      text
+    );
+
+  if (isAmbiguous) {
+    return isEn
+      ? `What domain or specific entities would you like to model, ${senderName}? Please tell me which classes and attributes to include or type '/model <topic>' (e.g. /model library or /model airline) so I can prepare an exact proposal on the canvas.`
+      : `¿Qué entidades o dominio te gustaría modelar, ${senderName}? Podés decirme qué clases y atributos querés incluir o escribir '/model <tema>' (ej. /model biblioteca o /model aerolinea) para que arme la propuesta exacta en el lienzo.`;
+  }
+
+  if (isEn) {
+    if (text.includes('layout') || text.includes('organize') || text.includes('order')) {
+      return `The /layout command (and the top toolbar button) automatically rearranges classes using a force-directed layout with safety margins to prevent overlapping.`;
+    }
+    if (text.includes('audit')) {
+      return `The /audit command evaluates your diagram against OOAD principles, detecting orphan classes, god classes, and relationship consistency.`;
+    }
+    if (text.includes('voice') || text.includes('mic') || text.includes('speech')) {
+      return `You can use the microphone button to record voice notes transcribed by Groq Whisper into the chat input, allowing you to review before sending.`;
+    }
     if (text.includes('devoluc') || text.includes('return') || text.includes('refund')) {
       return `For a return/refund transaction, ${senderName}, the recommended pattern is to model a 'Return' (or 'Devolucion') entity associated with 'Sale' (1 to 0..*) containing date, reason, and status, composed of 'ReturnItem' (quantity, refundAmount) pointing to 'Product'. You can tell me 'create class Return' to start!`;
     }
@@ -164,8 +220,8 @@ export function generateAmongusContextualReply(
     if (text.includes('relat') || text.includes('associat') || text.includes('connect') || text.includes('inherit') || text.includes('compos') || text.includes('aggreg') || text.includes('conectar')) {
       return `Connecting classes is easy, ${senderName}: pick a relationship tool (Association, Composition, Aggregation, or Generalization) in the left panel, then drag the connector between the two classes on the canvas.`;
     }
-    if (text.includes('export') || text.includes('xmi') || text.includes('spring') || text.includes('download') || text.includes('code')) {
-      return `You can export your diagram anytime, ${senderName}! Use the toolbar buttons at the top to download an Enterprise Architect XMI 2.1 file or generate a complete executable Spring Boot project with JPA entities.`;
+    if (text.includes('export') || text.includes('xmi') || text.includes('spring') || text.includes('download') || text.includes('code') || text.includes('png')) {
+      return `You can export your diagram anytime, ${senderName}! Use the toolbar buttons at the top to download an Enterprise Architect XMI 2.1 file, a high-resolution PNG image, or generate a complete executable Spring Boot project with JPA entities.`;
     }
     if (text.includes('help') || text.includes('what can you do') || text.includes('who are you')) {
       return `I am Amongus, your friendly UML design assistant! You can ask me how to structure classes, connect relationships, write natural language commands, or export your model.`;
@@ -177,6 +233,15 @@ export function generateAmongusContextualReply(
   }
 
   // Español
+  if (text.includes('layout') || text.includes('ordenar') || text.includes('organizar') || text.includes('acomodar')) {
+    return `El comando /layout (y el botón en la barra superior) reorganiza automáticamente las clases en el lienzo usando un algoritmo con márgenes de seguridad para evitar solapamientos y ordenar las relaciones.`;
+  }
+  if (text.includes('audit') || text.includes('auditar') || text.includes('auditoria')) {
+    return `El comando /audit analiza tu diagrama bajo principios de calidad OOAD: detecta clases aisladas o huérfanas, clases sobrecargadas (God Classes) y coherencia de multiplicidades.`;
+  }
+  if (text.includes('voz') || text.includes('microfono') || text.includes('audio') || text.includes('whisper')) {
+    return `Podés usar el botón del micrófono para grabar notas de voz que se transcriben con Groq Whisper directamente en el campo de texto del chat, permitiéndote revisar el texto antes de enviarlo.`;
+  }
   if (text.includes('devoluc') || text.includes('reembolso') || text.includes('devolver')) {
     return `Para modelar una devolucion, ${senderName}, el patron recomendado es crear una clase 'Devolucion' asociada a 'Venta' o 'Factura' (1 a 0..*), con atributos como fecha, motivo, estado y totalReembolsado. Ademas, suele componerse de 'ItemDevolucion' (cantidad, motivoEspecifico) relacionada con 'Producto'. Si queres, escribime 'crear clase Devolucion' y la construimos en el lienzo!`;
   }
@@ -186,8 +251,8 @@ export function generateAmongusContextualReply(
   if (text.includes('relacion') || text.includes('asoci') || text.includes('conectar') || text.includes('herencia') || text.includes('compo') || text.includes('agreg') || text.includes('relat')) {
     return `Conectar clases es muy sencillo, ${senderName}: selecciona la herramienta de relacion en el panel izquierdo (Asociacion, Agregacion, Composicion o Generalizacion) y arrastra el conector entre las dos clases en el lienzo.`;
   }
-  if (text.includes('exportar') || text.includes('xmi') || text.includes('spring') || text.includes('descargar') || text.includes('codigo')) {
-    return `Podes exportar tu modelo cuando quieras, ${senderName}! En la barra superior tenes los botones para descargar el archivo XMI 2.1 compatible con Enterprise Architect o generar el proyecto completo de Spring Boot con entidades JPA.`;
+  if (text.includes('exportar') || text.includes('xmi') || text.includes('spring') || text.includes('descargar') || text.includes('codigo') || text.includes('png')) {
+    return `Podes exportar tu modelo cuando quieras, ${senderName}! En la barra superior tenes los botones para descargar el archivo XMI 2.1 compatible con Enterprise Architect, una imagen PNG de alta resolucion o generar el proyecto completo de Spring Boot con entidades JPA.`;
   }
   if (text.includes('separad') || text.includes('aislad') || text.includes('desconect') || text.includes('suelt')) {
     return `Estan separados porque todavia no se les definio una asociacion o relacion en el diagrama, ${senderName}. Podes conectarlos seleccionando una 'Asociacion' en el panel izquierdo y arrastrando la linea de una clase a la otra.`;
@@ -297,13 +362,64 @@ export async function processUnifiedAmongusTurn(
   llm?: any,
   diagram?: any,
   chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
+  peerUsers?: readonly string[]
 ): Promise<UnifiedTurnResult> {
   const isEn = language === 'en';
 
+  const normalized = userContent
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  // 0a. Detección inmediata de consultas sobre personas/usuarios conectados en la sala
+  const isPresenceQuery =
+    /cu[aá]nt[ao]s?\s+(?:personas?|usuarios?|compa[ñn]eros?|miembros?|gente|conectad[ao]s?)|qui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:conectad[ao]s?|en\s+la\s+sala|en\s+el\s+diagrama|en\s+la\s+sesi[oó]n|ac[aá]|aqu[ií])|how\s+many\s+(?:users?|people|peers?|members?)|who\s+is\s+(?:connected|online|in\s+the\s+room|in\s+the\s+session)/i.test(
+      normalized
+    );
+
+  if (isPresenceQuery) {
+    const peers = peerUsers && peerUsers.length > 0
+      ? Array.from(new Set(peerUsers))
+      : [senderName];
+    if (!peers.includes(senderName)) peers.push(senderName);
+    const count = peers.length;
+    const namesList = peers.join(', ');
+
+    if (isEn) {
+      return {
+        replyContent: count === 1
+          ? `Currently you are the only one connected in this room (${senderName}). You can share the diagram URL to collaborate with others in real time.`
+          : `Currently there are ${count} people connected in this room: ${namesList}. (You are connected as ${senderName}).`,
+      };
+    }
+    return {
+      replyContent: count === 1
+        ? `Actualmente sos el único conectado en esta sala (${senderName}). Podés compartir el enlace del diagrama para colaborar en tiempo real.`
+        : `Actualmente hay ${count} personas conectadas en esta sala: ${namesList}. (Vos estás conectado como ${senderName}).`,
+    };
+  }
+
+  // 0b. Solicitudes de modelado ambiguas o sin entidades/dominio especificado
+  const isAmbiguous =
+    /^(?:agreg[aá]|cre[aá]|dise[ñn][aá]|model[aá]|arm[aá]|gener[aá]|constru[yí]|hac[eé]|haz)\s+(?:algo|cosas|entidades|clases|el\s+sistema|un\s+sistema|un\s+modelo|un\s+diagrama|lo\s+que\s+sea|todo)?$/i.test(
+      normalized.trim()
+    ) ||
+    /^(?:conect[aá]|conectal[ao]s|relacion[aá]|relacional[ao]s|vincul[aá]|vinculal[ao]s)$/i.test(
+      normalized.trim()
+    );
+
+  if (isAmbiguous) {
+    return {
+      replyContent: isEn
+        ? `What domain or specific entities would you like to model, ${senderName}? Please tell me which classes and attributes to include or type '/model <topic>' (e.g. /model library or /model airline) so I can prepare an exact proposal on the canvas.`
+        : `¿Qué entidades o dominio te gustaría modelar, ${senderName}? Podés decirme qué clases y atributos querés incluir o escribir '/model <tema>' (ej. /model biblioteca o /model aerolinea) para que arme la propuesta exacta en el lienzo.`,
+    };
+  }
+
   if (!llm || typeof llm.chat !== 'function') {
     return {
-      replyContent: generateAmongusContextualReply(userContent, senderName, language),
+      replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers),
     };
   }
 
@@ -553,26 +669,73 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
-  const normalized = userContent
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+  const activePeers = peerUsers && peerUsers.length > 0
+    ? Array.from(new Set(peerUsers))
+    : [senderName];
+  if (!activePeers.includes(senderName)) activePeers.push(senderName);
+  const activePeersSummary = activePeers.join(', ');
+
+  const isToolQuery =
+    /(?:c[oó]mo\s+(?:se\s+)?export|c[oó]mo\s+(?:se\s+)?guarda|c[oó]mo\s+(?:se\s+)?usa|c[oó]mo\s+funciona\s+(?:la\s+herramienta|el\s+editor|el\s+lienzo|el\s+layout|el\s+audit|el\s+chat|amongus|la\s+voz)|qu[eé]\s+(?:herramientas?|funciones?|capacidades?|comandos?|opciones?)\s+(?:tiene|hay|ofrece|soporta)|para\s+qu[eé]\s+sirve\s+(?:el\s+layout|el\s+audit|el\s+export|spring|xmi|png)|exportaci[oó]n|importaci[oó]n|how\s+to\s+export|how\s+does\s+(?:the\s+tool|the\s+editor|layout|audit|amongus)\s+work|what\s+tools\s+(?:are\s+there|exist))/i.test(
+      normalized
+    );
+
+  const isQuestionPrefix = /^(?:que|por\s*que|como|cual|cuales|quien|quienes|cuanto|cuanta|cuantos|cuantas|explic|diferencia|ayuda|significa|para\s+que|what|why|how|who|where|which|can\s+you|could\s+you|explain)/i.test(
+    normalized.replace(/^[¿?¡!\s]+/, '').trim()
+  );
 
   const isExplicitQuestion =
-    /^(que|por\s*que|como\s+funciona|cual|cuales|explic|diferencia|ayuda|significa|para\s+que|what|why|how|explain)/i.test(
-      normalized.replace(/^[¿?¡!\s]+/, '')
-    ) || (normalized.includes('?') && !/(hace|haz|crea|agrega|arma|genera|modela|inserta|pone|pon\b)/i.test(normalized));
+    isToolQuery ||
+    isQuestionPrefix ||
+    normalized.includes('?');
+
+  const isImperativeAction =
+    /^(?:por\s+favor\s+)?(?:agreg[aá]|cre[aá]|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|elimin[aá]|arm[aá]|gener[aá]|constru[yí]|add|create|connect|link|delete|remove)\b/i.test(
+      normalized.replace(/^[¿?¡!\s]+/, '').trim()
+    );
 
   const isAction =
     !isExplicitQuestion &&
-    /(agreg|crea|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|arma|genera|constru|plante|propon|levant|falt|diagrama|base de datos|sistema|dominio|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
-      normalized
-    );
+    !isToolQuery &&
+    (isImperativeAction ||
+      /(agreg|crea|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|arma|genera|constru|plante|propon|levant|falt|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
+        normalized
+      ));
 
   const systemPrompt = isEn
     ? [
         'You are Amongus, a senior software architecture tutor inside a web collaborative UML modeling tool.',
         `You are conversing with ${senderName}.`,
+        'TOOL CAPABILITIES AND CURRENT ROOM CONTEXT:',
+        `- You are running inside an interactive collaborative UML modeling tool (UML Collaborative Editor).`,
+        `- Active users currently connected in this room: ${activePeersSummary}.`,
+        '- Editor features and toolbar tools:',
+        '  * Live UML Modeling: Classes, Interfaces, Attributes, Methods, Associations with multiplicities, Compositions, Aggregations, Generalizations/Inheritance, Realizations, Dependencies, and intermediate Association Classes.',
+        '  * Real-time collaboration: Yjs CRDT synchronization and live multi-user presence.',
+        '  * Top toolbar:',
+        '    - Export Spring Boot: downloads a complete runnable Java Spring Boot project with JPA entities, repositories, and controllers based on the current diagram.',
+        '    - Export XMI 2.1: standard interchange format for Enterprise Architect, Visual Paradigm, etc.',
+        '    - Export PNG: high-resolution diagram screenshot.',
+        '    - Import XMI: load an existing diagram from an XMI file.',
+        '    - Auto-Layout (/layout): force-directed collision-free layout algorithm to organize classes cleanly without overlaps.',
+        '  * Amongus Chat Commands:',
+        '    - /help: interactive command guide.',
+        '    - /model <topic>: full domain model proposal for the requested domain.',
+        '    - /suggest: suggest missing domain entities according to OOAD principles.',
+        '    - /audit: formal OOAD quality audit (orphan classes, god classes, low cohesion).',
+        '    - /apply: materialize active proposal or suggestion onto the live canvas.',
+        '    - /layout: automatically rearrange classes to remove overlaps.',
+        '    - /clear: safely clear canvas with confirmation card.',
+        '    - /context: context tokens and velocity indicator.',
+        '    - /reset: reset chat history to 0 tokens.',
+        '  * Voice notes: transcribed using Groq Whisper (whisper-large-v3-turbo) directly to the chat input field.',
+        '',
+        'AMBIGUITY AND TOOL QUESTIONS HANDLING:',
+        '- If the user asks a vague, underspecified, or ambiguous request (e.g. "make a model", "add things", "connect them" without specifying entities or domain):',
+        '  * DO NOT guess or invent random classes.',
+        '  * Politely ask for clarification: ask which entities, attributes, or business rules they need, or suggest using `/model <topic>`.',
+        '- If the user asks questions about the tool or how it works, answer accurately using the tool features above.',
+        '',
         'CRITICAL RULES:',
         '1. NO EMOJIS or emoticons under any circumstance.',
         '2. THE USER NEVER WRITES JSON OR CODE: The user interacts visually or via conversational chat. NEVER output JSON tutorials, schema examples, or tell the user how to format JSON.',
@@ -620,6 +783,36 @@ export async function processUnifiedAmongusTurn(
     : [
         'Sos Amongus, un tutor senior de arquitectura de software dentro de una herramienta web colaborativa de diagramado UML.',
         `Estas conversando con ${senderName}.`,
+        'CONOCIMIENTO DE LA HERRAMIENTA Y ENTORNO ACTUAL:',
+        `- Estás integrado en un editor web colaborativo de diagramas UML (UML Collaborative Editor).`,
+        `- Usuarios actualmente conectados en esta sala: ${activePeersSummary}.`,
+        '- Capacidades y herramientas del editor:',
+        '  * Modelado UML en vivo: Clases, Interfaces, Atributos, Métodos, Asociaciones con multiplicidades, Composiciones (rombo relleno), Agregaciones (rombo hueco), Generalizaciones / Herencia (flecha hueca), Realizaciones (flecha discontinua), Dependencias y Clases de Asociación intermedias.',
+        '  * Colaboración en tiempo real: sincronización multiusuario con Yjs (CRDT) y presencia en vivo.',
+        '  * Barra superior:',
+        '    - Exportar Spring Boot: genera y descarga un proyecto Java Spring Boot ejecutable con entidades JPA, repositorios y controladores basados en el diagrama actual.',
+        '    - Exportar XMI 2.1: estándar interoperable para Enterprise Architect, Visual Paradigm, etc.',
+        '    - Exportar PNG: captura gráfica de alta resolución del diagrama.',
+        '    - Importar XMI: carga un diagrama desde un archivo XMI estándar.',
+        '    - Auto-Layout (/layout): algoritmo de fuerza dirigida con separación y márgenes de seguridad para ordenar las clases y evitar solapamientos.',
+        '  * Asistente Amongus y Comandos Slash en Chat:',
+        '    - /help: guía interactiva de todos los comandos.',
+        '    - /model <tema>: propuesta completa de clases y relaciones para el dominio pedido.',
+        '    - /suggest: sugiere entidades faltantes según los principios OOAD.',
+        '    - /audit: auditoría formal OOAD del diagrama actual (acoplamiento, clases huérfanas, god classes).',
+        '    - /apply: aplica y materializa en vivo la propuesta activa en el lienzo.',
+        '    - /layout: reorganiza automáticamente los nodos para evitar solapamientos.',
+        '    - /clear: vacía el lienzo de manera segura.',
+        '    - /context: métricas de tokens y velocidad.',
+        '    - /reset: limpia la memoria a 0 tokens para máxima velocidad.',
+        '  * Notas de voz: transcripción con Groq Whisper (whisper-large-v3-turbo) directamente al chat.',
+        '',
+        'MANEJO DE AMBIGÜEDAD Y PREGUNTAS DE LA HERRAMIENTA:',
+        '- Si el usuario hace una solicitud ambigua o incompleta (ej. "hacé el sistema", "agregá cosas", "conectalos", "hacé un modelo" sin decir qué dominio ni qué entidades):',
+        '  * NUNCA inventes clases al azar sin consultar.',
+        '  * Preguntale amablemente qué entidades, atributos o reglas de negocio específicas desea modelar, o sugerile usar /model <tema> si quiere que diseñes un dominio completo.',
+        '- Si te pregunta sobre la herramienta, su funcionamiento, comandos o usuarios conectados, respondé con total precisión usando la información anterior.',
+        '',
         'REGLAS CRÍTICAS:',
         '1. NUNCA uses emojis ni emoticones bajo ninguna circunstancia.',
         '2. EL USUARIO NUNCA ESCRIBE JSON NI CÓDIGO: El usuario interactúa de forma visual o mediante chat. NUNCA le des tutoriales de JSON ni le muestres cómo formatear JSON.',

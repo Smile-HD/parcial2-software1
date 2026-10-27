@@ -863,7 +863,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
           llm,
           diagram,
           chatHistory,
-          onChunk
+          onChunk,
+          parsed.data.peerUsers
         );
         if (unified.batchDelta) {
           const pending = pendingDeltas.put(id, unified.batchDelta);

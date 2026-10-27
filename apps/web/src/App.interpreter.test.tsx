@@ -107,6 +107,7 @@ async function renderReadyAppAndSubmit(diagram: Diagram, doc: Y.Doc, text: strin
 afterEach(() => {
   vi.unstubAllGlobals();
   window.location.hash = '';
+  localStorage.clear();
 });
 
 describe('describeDelta (task 7.6)', () => {

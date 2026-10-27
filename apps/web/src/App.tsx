@@ -597,12 +597,25 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
       return;
     }
 
-    const SpeechRec =
-      typeof window !== 'undefined'
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        : null;
-
     if (!recording) {
+      // 1. Prioridad: activeRecorder (MediaRecorder) -> Groq Whisper backend
+      if (activeRecorder !== null) {
+        setRecording(true);
+        void activeRecorder
+          .startRecording()
+          .catch((error: unknown) => {
+            setRecording(false);
+            setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.micUnavailable')) });
+          });
+        return;
+      }
+
+      // 2. Respaldo secundario: SpeechRecognition del navegador
+      const SpeechRec =
+        typeof window !== 'undefined'
+          ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+          : null;
+
       if (SpeechRec) {
         try {
           const rec = new SpeechRec();
@@ -635,21 +648,10 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
           rec.start();
           setRecording(true);
           return;
-        } catch {
-          // Fall through a activeRecorder
-        }
+        } catch {}
       }
 
-      if (activeRecorder === null) {
-        return;
-      }
-      setRecording(true);
-      void activeRecorder
-        .startRecording()
-        .catch((error: unknown) => {
-          setRecording(false);
-          setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.micUnavailable')) });
-        });
+      setRecording(false);
       return;
     }
 

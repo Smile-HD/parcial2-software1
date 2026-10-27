@@ -12,6 +12,7 @@ export interface UseChatOptions {
   userName: string;
   language?: 'es' | 'en';
   pollIntervalMs?: number;
+  peerUsers?: readonly { name: string; color?: string }[];
 }
 
 export function useChat({
@@ -19,6 +20,7 @@ export function useChat({
   userName,
   language = 'es',
   pollIntervalMs = 3000,
+  peerUsers,
 }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeChannel, setActiveChannel] = useState<'group' | 'direct_bot'>('group');
@@ -142,6 +144,13 @@ export function useChat({
         setStreamingBotMessage('');
       }
 
+      const peerNames = peerUsers && peerUsers.length > 0
+        ? peerUsers.map((u) => u.name).filter(Boolean)
+        : [userName];
+      if (!peerNames.includes(userName)) {
+        peerNames.push(userName);
+      }
+
       try {
         await streamChatMessage(
           diagramId,
@@ -151,6 +160,7 @@ export function useChat({
             channelType: activeChannel,
             content: trimmed,
             language,
+            peerUsers: peerNames,
           },
           {
             onUserMessage: (serverUserMsg: ChatMessage) => {
@@ -187,6 +197,7 @@ export function useChat({
             channelType: activeChannel,
             content: trimmed,
             language,
+            peerUsers: peerNames,
           });
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : 'Error al enviar mensaje');
@@ -197,7 +208,7 @@ export function useChat({
         }
       }
     },
-    [diagramId, userName, activeChannel, language, loadMessages],
+    [diagramId, userName, activeChannel, language, peerUsers, loadMessages],
   );
 
   const addLocalMessage = useCallback(

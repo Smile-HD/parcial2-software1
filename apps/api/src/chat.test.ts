@@ -304,3 +304,4 @@ describe('Chat Colaborativo y Persistencia de Mensajes (Unidad 23.2)', () => {
     await customApp.close();
   });
 });
+
