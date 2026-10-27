@@ -159,6 +159,7 @@ export function ChatPanel({
 
   const [isSending, setIsSending] = useState(false);
   const [internalRecording, setInternalRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const activeRecording = recording !== undefined ? recording : internalRecording;
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [appliedDeltaIds, setAppliedDeltaIds] = useState<Set<string>>(() => {
@@ -365,12 +366,14 @@ export function ChatPanel({
 
       // 1. Revisar si hay propuesta activa pendiente en lienzo
       if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !specificArg) {
-        addLocalMessage({
-          senderType: 'user',
-          senderName: userName,
-          content: trimmed,
-        });
         await handleConfirm(activeProposal.deltaId, activeProposal.delta);
+        addLocalMessage({
+          senderType: 'bot',
+          senderName: 'Amongus',
+          content: isEn
+            ? 'Proposal successfully applied and materialized onto the canvas!'
+            : 'Propuesta aplicada y construida con éxito en el lienzo!',
+        });
         return;
       }
 
@@ -380,12 +383,14 @@ export function ChatPanel({
         .find((m) => m.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId));
 
       if (pendingMsg && pendingMsg.deltaId && pendingMsg.delta && !specificArg) {
-        addLocalMessage({
-          senderType: 'user',
-          senderName: userName,
-          content: trimmed,
-        });
         await handleConfirm(pendingMsg.deltaId, pendingMsg.delta);
+        addLocalMessage({
+          senderType: 'bot',
+          senderName: 'Amongus',
+          content: isEn
+            ? 'Proposal successfully applied and materialized onto the canvas!'
+            : 'Propuesta aplicada y construida con éxito en el lienzo!',
+        });
         return;
       }
 
@@ -600,42 +605,95 @@ export function ChatPanel({
   };
 
   const handleInternalToggleRecord = async () => {
-    if (!voiceRecorder || isSending || interpreterPhase === 'thinking') return;
+    if (isSending || interpreterPhase === 'thinking') return;
     setVoiceError(null);
 
+    const SpeechRec =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
     if (!internalRecording) {
-      try {
-        setInternalRecording(true);
-        await voiceRecorder.startRecording();
-      } catch (err) {
-        setInternalRecording(false);
-        setVoiceError(
-          err instanceof Error
-            ? err.message
-            : isEn
-              ? 'Microphone unavailable'
-              : 'Micrófono no disponible',
-        );
+      if (SpeechRec) {
+        try {
+          const rec = new SpeechRec();
+          rec.lang = isEn ? 'en-US' : 'es-ES';
+          rec.continuous = true;
+          rec.interimResults = true;
+          const initialDraft = draft ? `${draft.trim()} ` : '';
+
+          rec.onresult = (e: any) => {
+            let sessionTranscript = '';
+            for (let i = 0; i < e.results.length; i++) {
+              sessionTranscript += e.results[i][0]?.transcript || '';
+            }
+            if (sessionTranscript) {
+              setDraft(`${initialDraft}${sessionTranscript.trim()}`);
+            }
+          };
+
+          rec.onerror = (e: any) => {
+            if (e.error !== 'no-speech') {
+              console.warn('SpeechRecognition error:', e.error);
+            }
+          };
+
+          rec.onend = () => {
+            setInternalRecording(false);
+          };
+
+          recognitionRef.current = rec;
+          rec.start();
+          setInternalRecording(true);
+          return;
+        } catch {
+          // Fall through a voiceRecorder
+        }
+      }
+
+      if (voiceRecorder) {
+        try {
+          setInternalRecording(true);
+          await voiceRecorder.startRecording();
+        } catch (err) {
+          setInternalRecording(false);
+          setVoiceError(
+            err instanceof Error
+              ? err.message
+              : isEn ? 'Microphone unavailable' : 'Micrófono no disponible',
+          );
+        }
       }
       return;
     }
 
     setInternalRecording(false);
-    try {
-      const { audio, mimeType } = await voiceRecorder.stopRecording();
-      const res = await transcribeAudio(diagramId, audio, mimeType, true);
-      if (res.transcript) {
-        const text = res.transcript.trim();
-        setDraft(draft ? `${draft.trim()} ${text}` : text);
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+      recognitionRef.current = null;
+      return;
+    }
+
+    if (voiceRecorder) {
+      try {
+        const { audio, mimeType } = await voiceRecorder.stopRecording();
+        const res = await transcribeAudio(diagramId, audio, mimeType, true);
+        if (res.transcript) {
+          const text = res.transcript.trim();
+          setDraft(draft ? `${draft.trim()} ${text}` : text);
+        }
+      } catch (err) {
+        setVoiceError(
+          err instanceof Error
+            ? err.message
+            : isEn
+              ? 'Speech-to-text unavailable: service down. Use the text command input instead.'
+              : 'Reconocimiento de voz no disponible. Use la entrada de texto en su lugar.',
+        );
       }
-    } catch (err) {
-      setVoiceError(
-        err instanceof Error
-          ? err.message
-          : isEn
-            ? 'Speech-to-text unavailable: service down. Use the text command input instead.'
-            : 'Reconocimiento de voz no disponible. Use la entrada de texto en su lugar.',
-      );
     }
   };
 

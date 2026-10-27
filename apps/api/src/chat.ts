@@ -541,8 +541,8 @@ export async function processUnifiedAmongusTurn(
     if (synthesized && synthesized.deltas.length > 0) {
       return {
         replyContent: isEn
-          ? 'I prepared the domain proposal for the suggested entities. You can preview it on the canvas and confirm to build.'
-          : 'Preparé la propuesta para las entidades sugeridas. Podés ver la previsualización en el lienzo y confirmarla.',
+          ? 'I prepared the domain proposal on the canvas with all suggested entities and relationships. You can inspect the preview on the canvas and click **Confirm** in the card below or send `/apply` again to materialize it.'
+          : 'Preparé la propuesta en el lienzo con las entidades y relaciones sugeridas. Podés revisar la previsualización en el lienzo y hacer clic en **Confirmar** en la tarjeta de abajo o enviar `/apply` nuevamente para materializarla.',
         batchDelta: synthesized,
       };
     }

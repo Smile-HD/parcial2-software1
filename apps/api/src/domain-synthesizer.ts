@@ -462,9 +462,43 @@ export function expandSemanticDomainToDelta(
         return;
       }
 
-      const assocClassId = assoc.associationClass
+      let assocClassId = assoc.associationClass
         ? resolveClassId(assoc.associationClass)
         : undefined;
+
+      // Si la clase de asociación intermedia no fue creada aún, crearla explícitamente en el lote
+      if (assoc.associationClass && !assocClassId) {
+        const acName = String(assoc.associationClass).trim().replace(/\s+/g, '');
+        const acLower = acName.toLowerCase();
+        assocClassId = crypto.randomUUID();
+        classIdMap.set(acLower, assocClassId);
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'class',
+          op: 'create',
+          classId: assocClassId,
+          name: acName,
+          classKind: 'class',
+          isAbstract: false,
+          position: { x: 360, y: 380 },
+        });
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'member',
+          op: 'addAttribute',
+          classId: assocClassId,
+          memberId: crypto.randomUUID(),
+          name: 'id',
+          type: 'int',
+          visibility: '+',
+          isStatic: false,
+          isDerived: false,
+        });
+      }
 
       const isComposite = assoc.aggregation === 'composite';
       const isShared = assoc.aggregation === 'shared';
@@ -797,25 +831,44 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
 
       const classes = rawClasses.filter((c: any) => c.name && !isDummyName(c.name));
       const associations = rawAssocs
-        .map((a: any) => ({
-          source: typeof a.source === 'object' ? a.source?.name : a.source,
-          target: typeof a.target === 'object' ? a.target?.name : a.target,
-          name: a.name,
-          type: a.type,
-          aggregation: a.aggregation,
-          aggregationEnd: a.aggregationEnd,
-          associationClass: a.associationClass,
-          directed: a.directed,
-          sourceRole: a.sourceRole,
-          targetRole: a.targetRole,
-        }))
+        .map((a: any) => {
+          const rawAgg = String(a.aggregation || a.agregacion || a.tipo || a.type || '').toLowerCase();
+          let aggregation: 'composite' | 'shared' | 'none' = 'none';
+          if (rawAgg.includes('comp') || a.esComposicion || a.isComposite) {
+            aggregation = 'composite';
+          } else if (rawAgg.includes('agreg') || rawAgg.includes('shared') || a.esAgregacion || a.isShared) {
+            aggregation = 'shared';
+          }
+
+          const rawAssocClass =
+            a.associationClass ||
+            a.claseAsociacion ||
+            a.tablaIntermedia ||
+            a.intermediateTable ||
+            a.asociacionIntermedia;
+
+          return {
+            source: typeof a.source === 'object' ? a.source?.name : (a.source ?? a.origen),
+            target: typeof a.target === 'object' ? a.target?.name : (a.target ?? a.destino),
+            name: a.name || a.nombre,
+            type: a.type,
+            aggregation,
+            aggregationEnd: a.aggregationEnd || a.extremoTodo || 'source',
+            associationClass: typeof rawAssocClass === 'object' ? rawAssocClass?.name : rawAssocClass,
+            directed: a.directed ?? false,
+            sourceMultiplicity: a.sourceMultiplicity || a.multiplicidadOrigen,
+            targetMultiplicity: a.targetMultiplicity || a.multiplicidadDestino,
+            sourceRole: a.sourceRole || a.rolOrigen,
+            targetRole: a.targetRole || a.rolDestino,
+          };
+        })
         .filter((a: any) => a.source && a.target && !isDummyName(a.source) && !isDummyName(a.target));
 
       const generalizations = rawGens
         .map((g: any) => ({
-          subclass: typeof g.subclass === 'object' ? g.subclass?.name : g.subclass,
-          superclass: typeof g.superclass === 'object' ? g.superclass?.name : g.superclass,
-          name: g.name,
+          subclass: typeof g.subclass === 'object' ? g.subclass?.name : (g.subclass ?? g.subclase ?? g.hijo ?? g.hija ?? g.child),
+          superclass: typeof g.superclass === 'object' ? g.superclass?.name : (g.superclass ?? g.superclase ?? g.padre ?? g.madre ?? g.parent),
+          name: g.name ?? g.nombre,
         }))
         .filter((g: any) => g.subclass && g.superclass && !isDummyName(g.subclass) && !isDummyName(g.superclass));
 
@@ -952,17 +1005,32 @@ export async function synthesizeDomainModel(
     : '';
 
   const systemPrompt = [
-    'You are a senior UML software architect.',
-    'Design a concise, realistic domain model tailored specifically to the user request (e.g. clothing store: Prenda, Categoria, Talla, Venta; airline: Vuelo, Pasajero, Reserva; cinema: Cine, Pelicula, Sala; workshop/taller: Vehiculo, Cliente, Reparacion, Mecanico).',
-    'CRITICAL: If the user prompt is in Spanish, name all classes and attributes in Spanish. If in English, name them in English.',
-    'CRITICAL REQUIREMENT: If the user prompt or context mentions candidate classes or entities (for example: "Pasajero", "Reserva", "Factura", "Proveedor", etc.), YOU MUST GENERATE ALL OF THEM in the "classes" array. Never omit any requested class.',
-    'CRITICAL ATTRIBUTES RULE: For EVERY SINGLE CLASS, you MUST provide 2 to 3 realistic attributes (e.g. Factura: [cliente:string, total:float, fecha:string]; Proveedor: [nombre:string, contacto:string, direccion:string]). NEVER leave attributes empty.',
-    'CRITICAL MULTIPLICITY RULE: Associations must use standard UML 2.5.1 multiplicities ONLY: "1", "0..1", "1..*", "0..*". NEVER output non-standard labels like "n", "n-to-1", "m", or "many".',
-    'Include essential relationships (associations) connecting the classes together, and connecting them to existing classes if present.',
+    'You are a senior UML software architect and domain-driven design expert.',
+    'Design a concise, realistic, and cohesive domain model tailored specifically to the user request.',
+    'CRITICAL LANGUAGE RULE: If the prompt or context is in Spanish, name all classes, attributes, and roles in Spanish. If in English, name them in English.',
+    'CRITICAL ENTITIES RULE: If candidate classes or entities are requested or implied, you MUST include ALL of them in the "classes" array. For EVERY SINGLE CLASS, you MUST provide 2 to 3 realistic domain attributes with clean types (string, int, float, boolean, date). NEVER leave attributes empty.',
+    'CRITICAL RELATIONSHIP TYPES RULES:',
+    '1. COMPOSITION (strong ownership/lifecycle dependency where the part cannot exist without the whole): Set "aggregation": "composite" on the association (e.g. Factura -> DetalleFactura, Pedido -> ItemPedido, Venta -> LineaVenta). The container/whole is the "source".',
+    '2. AGGREGATION (weak reference/independent lifecycle where parts can exist independently): Set "aggregation": "shared" on the association (e.g. Carrito -> Producto, Departamento -> Profesor, Empresa -> Empleado).',
+    '3. INTERMEDIATE ASSOCIATION CLASSES: When an M:N relationship between two entities carries its own attributes (e.g. DetalleVenta between Venta and Producto with cantidad/precio; Inscripcion between Estudiante and Curso with nota/fecha), specify "associationClass": "ClassName" on the association, and ALSO declare that intermediate class in the "classes" array with its attributes.',
+    '4. INHERITANCE / GENERALIZATION: For specialized subtypes (e.g. Perro is an Animal; Cliente is a Persona; TarjetaCredito is a MetodoPago), declare them in the "generalizations" array: [{"subclass": "Cliente", "superclass": "Persona"}].',
+    '5. STANDARD MULTIPLICITIES: Associations must use standard UML 2.5.1 multiplicities ONLY: "1", "0..1", "1..*", "0..*". NEVER output non-standard labels like "n", "m", or "n-to-1".',
+    'Include essential relationships connecting the classes together, and connecting them to existing classes if present.',
     contextHint,
     assocHint,
     'Output ONLY a valid raw JSON object matching:',
-    '{"classes":[{"name":"ClassName","attributes":["attrName:string|int|float"]}],"associations":[{"source":"ClassA","target":"ClassB","sourceMultiplicity":"1","targetMultiplicity":"0..*"}]}',
+    '{',
+    '  "classes": [',
+    '    {"name": "Factura", "attributes": ["numero:string", "total:float", "fecha:date"]},',
+    '    {"name": "DetalleFactura", "attributes": ["cantidad:int", "subtotal:float"]},',
+    '    {"name": "Producto", "attributes": ["codigo:string", "nombre:string", "precio:float"]}',
+    '  ],',
+    '  "associations": [',
+    '    {"source": "Factura", "target": "DetalleFactura", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1..*"},',
+    '    {"source": "DetalleFactura", "target": "Producto", "aggregation": "shared", "sourceMultiplicity": "0..*", "targetMultiplicity": "1"}',
+    '  ],',
+    '  "generalizations": []',
+    '}',
   ].filter(Boolean).join('\n');
 
   try {

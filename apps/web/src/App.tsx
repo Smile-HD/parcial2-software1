@@ -221,6 +221,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const providerRef = useRef<WebsocketProvider | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
 
   const activeProposal = useMemo(() => {
     if (interpreter.phase === 'pending') {
@@ -592,10 +593,56 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
   // nombre mal interpretado y presionar Enviar, reingresando al pipeline de texto idéntico
   // (voice:R2 — sin ruta privilegiada).
   const handleToggleRecord = (): void => {
-    if (activeRecorder === null || status !== 'ready' || interpreter.phase === 'thinking') {
+    if (status !== 'ready' || interpreter.phase === 'thinking') {
       return;
     }
+
+    const SpeechRec =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
     if (!recording) {
+      if (SpeechRec) {
+        try {
+          const rec = new SpeechRec();
+          rec.lang = lang === 'en' ? 'en-US' : 'es-ES';
+          rec.continuous = true;
+          rec.interimResults = true;
+          const initialDraft = commandDraft ? `${commandDraft.trim()} ` : '';
+
+          rec.onresult = (e: any) => {
+            let sessionTranscript = '';
+            for (let i = 0; i < e.results.length; i++) {
+              sessionTranscript += e.results[i][0]?.transcript || '';
+            }
+            if (sessionTranscript) {
+              setCommandDraft(`${initialDraft}${sessionTranscript.trim()}`);
+            }
+          };
+
+          rec.onerror = (e: any) => {
+            if (e.error !== 'no-speech') {
+              console.warn('SpeechRecognition error:', e.error);
+            }
+          };
+
+          rec.onend = () => {
+            setRecording(false);
+          };
+
+          speechRecognitionRef.current = rec;
+          rec.start();
+          setRecording(true);
+          return;
+        } catch {
+          // Fall through a activeRecorder
+        }
+      }
+
+      if (activeRecorder === null) {
+        return;
+      }
       setRecording(true);
       void activeRecorder
         .startRecording()
@@ -605,29 +652,41 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
         });
       return;
     }
+
     setRecording(false);
-    void activeRecorder.stopRecording().then(
-      ({ audio, mimeType }) => {
-        if (version === null || roomId === null) {
-          return;
-        }
-        setInterpreter({ phase: 'thinking' });
-        void transcribeAudio(roomId, audio, mimeType, true)
-          .then((response) => {
-            setInterpreter({ phase: 'idle' });
-            if (response.transcript) {
-              const text = response.transcript.trim();
-              setCommandDraft((prev) => (prev ? `${prev.trim()} ${text}` : text));
-            }
-          })
-          .catch((error: unknown) => {
-            setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.sttFailed')) });
-          });
-      },
-      (error: unknown) => {
-        setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.recordingFailed')) });
-      },
-    );
+
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
+      return;
+    }
+
+    if (activeRecorder) {
+      void activeRecorder.stopRecording().then(
+        ({ audio, mimeType }) => {
+          if (version === null || roomId === null) {
+            return;
+          }
+          setInterpreter({ phase: 'thinking' });
+          void transcribeAudio(roomId, audio, mimeType, true)
+            .then((response) => {
+              setInterpreter({ phase: 'idle' });
+              if (response.transcript) {
+                const text = response.transcript.trim();
+                setCommandDraft((prev) => (prev ? `${prev.trim()} ${text}` : text));
+              }
+            })
+            .catch((error: unknown) => {
+              setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.sttFailed')) });
+            });
+        },
+        (error: unknown) => {
+          setInterpreter({ phase: 'error', message: apiFailureMessage(error, t('voice.recordingFailed')) });
+        },
+      );
+    }
   };
 
   return (

@@ -1654,9 +1654,45 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
     const result: Edge[] = [];
 
     const resolveNodeId = (rawId: string): string | null => {
-      if (diagram.classes.some((c) => c.id === rawId)) return rawId;
-      if (ghostNodes.some((gn) => gn.id === `ghost-${rawId}`)) return `ghost-${rawId}`;
-      if (ghostNodes.some((gn) => gn.id === rawId)) return rawId;
+      if (!rawId) return null;
+      const str = String(rawId).trim();
+      const lower = str.toLowerCase();
+
+      // 1. Coincidencia por ID directo o prefijado
+      if (diagram.classes.some((c) => c.id === str)) return str;
+      if (ghostNodes.some((gn) => gn.id === `ghost-${str}`)) return `ghost-${str}`;
+      if (ghostNodes.some((gn) => gn.id === str)) return str;
+
+      // 2. Coincidencia por nombre en clases ya existentes
+      const byName = diagram.classes.find((c) => c.name.toLowerCase() === lower);
+      if (byName) return byName.id;
+
+      // 3. Coincidencia por nombre en nodos fantasma
+      const byGhostName = ghostNodes.find((gn) => {
+        const cleanName = String((gn.data as any)?.name ?? '')
+          .replace(/\s*\(Propuesta\)$/i, '')
+          .trim()
+          .toLowerCase();
+        return cleanName === lower;
+      });
+      if (byGhostName) return byGhostName.id;
+
+      // 4. Coincidencia en deltas de creación de clases del lote
+      const deltas = ghostDelta.kind === 'batch' ? ghostDelta.deltas : [ghostDelta];
+      for (const d of deltas) {
+        if (d.kind === 'class' && d.op === 'create' && (d as any).name?.toLowerCase() === lower) {
+          return `ghost-${(d as any).classId}`;
+        }
+      }
+
+      return null;
+    };
+
+    const getNodePos = (nodeId: string): { x: number; y: number } | null => {
+      const gn = ghostNodes.find((n) => n.id === nodeId);
+      if (gn) return gn.position;
+      const dc = diagram.classes.find((c) => c.id === nodeId);
+      if (dc) return dc.position;
       return null;
     };
 
@@ -1664,40 +1700,103 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
       let sourceId: string | null = null;
       let targetId: string | null = null;
       let label = 'propuesta';
+      let strokeColor = '#0891b2';
+      let strokeDasharray = '6,4';
 
       if (d.kind === 'association' && d.op === 'create') {
         sourceId = resolveNodeId(d.sourceClassId);
         targetId = resolveNodeId(d.targetClassId);
-        label = d.name || (d.targetMultiplicity ? `${d.sourceMultiplicity || ''} .. ${d.targetMultiplicity}` : 'propuesta');
+
+        const isComposite = d.aggregation === 'composite' || String(d.name || '').toLowerCase().includes('compo');
+        const isShared = d.aggregation === 'shared' || String(d.name || '').toLowerCase().includes('agreg');
+
+        if (isComposite) {
+          strokeColor = '#0f766e';
+          label = d.name
+            ? `${d.name} [composición]`
+            : d.targetMultiplicity
+              ? `${d.sourceMultiplicity || '1'} ⯁-- ${d.targetMultiplicity}`
+              : 'composición (propuesta)';
+        } else if (isShared) {
+          strokeColor = '#0284c7';
+          label = d.name
+            ? `${d.name} [agregación]`
+            : d.targetMultiplicity
+              ? `${d.sourceMultiplicity || '1'} ♢-- ${d.targetMultiplicity}`
+              : 'agregación (propuesta)';
+        } else {
+          strokeColor = '#0891b2';
+          label = d.name || (d.targetMultiplicity ? `${d.sourceMultiplicity || '1'} .. ${d.targetMultiplicity}` : 'asociación (propuesta)');
+        }
+
+        // Si la asociación tiene clase de asociación intermedia vinculada
+        const rawAssocClass = d.associationClassId || d.associationClass;
+        if (rawAssocClass) {
+          const assocClassNodeId = resolveNodeId(rawAssocClass);
+          if (assocClassNodeId && sourceId) {
+            const sPos = getNodePos(sourceId);
+            const acPos = getNodePos(assocClassNodeId);
+            const acHandles = sPos && acPos ? getOptimalHandles(sPos, acPos) : { sourceHandle: undefined, targetHandle: undefined };
+            result.push({
+              id: `ghost-edge-ac-${d.id || crypto.randomUUID()}`,
+              source: sourceId,
+              target: assocClassNodeId,
+              sourceHandle: acHandles.sourceHandle,
+              targetHandle: acHandles.targetHandle,
+              type: 'smoothstep',
+              animated: true,
+              style: { stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '4,4' },
+              label: 'clase asociación',
+              labelStyle: { fill: '#6366f1', fontWeight: 600, fontSize: 10 },
+              labelBgPadding: [4, 2],
+              labelBgBorderRadius: 4,
+              labelBgStyle: { fill: '#ffffff', fillOpacity: 0.95, stroke: '#6366f1', strokeWidth: 1 },
+            });
+          }
+        }
       } else if (d.kind === 'generalization' && d.op === 'create') {
         sourceId = resolveNodeId(d.subClassId);
         targetId = resolveNodeId(d.superClassId);
-        label = d.name || 'hereda (propuesta)';
+        strokeColor = '#7c3aed';
+        label = d.name ? `${d.name} [herencia]` : 'hereda ▷ (propuesta)';
       } else if (d.kind === 'realization' && d.op === 'create') {
         sourceId = resolveNodeId(d.clientClassId);
         targetId = resolveNodeId(d.supplierInterfaceId);
-        label = d.name || 'realiza (propuesta)';
+        strokeColor = '#059669';
+        strokeDasharray = '4,4';
+        label = d.name ? `${d.name} [realiza]` : 'realiza interfaz ▷ (propuesta)';
       } else if (d.kind === 'dependency' && d.op === 'create') {
         sourceId = resolveNodeId(d.clientClassId);
         targetId = resolveNodeId(d.supplierClassId);
-        label = d.name || 'depende (propuesta)';
+        strokeColor = '#d97706';
+        strokeDasharray = '4,4';
+        label = d.name ? `${d.name} [depende]` : 'depende ⇢ (propuesta)';
       }
 
       if (!sourceId || !targetId) return;
+
+      const sPos = getNodePos(sourceId);
+      const tPos = getNodePos(targetId);
+      const handles = sPos && tPos ? getOptimalHandles(sPos, tPos, sourceId === targetId) : { sourceHandle: undefined, targetHandle: undefined };
 
       result.push({
         id: `ghost-edge-${d.id || crypto.randomUUID()}`,
         source: sourceId,
         target: targetId,
-        type: 'default',
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
+        type: 'smoothstep',
         animated: true,
         style: {
-          stroke: '#0891b2',
+          stroke: strokeColor,
           strokeWidth: 2.5,
-          strokeDasharray: '6,4',
+          strokeDasharray,
         },
         label,
-        labelStyle: { fill: '#0891b2', fontWeight: 600, fontSize: 11 },
+        labelStyle: { fill: strokeColor, fontWeight: 700, fontSize: 11 },
+        labelBgPadding: [6, 4],
+        labelBgBorderRadius: 4,
+        labelBgStyle: { fill: '#ffffff', fillOpacity: 0.95, stroke: strokeColor, strokeWidth: 1 },
       });
     };
 

@@ -67,9 +67,14 @@ export class WhisperStt implements SttPort {
   static fromEnv(): WhisperStt | null {
     const apiKey = process.env.STT_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
+    const baseUrl = process.env.STT_BASE_URL || process.env.OPENAI_BASE_URL;
+    // Los endpoints de Ollama (ej. puerto 11434) no tienen endpoint de transcripción Whisper STT
+    if (!process.env.STT_BASE_URL && baseUrl && /:11434/i.test(baseUrl)) {
+      return null;
+    }
     return new WhisperStt({
       apiKey,
-      baseUrl: process.env.STT_BASE_URL || process.env.OPENAI_BASE_URL,
+      baseUrl,
       model: process.env.WHISPER_MODEL,
     });
   }

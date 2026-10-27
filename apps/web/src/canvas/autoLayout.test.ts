@@ -141,4 +141,56 @@ describe('computeAutoLayout — UML Graph & Hierarchy Layout', () => {
       }
     }
   });
+
+  it('guarantees zero collisions across disconnected components and standalone classes', () => {
+    const classes = [
+      { id: 'c1', name: 'Cliente', attributes: [{ id: 'a1', name: 'id', type: 'int' }, { id: 'a2', name: 'nombre', type: 'string' }], methods: [], position: { x: 0, y: 0 } },
+      { id: 'c2', name: 'Factura', attributes: [{ id: 'a3', name: 'numero', type: 'string' }, { id: 'a4', name: 'total', type: 'float' }], methods: [], position: { x: 0, y: 0 } },
+      { id: 'c3', name: 'Producto', attributes: [{ id: 'a5', name: 'codigo', type: 'string' }, { id: 'a6', name: 'precio', type: 'float' }], methods: [], position: { x: 0, y: 0 } },
+      { id: 'c4', name: 'Categoria', attributes: [{ id: 'a7', name: 'nombre', type: 'string' }], methods: [], position: { x: 0, y: 0 } },
+      { id: 'c5', name: 'Standalone1', attributes: [{ id: 'a8', name: 'x', type: 'string' }], methods: [], position: { x: 0, y: 0 } },
+      { id: 'c6', name: 'Standalone2', attributes: [{ id: 'a9', name: 'y', type: 'string' }], methods: [], position: { x: 0, y: 0 } },
+    ];
+
+    const associations = [
+      { id: 'a1', sourceClassId: 'c1', targetClassId: 'c2', directed: false, aggregation: 'none' as const, aggregationEnd: 'source' as const },
+      { id: 'a2', sourceClassId: 'c3', targetClassId: 'c4', directed: false, aggregation: 'none' as const, aggregationEnd: 'source' as const },
+    ];
+
+    const diagram: Diagram = {
+      id: 'd-multi-comp',
+      name: 'Multi Component',
+      classes,
+      associations,
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const positions = computeAutoLayout(diagram);
+
+    for (let i = 0; i < classes.length; i++) {
+      for (let j = i + 1; j < classes.length; j++) {
+        const posA = positions[classes[i].id];
+        const posB = positions[classes[j].id];
+        const szA = estimateClassDimensions(classes[i]);
+        const szB = estimateClassDimensions(classes[j]);
+
+        const aRight = posA.x + szA.width;
+        const aBottom = posA.y + szA.height;
+        const bRight = posB.x + szB.width;
+        const bBottom = posB.y + szB.height;
+
+        const overlaps = !(
+          aRight + 40 <= posB.x ||
+          bRight + 40 <= posA.x ||
+          aBottom + 40 <= posB.y ||
+          bBottom + 40 <= posA.y
+        );
+
+        expect(overlaps, `Clases ${classes[i].name} y ${classes[j].name} colisionan`).toBe(false);
+      }
+    }
+  });
 });

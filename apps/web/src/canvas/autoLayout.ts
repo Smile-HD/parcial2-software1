@@ -27,16 +27,16 @@ export function estimateClassDimensions(cls: Class): NodeSize {
     12
   );
 
-  // Ancho estimado: min 280px, max 420px
-  const width = Math.max(280, Math.min(420, 220 + maxTextLen * 7));
+  // Ancho estimado: min 320px, max 460px
+  const width = Math.max(320, Math.min(460, 240 + maxTextLen * 8));
 
   // Alto estimado con encabezado, compartimentos y formularios inline (+ / add):
-  // Header (~50px) + atributos (~26px c/u + 85px formulario) + métodos (~26px c/u + 85px formulario)
+  // Header (~50px) + atributos (~28px c/u + 85px formulario) + métodos (~28px c/u + 85px formulario)
   const height = Math.max(
-    240,
-    80 +
-    (attrCount * 26 + (attrCount > 0 ? 80 : 70)) +
-    (methodCount * 26 + (methodCount > 0 ? 80 : 70))
+    250,
+    90 +
+    (attrCount * 28 + (attrCount > 0 ? 85 : 75)) +
+    (methodCount * 28 + (methodCount > 0 ? 85 : 75))
   );
 
   return { width, height };
@@ -45,7 +45,7 @@ export function estimateClassDimensions(cls: Class): NodeSize {
 /**
  * Organiza las clases de un diagrama UML usando un ordenamiento topológico por niveles
  * (Sugiyama-inspired), ordenamiento baricéntrico de reducción de cruces y resolución
- * elástica de colisiones para que las aristas y cardinalidades se lean con total claridad.
+ * elástica global de colisiones para que las aristas y cardinalidades se lean con total claridad.
  */
 export function computeAutoLayout(
   diagram: Diagram,
@@ -54,8 +54,8 @@ export function computeAutoLayout(
   const classes = diagram.classes ?? [];
   if (classes.length === 0) return {};
 
-  const horizontalGap = options.horizontalGap ?? 240;
-  const verticalGap = options.verticalGap ?? 180;
+  const horizontalGap = options.horizontalGap ?? 280;
+  const verticalGap = options.verticalGap ?? 200;
   const startX = options.startX ?? 120;
   const startY = options.startY ?? 120;
 
@@ -149,7 +149,7 @@ export function computeAutoLayout(
   // Ordenar componentes por tamaño descendente
   components.sort((a, b) => b.length - a.length);
 
-  const finalPositions: Record<string, { x: number; y: number }> = {};
+  const rawPositions: Record<string, { x: number; y: number }> = {};
   let currentComponentOffsetX = startX;
 
   // 3. Distribución por capas para cada componente
@@ -216,7 +216,7 @@ export function computeAutoLayout(
       tiers.get(t)!.push(id);
     });
 
-    // Limitar el ancho horizontal de cada capa (máximo 3-4 clases por fila) para evitar diagramas infinitamente anchos
+    // Limitar el ancho horizontal de cada capa (máximo 3 clases por fila) para evitar diagramas infinitamente anchos
     const sortedTierKeys = Array.from(tiers.keys()).sort((a, b) => a - b);
     const normalizedTiers: string[][] = [];
 
@@ -249,14 +249,13 @@ export function computeAutoLayout(
     );
 
     const tierWidths = normalizedTiers.map((tier) => {
-      const totalNodesWidth = tier.reduce((acc, id) => acc + (sizeMap.get(id)?.width ?? 300), 0);
+      const totalNodesWidth = tier.reduce((acc, id) => acc + (sizeMap.get(id)?.width ?? 320), 0);
       return totalNodesWidth + Math.max(0, tier.length - 1) * horizontalGap;
     });
 
-    const maxComponentWidth = Math.max(...tierWidths);
+    const maxComponentWidth = Math.max(340, ...tierWidths);
 
     let currentTierY = startY;
-    const positions: Record<string, { x: number; y: number }> = {};
 
     normalizedTiers.forEach((tier, tIdx) => {
       const currentTierWidth = tierWidths[tIdx];
@@ -265,7 +264,7 @@ export function computeAutoLayout(
 
       tier.forEach((id) => {
         const sz = sizeMap.get(id)!;
-        positions[id] = {
+        rawPositions[id] = {
           x: Math.round(currentX),
           y: Math.round(currentTierY),
         };
@@ -275,59 +274,84 @@ export function computeAutoLayout(
       currentTierY += tierHeights[tIdx] + verticalGap;
     });
 
-    // 6. Relajación física anti-colisiones (25 iteraciones)
-    // Garantiza que ninguna clase se toque ni se superponga bajo ninguna circunstancia
-    const compNodeIds = comp;
-    for (let iter = 0; iter < 25; iter++) {
-      for (let i = 0; i < compNodeIds.length; i++) {
-        for (let j = i + 1; j < compNodeIds.length; j++) {
-          const idA = compNodeIds[i];
-          const idB = compNodeIds[j];
-          const posA = positions[idA];
-          const posB = positions[idB];
-          const szA = sizeMap.get(idA)!;
-          const szB = sizeMap.get(idB)!;
+    // Actualizar offset para el siguiente componente basado en el ancho real
+    const compRightEdge = Math.max(
+      ...comp.map((id) => (rawPositions[id]?.x ?? currentComponentOffsetX) + (sizeMap.get(id)?.width ?? 320))
+    );
+    currentComponentOffsetX = compRightEdge + horizontalGap;
+  });
 
-          const cxA = posA.x + szA.width / 2;
-          const cyA = posA.y + szA.height / 2;
-          const cxB = posB.x + szB.width / 2;
-          const cyB = posB.y + szB.height / 2;
+  // 6. Relajación física anti-colisiones GLOBAL (50 iteraciones)
+  // Aplica sobre TODOS los nodos del diagrama, garantizando que NINGÚN par de clases
+  // (dentro del mismo componente o entre componentes distintos) se solape.
+  const allNodeIds = classes.map((c) => c.id);
+  for (let iter = 0; iter < 50; iter++) {
+    let hasCollision = false;
+    for (let i = 0; i < allNodeIds.length; i++) {
+      for (let j = i + 1; j < allNodeIds.length; j++) {
+        const idA = allNodeIds[i];
+        const idB = allNodeIds[j];
+        const posA = rawPositions[idA];
+        const posB = rawPositions[idB];
+        if (!posA || !posB) continue;
 
-          const dx = cxB - cxA;
-          const dy = cyB - cyA;
+        const szA = sizeMap.get(idA)!;
+        const szB = sizeMap.get(idB)!;
 
-          const requiredDistX = (szA.width + szB.width) / 2 + 160;
-          const requiredDistY = (szA.height + szB.height) / 2 + 120;
+        const cxA = posA.x + szA.width / 2;
+        const cyA = posA.y + szA.height / 2;
+        const cxB = posB.x + szB.width / 2;
+        const cyB = posB.y + szB.height / 2;
 
-          const overlapX = requiredDistX - Math.abs(dx);
-          const overlapY = requiredDistY - Math.abs(dy);
+        const dx = cxB - cxA;
+        const dy = cyB - cyA;
 
-          // Si hay superposición o proximidad excesiva, repeler suavemente
-          if (overlapX > 0 && overlapY > 0) {
-            if (overlapX < overlapY) {
-              const push = (overlapX / 2) * (dx >= 0 ? 1 : -1);
-              posA.x -= push;
-              posB.x += push;
-            } else {
-              const push = (overlapY / 2) * (dy >= 0 ? 1 : -1);
-              posA.y -= push;
-              posB.y += push;
-            }
+        // Margen mínimo de seguridad libre entre cajas de clases: 120px en X, 100px en Y
+        const requiredDistX = (szA.width + szB.width) / 2 + 120;
+        const requiredDistY = (szA.height + szB.height) / 2 + 100;
+
+        const overlapX = requiredDistX - Math.abs(dx);
+        const overlapY = requiredDistY - Math.abs(dy);
+
+        // Si hay colisión o proximidad indeseada, repeler a lo largo del eje más corto
+        if (overlapX > 0 && overlapY > 0) {
+          hasCollision = true;
+          if (overlapX < overlapY) {
+            const push = (overlapX / 2 + 12) * (dx >= 0 ? 1 : -1);
+            posA.x -= push;
+            posB.x += push;
+          } else {
+            const push = (overlapY / 2 + 12) * (dy >= 0 ? 1 : -1);
+            posA.y -= push;
+            posB.y += push;
           }
         }
       }
     }
+    if (!hasCollision) break;
+  }
 
-    // 7. Alinear a cuadrícula de 20px para nitidez profesional
-    comp.forEach((id) => {
+  // 7. Normalizar origen al punto startX, startY y alinear a cuadrícula de 20px
+  let minX = Infinity;
+  let minY = Infinity;
+  allNodeIds.forEach((id) => {
+    if (rawPositions[id]) {
+      minX = Math.min(minX, rawPositions[id].x);
+      minY = Math.min(minY, rawPositions[id].y);
+    }
+  });
+
+  const shiftX = Number.isFinite(minX) ? startX - minX : 0;
+  const shiftY = Number.isFinite(minY) ? startY - minY : 0;
+
+  const finalPositions: Record<string, { x: number; y: number }> = {};
+  allNodeIds.forEach((id) => {
+    if (rawPositions[id]) {
       finalPositions[id] = {
-        x: Math.round(positions[id].x / 20) * 20,
-        y: Math.round(positions[id].y / 20) * 20,
+        x: Math.round((rawPositions[id].x + shiftX) / 20) * 20,
+        y: Math.round((rawPositions[id].y + shiftY) / 20) * 20,
       };
-    });
-
-    // Siguiente componente a la derecha con margen generoso
-    currentComponentOffsetX += maxComponentWidth + horizontalGap * 1.5;
+    }
   });
 
   return finalPositions;
