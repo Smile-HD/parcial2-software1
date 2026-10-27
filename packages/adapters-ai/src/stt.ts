@@ -68,7 +68,11 @@ export class WhisperStt implements SttPort {
   }
 
   static fromEnv(): WhisperStt | null {
-    const apiKey = process.env.STT_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+    const apiKey =
+      process.env.STT_API_KEY ||
+      process.env.STT_API_API_KEY ||
+      process.env.GROQ_API_KEY ||
+      process.env.OPENAI_API_KEY;
     if (!apiKey) return null;
     const isGroq =
       apiKey.startsWith('gsk_') ||

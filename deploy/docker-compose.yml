@@ -73,7 +73,7 @@ services:
       # Sin OPENAI_API_KEY la app usa fakes deterministas (modo demo offline).
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      STT_API_KEY: ${STT_API_KEY:-}
+      STT_API_KEY: ${STT_API_KEY:-${STT_API_API_KEY:-${GROQ_API_KEY:-}}}
       STT_BASE_URL: ${STT_BASE_URL:-}
       VISION_API_KEY: ${VISION_API_KEY:-}
       VISION_BASE_URL: ${VISION_BASE_URL:-}
