@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
 import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel } from './domain-synthesizer.js';
+import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 
 export const ChatChannelTypeSchema = z.enum(['group', 'direct_bot']);
 export type ChatChannelType = z.infer<typeof ChatChannelTypeSchema>;
@@ -569,10 +570,14 @@ export async function processUnifiedAmongusTurn(
       };
     }
 
+    const domainMatch = matchCanonicalDomain(diagramContext);
+    const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
+
     const suggestPrompt = isEn
       ? [
           'You are Amongus, a senior software architecture tutor.',
           `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
+          domainGrounding,
           'Suggest exactly 2 or 3 essential missing entities or relationships (max 3) with a concise 2-line explanation each.',
           'CRITICAL OOAD ARCHITECTURE RULES:',
           '- Structure every suggestion in this exact order: 1. Class name -> 2. Attributes -> 3. Relationships -> 4. Concise explanation.',
@@ -585,10 +590,11 @@ export async function processUnifiedAmongusTurn(
           '- NEVER suggest duplicate relationships between classes that are already connected.',
           '- FORMAT: Always separate each numbered entity suggestion with a blank line (double newline).',
           'Provide clear architectural reasoning without code blocks or JSON, ensuring the reply is complete and concise.',
-        ].join('\n')
+        ].filter(Boolean).join('\n')
       : [
           'Sos Amongus, tutor senior de arquitectura de software.',
           `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
+          domainGrounding,
           'Sugerí exactamente 2 o 3 entidades clave faltantes o relaciones clave (máximo 3) con una explicación concisa de 2 líneas cada una.',
           'REGLAS CRÍTICAS DE ARQUITECTURA OOAD:',
           '- Estructurá cada sugerencia en este orden exacto: 1. Clase -> 2. Atributos -> 3. Relaciones -> 4. Explicación concisa.',
@@ -601,7 +607,7 @@ export async function processUnifiedAmongusTurn(
           '- NUNCA sugieras relaciones redundantes entre clases que ya están conectadas.',
           '- FORMATO: Separá SIEMPRE cada entidad sugerida con un renglón en blanco (doble salto de línea).',
           'Explicá claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON. Sé directo y asegurá que tu respuesta esté completa.',
-        ].join('\n');
+        ].filter(Boolean).join('\n');
 
     let suggestChunks = '';
     const wrappedSuggestChunk = (chunk: string) => {
@@ -886,8 +892,11 @@ export async function processUnifiedAmongusTurn(
       ].join('\n');
 
   try {
+    const domainMatch = matchCanonicalDomain(userContent);
+    const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
+
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: systemPrompt + domainGrounding },
       ...(chatHistory ?? []),
       { role: 'user', content: userContent },
     ];

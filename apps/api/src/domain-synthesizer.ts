@@ -1,4 +1,5 @@
 import type { BatchDelta, LlmPort } from '@app/core';
+import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 
 export interface SemanticAttribute {
   name: string;
@@ -1159,9 +1160,15 @@ export async function synthesizeDomainModel(
     ? `\nExisting relationships already in the canvas: ${existingAssocsList.join(', ')}. CRITICAL: DO NOT duplicate or create redundant relationships between classes that already have an association! Only link new entities to existing ones without repeating existing links.`
     : '';
 
+  const domainMatch = matchCanonicalDomain(text);
+  const isEn = !/(?:es|spanish|español)/i.test(process.env.DEFAULT_LANGUAGE || '') &&
+    !/(?:veterinaria|tienda|cl[ií]nica|hospital|hotel|banco|facultad|universidad|gimnasio|restaurante|aerol[ií]nea|sistema|pedido|comercio)/i.test(text);
+  const groundingHint = domainMatch ? `\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
+
   const systemPrompt = [
     'You are a senior UML software architect and domain-driven design expert.',
     'Design a concise, realistic, and cohesive domain model tailored specifically to the user request.',
+    groundingHint,
     'CRITICAL LANGUAGE RULE: If the prompt or context is in Spanish, name all classes, attributes, and roles in Spanish. If in English, name them in English.',
     'CRITICAL ENTITIES RULE: If candidate classes or entities are requested or implied, you MUST include ALL of them in the "classes" array. For EVERY SINGLE CLASS, you MUST provide 2 to 4 realistic domain attributes with clean types (string, int, float, boolean, date). NEVER leave attributes empty.',
     'CRITICAL RELATIONSHIP TYPES RULES:',
