@@ -1,0 +1,582 @@
+[
+  {
+    "id": "veterinary_clinic",
+    "title": "Clínica Veterinaria / Veterinary Clinic",
+    "category": "health",
+    "keywords": {
+      "es": [
+        "veterinaria",
+        "mascota",
+        "animal",
+        "veterinario",
+        "consulta veterinaria",
+        "vacunacion",
+        "vacuna",
+        "perro",
+        "gato"
+      ],
+      "en": [
+        "veterinary",
+        "pet",
+        "animal",
+        "vet",
+        "clinic",
+        "vaccination",
+        "vaccine",
+        "dog",
+        "cat"
+      ]
+    }
+  },
+  {
+    "id": "ecommerce_store",
+    "title": "Comercio Electrónico / E-Commerce Store",
+    "category": "commerce",
+    "keywords": {
+      "es": [
+        "ecommerce",
+        "tienda",
+        "comercio",
+        "carrito",
+        "pedido",
+        "compra",
+        "ventas",
+        "productos",
+        "catalogo",
+        "tienda online"
+      ],
+      "en": [
+        "ecommerce",
+        "shop",
+        "store",
+        "cart",
+        "order",
+        "purchase",
+        "sales",
+        "products",
+        "checkout",
+        "online store"
+      ]
+    }
+  },
+  {
+    "id": "university_system",
+    "title": "Sistema Universitario / Academic System",
+    "category": "education",
+    "keywords": {
+      "es": [
+        "universidad",
+        "facultad",
+        "estudiante",
+        "profesor",
+        "curso",
+        "materia",
+        "matricula",
+        "inscripcion",
+        "carrera",
+        "academico"
+      ],
+      "en": [
+        "university",
+        "college",
+        "student",
+        "professor",
+        "course",
+        "enrollment",
+        "academic",
+        "classroom"
+      ]
+    }
+  },
+  {
+    "id": "hospital_clinic",
+    "title": "Hospital y Clínica Médica / Healthcare Clinic",
+    "category": "health",
+    "keywords": {
+      "es": [
+        "hospital",
+        "clinica",
+        "medico",
+        "paciente",
+        "doctor",
+        "salud",
+        "receta",
+        "cita",
+        "historia clinica",
+        "turno"
+      ],
+      "en": [
+        "hospital",
+        "clinic",
+        "doctor",
+        "patient",
+        "health",
+        "prescription",
+        "appointment",
+        "medical record"
+      ]
+    }
+  },
+  {
+    "id": "banking_core",
+    "title": "Sistema Bancario y Financiero / Banking Core",
+    "category": "finance",
+    "keywords": {
+      "es": [
+        "banco",
+        "bancario",
+        "cuenta",
+        "transaccion",
+        "transferencia",
+        "tarjeta",
+        "finanzas",
+        "saldo",
+        "cajero"
+      ],
+      "en": [
+        "bank",
+        "banking",
+        "account",
+        "transaction",
+        "transfer",
+        "card",
+        "finance",
+        "balance",
+        "credit card"
+      ]
+    }
+  },
+  {
+    "id": "hotel_reservation",
+    "title": "Gestión Hotelera y Reservas / Hotel & Lodging",
+    "category": "hospitality",
+    "keywords": {
+      "es": [
+        "hotel",
+        "hospedaje",
+        "reserva",
+        "habitacion",
+        "huesped",
+        "alojamiento",
+        "estancia",
+        "checkin",
+        "checkout"
+      ],
+      "en": [
+        "hotel",
+        "lodging",
+        "reservation",
+        "room",
+        "guest",
+        "accommodation",
+        "booking"
+      ]
+    }
+  },
+  {
+    "id": "logistics_shipping",
+    "title": "Logística y Envíos / Logistics & Shipping",
+    "category": "logistics",
+    "keywords": {
+      "es": [
+        "logistica",
+        "envio",
+        "paquete",
+        "transporte",
+        "ruta",
+        "camion",
+        "vehiculo",
+        "entrega",
+        "despacho"
+      ],
+      "en": [
+        "logistics",
+        "shipping",
+        "package",
+        "parcel",
+        "transport",
+        "route",
+        "vehicle",
+        "delivery"
+      ]
+    }
+  },
+  {
+    "id": "library_system",
+    "title": "Biblioteca y Préstamos / Library System",
+    "category": "education",
+    "keywords": {
+      "es": [
+        "biblioteca",
+        "libro",
+        "prestamo",
+        "lector",
+        "editorial",
+        "autor",
+        "ejemplar",
+        "devolucion",
+        "multa"
+      ],
+      "en": [
+        "library",
+        "book",
+        "loan",
+        "reader",
+        "author",
+        "copy",
+        "fine"
+      ]
+    }
+  },
+  {
+    "id": "airline_flights",
+    "title": "Aerolíneas y Vuelos / Airline & Flights",
+    "category": "logistics",
+    "keywords": {
+      "es": [
+        "aerolinea",
+        "vuelo",
+        "avion",
+        "aeropuerto",
+        "pasajero",
+        "boleto",
+        "reserva vuelo",
+        "pasaje",
+        "escala"
+      ],
+      "en": [
+        "airline",
+        "flight",
+        "airplane",
+        "airport",
+        "passenger",
+        "ticket",
+        "boarding"
+      ]
+    }
+  },
+  {
+    "id": "restaurant_pos",
+    "title": "Restaurante y Punto de Venta / Restaurant POS",
+    "category": "hospitality",
+    "keywords": {
+      "es": [
+        "restaurante",
+        "bar",
+        "mozo",
+        "mesa",
+        "comanda",
+        "plato",
+        "menu",
+        "pedido restaurante",
+        "cuenta"
+      ],
+      "en": [
+        "restaurant",
+        "bar",
+        "waiter",
+        "table",
+        "order",
+        "dish",
+        "menu",
+        "bill"
+      ]
+    }
+  },
+  {
+    "id": "gym_fitness",
+    "title": "Gimnasio y Membresías / Gym & Fitness",
+    "category": "health",
+    "keywords": {
+      "es": [
+        "gimnasio",
+        "gym",
+        "socio",
+        "entrenador",
+        "membresia",
+        "rutina",
+        "ejercicio",
+        "cuota"
+      ],
+      "en": [
+        "gym",
+        "fitness",
+        "member",
+        "trainer",
+        "membership",
+        "workout",
+        "exercise"
+      ]
+    }
+  },
+  {
+    "id": "real_estate",
+    "title": "Inmobiliaria y Alquileres / Real Estate",
+    "category": "commerce",
+    "keywords": {
+      "es": [
+        "inmobiliaria",
+        "inmueble",
+        "propiedad",
+        "alquiler",
+        "propietario",
+        "inquilino",
+        "contrato",
+        "departamento",
+        "casa"
+      ],
+      "en": [
+        "real estate",
+        "property",
+        "rental",
+        "landlord",
+        "tenant",
+        "lease",
+        "apartment",
+        "house"
+      ]
+    }
+  },
+  {
+    "id": "dental_clinic",
+    "title": "Clínica Odontológica / Dental Clinic",
+    "category": "health",
+    "keywords": {
+      "es": [
+        "odontologia",
+        "dentista",
+        "dientes",
+        "ortodoncia",
+        "clinica dental",
+        "implante"
+      ],
+      "en": [
+        "dentist",
+        "dental",
+        "teeth",
+        "orthodontics",
+        "dental clinic"
+      ]
+    }
+  },
+  {
+    "id": "pharmacy",
+    "title": "Farmacia y Medicamentos / Pharmacy & Drugstore",
+    "category": "health",
+    "keywords": {
+      "es": [
+        "farmacia",
+        "medicamento",
+        "droga",
+        "remedio",
+        "receta medica",
+        "farmaceutico"
+      ],
+      "en": [
+        "pharmacy",
+        "drugstore",
+        "medicine",
+        "prescription",
+        "pharmacist"
+      ]
+    }
+  },
+  {
+    "id": "clinical_lab",
+    "title": "Laboratorio de Análisis Clínicos / Clinical Analysis Laboratory",
+    "category": "health",
+    "keywords": {
+      "es": [
+        "laboratorio clinico",
+        "analisis de sangre",
+        "bioquimico",
+        "muestra",
+        "hemograma",
+        "laboratorio"
+      ],
+      "en": [
+        "clinical lab",
+        "blood test",
+        "biochemistry",
+        "sample",
+        "lab test"
+      ]
+    }
+  },
+  {
+    "id": "supermarket",
+    "title": "Supermercado y Cadena de Autoservicio / Supermarket & Retail Chain",
+    "category": "commerce",
+    "keywords": {
+      "es": [
+        "supermercado",
+        "gondola",
+        "cajero",
+        "caja registradora",
+        "autoservicio",
+        "despensa"
+      ],
+      "en": [
+        "supermarket",
+        "grocery",
+        "cashier",
+        "shelf",
+        "retail chain"
+      ]
+    }
+  },
+  {
+    "id": "car_dealership",
+    "title": "Concesionaria de Autos / Car Dealership & Auto Sales",
+    "category": "commerce",
+    "keywords": {
+      "es": [
+        "concesionaria",
+        "autos",
+        "vehiculos",
+        "venta de autos",
+        "agencia de autos",
+        "kilometraje"
+      ],
+      "en": [
+        "car dealership",
+        "auto sales",
+        "vehicle sales",
+        "car dealer"
+      ]
+    }
+  },
+  {
+    "id": "movie_streaming",
+    "title": "Plataforma de Streaming de Video / Video Streaming Platform",
+    "category": "media",
+    "keywords": {
+      "es": [
+        "streaming",
+        "peliculas",
+        "series",
+        "netflix",
+        "reproduccion",
+        "catalogo peliculas"
+      ],
+      "en": [
+        "streaming",
+        "movies",
+        "series",
+        "video player",
+        "video on demand"
+      ]
+    }
+  },
+  {
+    "id": "music_streaming",
+    "title": "Streaming de Música y Podcasts / Music & Podcast Streaming",
+    "category": "media",
+    "keywords": {
+      "es": [
+        "musica",
+        "cancion",
+        "spotify",
+        "playlist",
+        "album",
+        "artista",
+        "podcast"
+      ],
+      "en": [
+        "music",
+        "song",
+        "playlist",
+        "album",
+        "artist",
+        "tracks"
+      ]
+    }
+  },
+  {
+    "id": "parking_lot",
+    "title": "Estacionamiento y Cocheras / Parking Lot Management",
+    "category": "transport",
+    "keywords": {
+      "es": [
+        "estacionamiento",
+        "cochera",
+        "parking",
+        "parqueadero",
+        "tarifa hora",
+        "patente auto"
+      ],
+      "en": [
+        "parking",
+        "parking lot",
+        "garage",
+        "parking spot",
+        "hourly rate"
+      ]
+    }
+  },
+  {
+    "id": "car_rental",
+    "title": "Alquiler de Vehículos (Rent a Car) / Car Rental Service",
+    "category": "transport",
+    "keywords": {
+      "es": [
+        "rent a car",
+        "alquiler de autos",
+        "alquiler vehiculo",
+        "devolucion auto"
+      ],
+      "en": [
+        "car rental",
+        "rent a car",
+        "vehicle rental",
+        "rental fleet"
+      ]
+    }
+  },
+  {
+    "id": "kindergarten",
+    "title": "Jardín de Infantes y Guardería / Kindergarten & Daycare",
+    "category": "education",
+    "keywords": {
+      "es": [
+        "jardin de infantes",
+        "guarderia",
+        "maternal",
+        "sala",
+        "maestra jardinera",
+        "niños"
+      ],
+      "en": [
+        "kindergarten",
+        "daycare",
+        "preschool",
+        "nursery",
+        "childcare"
+      ]
+    }
+  },
+  {
+    "id": "sports_tournament",
+    "title": "Torneo Deportivo y Liga de Fútbol / Sports Tournament & Soccer League",
+    "category": "sports",
+    "keywords": {
+      "es": [
+        "torneo",
+        "campeonato",
+        "liga de futbol",
+        "partido",
+        "arbitro",
+        "cancha",
+        "goles"
+      ],
+      "en": [
+        "tournament",
+        "league",
+        "soccer",
+        "match",
+        "referee",
+        "championship"
+      ]
+    }
+  }
+]

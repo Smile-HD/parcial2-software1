@@ -1,4 +1,4 @@
-import { CANONICAL_DOMAINS } from './domains.js';
+import { getDomainIndex, getDomainSchema } from './loader.js';
 import type { CanonicalDomainModel, DomainMatchResult } from './types.js';
 
 function normalize(text: string): string {
@@ -9,18 +9,9 @@ function normalize(text: string): string {
     .trim();
 }
 
-// Pre-normalizar palabras clave una sola vez en el inicio del módulo para velocidad máxima (<0.02ms)
-const INDEXED_DOMAINS = CANONICAL_DOMAINS.map((domain) => ({
-  domain,
-  allKeywords: [
-    ...domain.keywords.es.map(normalize),
-    ...domain.keywords.en.map(normalize),
-  ],
-}));
-
 /**
  * Enrutador léxico en memoria (< 1 ms).
- * Evalúa tokens y sinónimos en español e inglés contra el catálogo canónico.
+ * Evalúa tokens y sinónimos en español e inglés contra el catálogo canónico (usando lazy loading).
  */
 export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMatchResult | null {
   if (!query || query.trim().length === 0) {
@@ -36,10 +27,15 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
     return null;
   }
 
-  let bestMatch: DomainMatchResult | null = null;
+  const index = getDomainIndex();
+  let bestMatch: { id: string; score: number; matchedKeywords: string[] } | null = null;
   let highestScore = 0;
 
-  for (const { domain, allKeywords } of INDEXED_DOMAINS) {
+  for (const item of index) {
+    const allKeywords = [
+      ...item.keywords.es.map(normalize),
+      ...item.keywords.en.map(normalize),
+    ];
     let score = 0;
     const matched: string[] = [];
 
@@ -74,14 +70,27 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
     if (normalizedScore >= threshold && normalizedScore > highestScore) {
       highestScore = normalizedScore;
       bestMatch = {
-        domain,
+        id: item.id,
         score: normalizedScore,
         matchedKeywords: Array.from(new Set(matched)),
       };
     }
   }
 
-  return bestMatch;
+  if (!bestMatch) {
+    return null;
+  }
+
+  const domain = getDomainSchema(bestMatch.id);
+  if (!domain) {
+    return null;
+  }
+
+  return {
+    domain,
+    score: bestMatch.score,
+    matchedKeywords: bestMatch.matchedKeywords,
+  };
 }
 
 /**
