@@ -200,6 +200,28 @@ export function generateDefaultAttributesForClass(className: string): Array<{ na
 }
 
 /**
+ * Evalúa si una relación de composición es semánticamente válida según principios OOAD.
+ * En UML, la composición exige dependencia existencial estricta (el ciclo de vida de la parte depende del todo).
+ */
+export function isHeuristicComposition(sourceName?: string, targetName?: string, hasAssocClass?: boolean): boolean {
+  if (!targetName) return false;
+  const s = (sourceName || '').toLowerCase().trim();
+  const t = targetName.toLowerCase().trim();
+  if (s === t) return false; // Una clase no puede componerse a sí misma
+
+  if (hasAssocClass) return true;
+
+  // Palabras clave que denotan inequívocamente entidades dependientes o partes subordinadas
+  const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|reserva|turno|registro)/i;
+  if (childPattern.test(t)) return true;
+
+  // Si el destino es un prefijo o sufijo compuesto del origen (ej. Pedido -> PedidoItem)
+  if (s && t.startsWith(s) && t.length > s.length) return true;
+
+  return false;
+}
+
+/**
  * Convierte un modelo de dominio semántico abstracto (generado dinámicamente por el LLM)
  * en un BatchDelta de metamodelo UML canónico y validado con coordenadas espaciales.
  */
@@ -388,24 +410,58 @@ export function expandSemanticDomainToDelta(
           if (attr.isStatic !== undefined) isStatic = !!attr.isStatic;
           if (attr.isDerived !== undefined) isDerived = !!attr.isDerived;
         }
-        name = name.replace(/\s+/g, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+
+        // Sanitizar si el modelo devolvió "nombre:string" adherido dentro del campo name
+        if (name.includes(':')) {
+          const colonParts = name.split(':');
+          name = colonParts[0]?.trim() ?? '';
+          const embeddedType = colonParts[1]?.trim();
+          if (embeddedType && (!type || type === 'string')) {
+            type = embeddedType;
+          }
+        }
+        name = name.replace(/^[-+*#~]\s*/, '').replace(/\s+/g, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
         if (!name) return;
         // Ignorar placeholders literales del esquema como "type", "string", "int", "attribute"
         if (/^(type|tipo|string|int|float|boolean|attribute|attr)$/i.test(name)) return;
         if (name.toLowerCase() === 'name' && type.toLowerCase() === 'string' && attrList.length > 3) return;
 
-        // Si la clase ya existía, evitar agregar atributos duplicados
-        if (existingClass && Array.isArray(existingClass.attributes)) {
-          const alreadyHasAttr = existingClass.attributes.some(
-            (ea: any) => ea.name && ea.name.toLowerCase().trim() === name.toLowerCase()
-          );
-          if (alreadyHasAttr) return;
-        }
-
         const rawType = type.toLowerCase().trim().replace(/\[\]$/, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
         const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
           ? rawType
           : rawType === 'number' || rawType === 'double' || rawType === 'decimal' ? 'float' : 'string';
+
+        // Si la clase ya existía en el lienzo, evitar duplicar atributos y emitir editAttribute si cambió el tipo
+        if (existingClass && Array.isArray(existingClass.attributes)) {
+          const existingAttr = existingClass.attributes.find(
+            (ea: any) => ea.name && ea.name.toLowerCase().trim() === name.toLowerCase()
+          );
+          if (existingAttr) {
+            if (cleanType && cleanType !== existingAttr.type) {
+              deltas.push({
+                id: crypto.randomUUID(),
+                diagramId,
+                timestamp,
+                kind: 'member',
+                op: 'editAttribute',
+                classId,
+                memberId: existingAttr.id,
+                name: existingAttr.name,
+                type: cleanType,
+                visibility: existingAttr.visibility ?? visibility,
+                isStatic: existingAttr.isStatic ?? isStatic,
+                isDerived: existingAttr.isDerived ?? isDerived,
+              });
+            }
+            return;
+          }
+        }
+
+        // Evitar duplicados dentro del mismo lote para esta clase
+        const alreadyInBatch = deltas.some(
+          (d: any) => d.kind === 'member' && d.classId === classId && d.name && d.name.toLowerCase() === name.toLowerCase()
+        );
+        if (alreadyInBatch) return;
 
         deltas.push({
           id: crypto.randomUUID(),
@@ -441,16 +497,48 @@ export function expandSemanticDomainToDelta(
             if (m.isStatic !== undefined) isStatic = !!m.isStatic;
             if (Array.isArray(m.parameters)) parameters = m.parameters;
           }
+
+          if (mName.includes(':')) {
+            const parts = mName.split(':');
+            mName = parts[0]?.trim() ?? '';
+            const embeddedRet = parts[1]?.trim();
+            if (embeddedRet && (!returnType || returnType === 'void')) {
+              returnType = embeddedRet;
+            }
+          }
           mName = mName.trim().replace(/\s+/g, '');
           if (!mName) return;
 
-          // Si ya existía el método en la clase, evitar duplicar
+          // Si ya existía el método en la clase, evitar duplicar o emitir editMethod si cambió returnType
           if (existingClass && Array.isArray(existingClass.methods)) {
-            const alreadyHasMethod = existingClass.methods.some(
+            const existingMethod = existingClass.methods.find(
               (em: any) => em.name && em.name.toLowerCase().trim() === mName.toLowerCase()
             );
-            if (alreadyHasMethod) return;
+            if (existingMethod) {
+              if (returnType && returnType !== existingMethod.returnType) {
+                deltas.push({
+                  id: crypto.randomUUID(),
+                  diagramId,
+                  timestamp,
+                  kind: 'member',
+                  op: 'editMethod',
+                  classId,
+                  memberId: existingMethod.id,
+                  name: existingMethod.name,
+                  returnType,
+                  parameters: parameters.length > 0 ? parameters : (existingMethod.parameters ?? []),
+                  visibility: existingMethod.visibility ?? visibility,
+                  isStatic: existingMethod.isStatic ?? isStatic,
+                });
+              }
+              return;
+            }
           }
+
+          const alreadyMethodInBatch = deltas.some(
+            (d: any) => d.kind === 'member' && d.classId === classId && d.name && d.name.toLowerCase() === mName.toLowerCase()
+          );
+          if (alreadyMethodInBatch) return;
 
           deltas.push({
             id: crypto.randomUUID(),
@@ -475,14 +563,7 @@ export function expandSemanticDomainToDelta(
   const getPairKey = (idA: string, idB: string): string => [idA, idB].sort().join('::');
   const seenConnectedPairs = new Set<string>();
 
-  // Pre-cargar todas las aristas existentes en el lienzo para no duplicar bajo ninguna condición
-  if (currentDiagram?.associations && Array.isArray(currentDiagram.associations)) {
-    for (const a of currentDiagram.associations) {
-      if (a.sourceClassId && a.targetClassId) {
-        seenConnectedPairs.add(getPairKey(a.sourceClassId, a.targetClassId));
-      }
-    }
-  }
+  // Pre-cargar generalizaciones, realizaciones y dependencias existentes para no crear asociaciones redundantes
   if (currentDiagram?.generalizations && Array.isArray(currentDiagram.generalizations)) {
     for (const g of currentDiagram.generalizations) {
       if (g.subClassId && g.superClassId) {
@@ -624,10 +705,11 @@ export function expandSemanticDomainToDelta(
       const sourceId = resolveClassId(assoc.source);
       const targetId = resolveClassId(assoc.target);
 
-      if (!sourceId || !targetId || sourceId === targetId) return;
+      if (!sourceId || !targetId) return;
 
-      const pair = getPairKey(sourceId, targetId);
-      // CERO DUPLICADOS: Si este par ya tiene generalización, realización o asociación previa, DESCARTAR
+      const isRecursive = sourceId === targetId;
+      const pair = isRecursive ? `${sourceId}::${sourceId}` : getPairKey(sourceId, targetId);
+      // CERO DUPLICADOS: Si este par ya tiene generalización, realización o asociación previa en ESTE LOTE, DESCARTAR
       if (seenConnectedPairs.has(pair)) return;
 
       let assocClassId = assoc.associationClass
@@ -673,10 +755,69 @@ export function expandSemanticDomainToDelta(
         }
       }
 
-      const isComposite = assoc.aggregation === 'composite';
-      // Solo permitir agregación compartida (shared) si se solicitó explícitamente y no es una simple referencia
-      const isShared = assoc.aggregation === 'shared';
+      // 1. Obtener nombres reales de las entidades para validar semántica OOAD
+      const sourceName = currentDiagram?.classes?.find((c: any) => c.id === sourceId)?.name || assoc.source;
+      const targetName = currentDiagram?.classes?.find((c: any) => c.id === targetId)?.name || assoc.target;
 
+      // 2. Guardrail de Composición: nunca permitir composición en reflexivas ni entre entidades independientes
+      const isRequestedComposite = assoc.aggregation === 'composite' || (assoc as any).type === 'composition';
+      const isRequestedShared = assoc.aggregation === 'shared' || (assoc as any).type === 'aggregation';
+
+      const canBeComposite = isRequestedComposite && !isRecursive && isHeuristicComposition(sourceName, targetName, !!assocClassId || !!assoc.associationClass);
+      const targetAggregation = canBeComposite ? 'composite' : (isRequestedShared ? 'shared' : 'none');
+      const targetEnd = (canBeComposite || isRequestedShared) ? (assoc.aggregationEnd ?? 'source') : 'source';
+
+      // 3. Verificar si ya existe una asociación entre este par en el lienzo actual
+      const existingAssoc = currentDiagram?.associations?.find((a: any) => {
+        if (isRecursive) {
+          return a.sourceClassId === sourceId && a.targetClassId === sourceId;
+        }
+        return (
+          (a.sourceClassId === sourceId && a.targetClassId === targetId) ||
+          (a.sourceClassId === targetId && a.targetClassId === sourceId)
+        );
+      });
+
+      if (existingAssoc) {
+        // Verificar si la relación propuesta realmente introduce cambios respecto a la del lienzo
+        const newSourceMult = assoc.sourceMultiplicity ? cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1') : undefined;
+        const newTargetMult = assoc.targetMultiplicity ? cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*') : undefined;
+
+        const aggregationChanged = targetAggregation !== (existingAssoc.aggregation ?? 'none');
+        const multChanged = (newSourceMult !== undefined && newSourceMult !== existingAssoc.sourceMultiplicity) ||
+                            (newTargetMult !== undefined && newTargetMult !== existingAssoc.targetMultiplicity);
+        const metaChanged = (assoc.name !== undefined && assoc.name !== existingAssoc.name) ||
+                            (assoc.sourceRole !== undefined && assoc.sourceRole !== existingAssoc.sourceRole) ||
+                            (assoc.targetRole !== undefined && assoc.targetRole !== existingAssoc.targetRole) ||
+                            (assocClassId !== undefined && assocClassId !== existingAssoc.associationClassId);
+
+        if (aggregationChanged || multChanged || metaChanged) {
+          const updateDelta: any = {
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'association',
+            op: 'updateMultiplicity',
+            associationId: existingAssoc.id,
+            aggregation: targetAggregation,
+            aggregationEnd: targetEnd,
+          };
+
+          if (newSourceMult) updateDelta.newSourceMultiplicity = newSourceMult;
+          if (newTargetMult) updateDelta.newTargetMultiplicity = newTargetMult;
+          if (assoc.name !== undefined) updateDelta.name = assoc.name;
+          if (assoc.sourceRole !== undefined) updateDelta.sourceRole = assoc.sourceRole;
+          if (assoc.targetRole !== undefined) updateDelta.targetRole = assoc.targetRole;
+          if (assocClassId) updateDelta.newAssociationClassId = assocClassId;
+
+          deltas.push(updateDelta);
+        }
+
+        seenConnectedPairs.add(pair);
+        return;
+      }
+
+      // Si no existía previamente, crear la asociación
       const assocDelta: any = {
         id: crypto.randomUUID(),
         diagramId,
@@ -686,11 +827,11 @@ export function expandSemanticDomainToDelta(
         associationId: crypto.randomUUID(),
         sourceClassId: sourceId,
         targetClassId: targetId,
-        sourceMultiplicity: cleanMultiplicity(assoc.sourceMultiplicity, '1'),
-        targetMultiplicity: cleanMultiplicity(assoc.targetMultiplicity, '0..*'),
+        sourceMultiplicity: cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1'),
+        targetMultiplicity: cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*'),
         directed: assoc.directed ?? false,
-        aggregation: isComposite ? 'composite' : (isShared ? 'shared' : 'none'),
-        aggregationEnd: (isComposite || isShared) ? (assoc.aggregationEnd ?? 'source') : 'source',
+        aggregation: targetAggregation,
+        aggregationEnd: targetEnd,
       };
 
       if (assoc.name) assocDelta.name = assoc.name;

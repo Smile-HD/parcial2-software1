@@ -558,6 +558,180 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(diagram.associations).toHaveLength(1);
     }
   });
+
+  it('sanitizes attribute names with type suffixes and avoids duplicating existing class attributes', () => {
+    const existingCanvas: Diagram = {
+      ...emptyDiagram,
+      classes: [
+        {
+          id: '01925b42-d690-7c28-9f12-9c98a3f80c66',
+          name: 'Aerolinea',
+          isAbstract: false,
+          position: { x: 100, y: 100 },
+          attributes: [
+            { id: '01925b42-d690-7c28-9f12-9c98a3f80c67', name: 'nombre', type: 'string' },
+            { id: '01925b42-d690-7c28-9f12-9c98a3f80c68', name: 'codigoIATA', type: 'string' },
+          ],
+          methods: [],
+        },
+      ],
+    };
+
+    // Modelo donde el LLM devuelve atributos con tipo pegado al nombre (nombre:string)
+    const messyModel: SemanticDomainModel = {
+      classes: [
+        {
+          name: 'Aerolinea',
+          attributes: [
+            { name: 'nombre:string', type: 'string' },
+            { name: 'codigoIATA', type: 'string' },
+            { name: 'direccion:string', type: 'string' },
+          ],
+        },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(messyModel, existingCanvas.id, existingCanvas);
+    expect(delta).not.toBeNull();
+
+    // Solo debe agregar "direccion" (sin duplicar "nombre" ni "codigoIATA")
+    const memberDeltas = delta!.deltas.filter((d: any) => d.kind === 'member');
+    expect(memberDeltas).toHaveLength(1);
+    expect(memberDeltas[0].op).toBe('addAttribute');
+    expect(memberDeltas[0].name).toBe('direccion');
+    expect(memberDeltas[0].type).toBe('string');
+
+    const applied = applyDelta(existingCanvas, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const aero = applied.value.classes[0];
+      expect(aero.attributes).toHaveLength(3);
+      expect(aero.attributes.map(a => a.name)).toEqual(['nombre', 'codigoIATA', 'direccion']);
+    }
+  });
+
+  it('updates existing association aggregation from composite to none using updateMultiplicity', () => {
+    const classAId = '01925b42-d690-7c28-9f12-9c98a3f80c71';
+    const classBId = '01925b42-d690-7c28-9f12-9c98a3f80c72';
+    const assocId = '01925b42-d690-7c28-9f12-9c98a3f80c73';
+
+    const existingCanvas: Diagram = {
+      ...emptyDiagram,
+      classes: [
+        { id: classAId, name: 'Aerolinea', isAbstract: false, position: { x: 50, y: 50 }, attributes: [], methods: [] },
+        { id: classBId, name: 'Pasajero', isAbstract: false, position: { x: 350, y: 50 }, attributes: [], methods: [] },
+      ],
+      associations: [
+        {
+          id: assocId,
+          sourceClassId: classAId,
+          targetClassId: classBId,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'composite',
+          aggregationEnd: 'source',
+        },
+      ],
+    };
+
+    // Usuario pide cambiar la relación entre Aerolinea y Pasajero a asociación simple
+    const changeRelModel: SemanticDomainModel = {
+      associations: [
+        {
+          source: 'Aerolinea',
+          target: 'Pasajero',
+          aggregation: 'none',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(changeRelModel, existingCanvas.id, existingCanvas);
+    expect(delta).not.toBeNull();
+
+    const assocDeltas = delta!.deltas.filter((d: any) => d.kind === 'association');
+    expect(assocDeltas).toHaveLength(1);
+    expect(assocDeltas[0].op).toBe('updateMultiplicity');
+    expect(assocDeltas[0].associationId).toBe(assocId);
+    expect(assocDeltas[0].aggregation).toBe('none');
+
+    const applied = applyDelta(existingCanvas, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(applied.value.associations[0].aggregation).toBe('none');
+    }
+  });
+
+  it('enforces composition guardrail: downgrades non-lifecycle composite requests to plain association', () => {
+    // Si la IA intenta componer Aerolinea -> Pasajero, debe degradarse a none
+    const bogusCompositionModel: SemanticDomainModel = {
+      classes: [
+        { name: 'Aerolinea', attributes: [{ name: 'nombre', type: 'string' }] },
+        { name: 'Pasajero', attributes: [{ name: 'dni', type: 'string' }] },
+      ],
+      associations: [
+        { source: 'Aerolinea', target: 'Pasajero', aggregation: 'composite' },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(bogusCompositionModel, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const assocDelta = delta!.deltas.find((d: any) => d.kind === 'association');
+    expect(assocDelta.aggregation).toBe('none');
+
+    // Pero si es Factura -> DetalleFactura, se preserva como composite
+    const validCompositionModel: SemanticDomainModel = {
+      classes: [
+        { name: 'Factura', attributes: [{ name: 'numero', type: 'string' }] },
+        { name: 'DetalleFactura', attributes: [{ name: 'cantidad', type: 'int' }] },
+      ],
+      associations: [
+        { source: 'Factura', target: 'DetalleFactura', aggregation: 'composite' },
+      ],
+    };
+
+    const validDelta = expandSemanticDomainToDelta(validCompositionModel, emptyDiagram.id);
+    expect(validDelta).not.toBeNull();
+    const validAssoc = validDelta!.deltas.find((d: any) => d.kind === 'association');
+    expect(validAssoc.aggregation).toBe('composite');
+  });
+
+  it('supports recursive associations with roles', () => {
+    const recursiveModel: SemanticDomainModel = {
+      classes: [
+        { name: 'Empleado', attributes: [{ name: 'legajo', type: 'string' }, { name: 'nombre', type: 'string' }] },
+      ],
+      associations: [
+        {
+          source: 'Empleado',
+          target: 'Empleado',
+          aggregation: 'none',
+          sourceRole: 'supervisor',
+          targetRole: 'subordinados',
+          sourceMultiplicity: '0..1',
+          targetMultiplicity: '0..*',
+        },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(recursiveModel, emptyDiagram.id);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(applied.value.associations).toHaveLength(1);
+      const rec = applied.value.associations[0];
+      expect(rec.sourceClassId).toBe(rec.targetClassId);
+      expect(rec.sourceRole).toBe('supervisor');
+      expect(rec.targetRole).toBe('subordinados');
+      expect(rec.sourceMultiplicity).toBe('0..1');
+      expect(rec.targetMultiplicity).toBe('0..*');
+    }
+  });
 });
 
 
