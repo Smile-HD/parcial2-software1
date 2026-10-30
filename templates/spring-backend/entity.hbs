@@ -85,14 +85,14 @@ public {{#if isAbstract}}abstract {{/if}}class {{className}}{{#if extendsClass}}
 {{else if (eq kind 'ManyToMany')}}
 {{#if (lt ../className targetEntity)}}
     @JsonIgnoreProperties("{{plural (camel ../className)}}")
-    @ManyToMany(fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL, orphanRemoval = true{{/if}})
+    @ManyToMany(fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL{{/if}})
     @JoinTable(name = "{{snake ../className}}_{{snake targetEntity}}",
             joinColumns = @JoinColumn(name = "{{snake ../className}}_id"),
             inverseJoinColumns = @JoinColumn(name = "{{snake targetEntity}}_id"))
     private Set<{{targetEntity}}> {{plural (camel targetEntity)}} = new HashSet<>();
 {{else}}
     @JsonIgnoreProperties("{{plural (camel ../className)}}")
-    @ManyToMany(mappedBy = "{{plural (camel ../className)}}", fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL, orphanRemoval = true{{/if}})
+    @ManyToMany(mappedBy = "{{plural (camel ../className)}}", fetch = FetchType.EAGER{{#if cascade}}, cascade = CascadeType.ALL{{/if}})
     private Set<{{targetEntity}}> {{plural (camel targetEntity)}} = new HashSet<>();
 {{/if}}
 

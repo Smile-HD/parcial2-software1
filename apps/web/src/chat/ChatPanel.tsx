@@ -635,6 +635,22 @@ export function ChatPanel({
         content: trimmed,
       });
       if (onClearCanvas) {
+        // Invalidar propuestas pendientes previas al vaciar lienzo
+        setRejectedDeltaIds((prev) => {
+          const next = new Set([...prev]);
+          for (const m of safeMessages) {
+            if (m.deltaId && !appliedDeltaIds.has(m.deltaId)) {
+              next.add(m.deltaId);
+            }
+          }
+          if (activeProposal) {
+            next.add(activeProposal.deltaId);
+          }
+          try {
+            localStorage.setItem(`amongus_rejected_deltas_${diagramId}`, JSON.stringify([...next]));
+          } catch {}
+          return next;
+        });
         const res = onClearCanvas();
         if (res && !res.ok && res.reason === 'empty') {
           addLocalMessage({
@@ -856,6 +872,22 @@ export function ChatPanel({
       } catch {}
       return next;
     });
+    // Invalidar cualquier otra propuesta pendiente previa para que no quede obsoleta en la cola
+    setRejectedDeltaIds((prev) => {
+      const next = new Set([...prev]);
+      for (const m of safeMessages) {
+        if (m.deltaId && m.deltaId !== deltaId && !appliedDeltaIds.has(m.deltaId)) {
+          next.add(m.deltaId);
+        }
+      }
+      if (activeProposal && activeProposal.deltaId !== deltaId) {
+        next.add(activeProposal.deltaId);
+      }
+      try {
+        localStorage.setItem(`amongus_rejected_deltas_${diagramId}`, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
     setDismissedError(interpreterError);
     onPreviewProposal?.(null);
     if (onConfirmProposal) {
@@ -1036,6 +1068,12 @@ export function ChatPanel({
                       isApplied={appliedDeltaIds.has(msg.deltaId)}
                       isRejected={rejectedDeltaIds.has(msg.deltaId)}
                       isBuilding={buildingDeltaId === msg.deltaId}
+                      isSuperseded={
+                        !appliedDeltaIds.has(msg.deltaId) &&
+                        !rejectedDeltaIds.has(msg.deltaId) &&
+                        Boolean(currentPreviewProposal) &&
+                        currentPreviewProposal?.deltaId !== msg.deltaId
+                      }
                     />
                   )}
                 </div>

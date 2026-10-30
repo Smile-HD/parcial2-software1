@@ -12,6 +12,7 @@ export interface ProposalCardProps {
   isApplied?: boolean;
   isRejected?: boolean;
   isBuilding?: boolean;
+  isSuperseded?: boolean;
 }
 
 export function ProposalCard({
@@ -22,21 +23,22 @@ export function ProposalCard({
   isApplied = false,
   isRejected = false,
   isBuilding = false,
+  isSuperseded = false,
 }: ProposalCardProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
 
-  const summary = describeDelta(delta);
+  const summary = describeDelta(delta, isEn);
 
   // Agrupamiento estructurado cuando es un batchDelta
   const parsedBatch = delta.kind === 'batch' ? parseBatchDelta(delta, isEn) : null;
   const items: string[] = delta.kind === 'batch'
-    ? delta.deltas.map((d) => describeDelta(d))
+    ? delta.deltas.map((d) => describeDelta(d, isEn))
     : [summary];
 
   return (
     <div
-      className={`proposal-card ${isApplied ? 'proposal-card--applied' : ''} ${isRejected ? 'proposal-card--rejected' : ''}`}
+      className={`proposal-card ${isApplied ? 'proposal-card--applied' : ''} ${isRejected ? 'proposal-card--rejected' : ''} ${isSuperseded ? 'proposal-card--superseded' : ''}`}
       data-testid={`proposal-card-${deltaId}`}
     >
       <div className="proposal-card__header">
@@ -49,14 +51,26 @@ export function ProposalCard({
             ? (isEn ? 'Applied' : 'Aplicado')
             : isRejected
               ? (isEn ? 'Discarded' : 'Descartado')
-              : isBuilding
-                ? (isEn ? 'Building...' : 'Construyendo...')
-                : (isEn ? 'Ghost Preview' : 'Vista Previa')}
+              : isSuperseded
+                ? (isEn ? 'Superseded' : 'Obsoleta')
+                : isBuilding
+                  ? (isEn ? 'Building...' : 'Construyendo...')
+                  : (isEn ? 'Ghost Preview' : 'Vista Previa')}
         </span>
       </div>
 
       <div className="proposal-card__body">
-        {!isApplied && !isRejected && (
+        {isSuperseded && (
+          <div className="proposal-card__superseded-note">
+            <p className="proposal-card__summary-main">{summary}</p>
+            <p className="proposal-card__hint proposal-card__hint--superseded">
+              {isEn
+                ? 'This proposal is obsolete because a later proposal was applied or created.'
+                : 'Esta propuesta quedó obsoleta porque se aplicó o creó otra propuesta posterior.'}
+            </p>
+          </div>
+        )}
+        {!isApplied && !isRejected && !isSuperseded && (
           <>
             <p className="proposal-card__summary-main">{summary}</p>
 
@@ -107,7 +121,10 @@ export function ProposalCard({
                     <ul className="proposal-card__relations-list">
                       {parsedBatch.relations.map((rel, rIdx) => (
                         <li key={rIdx} className="proposal-card__rel-item">
-                          <span className="proposal-card__rel-icon">🔗</span>
+                          <svg className="proposal-card__rel-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                          </svg>
                           <span>{rel}</span>
                         </li>
                       ))}
@@ -149,7 +166,7 @@ export function ProposalCard({
         )}
       </div>
 
-      {!isApplied && !isRejected && (
+      {!isApplied && !isRejected && !isSuperseded && (
         <div className="proposal-card__actions">
           <button
             type="button"

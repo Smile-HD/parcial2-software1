@@ -281,11 +281,10 @@ export function computeAutoLayout(
     currentComponentOffsetX = compRightEdge + horizontalGap;
   });
 
-  // 6. Relajación física anti-colisiones GLOBAL (50 iteraciones)
-  // Aplica sobre TODOS los nodos del diagrama, garantizando que NINGÚN par de clases
-  // (dentro del mismo componente o entre componentes distintos) se solape.
+  // 6. Relajación física anti-colisiones GLOBAL (100 iteraciones)
+  // Aplica sobre TODOS los nodos del diagrama, garantizando que NINGÚN par de clases se solape.
   const allNodeIds = classes.map((c) => c.id);
-  for (let iter = 0; iter < 50; iter++) {
+  for (let iter = 0; iter < 100; iter++) {
     let hasCollision = false;
     for (let i = 0; i < allNodeIds.length; i++) {
       for (let j = i + 1; j < allNodeIds.length; j++) {
@@ -306,24 +305,38 @@ export function computeAutoLayout(
         const dx = cxB - cxA;
         const dy = cyB - cyA;
 
-        // Margen mínimo de seguridad libre entre cajas de clases: 120px en X, 100px en Y
-        const requiredDistX = (szA.width + szB.width) / 2 + 120;
-        const requiredDistY = (szA.height + szB.height) / 2 + 100;
+        // Margen libre entre cajas de clases: 140px en X, 120px en Y
+        const requiredDistX = (szA.width + szB.width) / 2 + 140;
+        const requiredDistY = (szA.height + szB.height) / 2 + 120;
 
         const overlapX = requiredDistX - Math.abs(dx);
         const overlapY = requiredDistY - Math.abs(dy);
 
-        // Si hay colisión o proximidad indeseada, repeler a lo largo del eje más corto
         if (overlapX > 0 && overlapY > 0) {
           hasCollision = true;
-          if (overlapX < overlapY) {
-            const push = (overlapX / 2 + 12) * (dx >= 0 ? 1 : -1);
-            posA.x -= push;
-            posB.x += push;
+          const actualOverlapX = (szA.width + szB.width) / 2 - Math.abs(dx);
+          const actualOverlapY = (szA.height + szB.height) / 2 - Math.abs(dy);
+
+          if (actualOverlapX > 0 && actualOverlapY > 0) {
+            const pushX = (actualOverlapX / 2 + 30) * (dx >= 0 ? 1 : -1);
+            const pushY = (actualOverlapY / 2 + 30) * (dy >= 0 ? 1 : -1);
+            if (actualOverlapX < actualOverlapY) {
+              posA.x -= pushX;
+              posB.x += pushX;
+            } else {
+              posA.y -= pushY;
+              posB.y += pushY;
+            }
           } else {
-            const push = (overlapY / 2 + 12) * (dy >= 0 ? 1 : -1);
-            posA.y -= push;
-            posB.y += push;
+            if (overlapX < overlapY) {
+              const push = (overlapX / 2 + 15) * (dx >= 0 ? 1 : -1);
+              posA.x -= push;
+              posB.x += push;
+            } else {
+              const push = (overlapY / 2 + 15) * (dy >= 0 ? 1 : -1);
+              posA.y -= push;
+              posB.y += push;
+            }
           }
         }
       }
@@ -353,6 +366,25 @@ export function computeAutoLayout(
       };
     }
   });
+
+  // 8. Post-garantía absoluta contra solapamientos tras grid snap
+  for (let i = 0; i < allNodeIds.length; i++) {
+    for (let j = i + 1; j < allNodeIds.length; j++) {
+      const idA = allNodeIds[i];
+      const idB = allNodeIds[j];
+      const posA = finalPositions[idA];
+      const posB = finalPositions[idB];
+      if (!posA || !posB) continue;
+      const szA = sizeMap.get(idA)!;
+      const szB = sizeMap.get(idB)!;
+
+      const collidesX = Math.abs((posA.x + szA.width / 2) - (posB.x + szB.width / 2)) < (szA.width + szB.width) / 2 + 40;
+      const collidesY = Math.abs((posA.y + szA.height / 2) - (posB.y + szB.height / 2)) < (szA.height + szB.height) / 2 + 40;
+      if (collidesX && collidesY) {
+        posB.x = posA.x + szA.width + 60;
+      }
+    }
+  }
 
   return finalPositions;
 }

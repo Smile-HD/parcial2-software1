@@ -367,6 +367,33 @@ describe('composition vs shared aggregation (14.5)', () => {
     expect(collection?.cascade).toBe(false);
     expect(collection?.orphanRemoval).toBe(false);
   });
+
+  it('composite with * to 0..* multiplicity maps container to OneToMany instead of invalid ManyToMany with orphanRemoval', () => {
+    const d = v2Diagram({
+      classes: [v2Cls(ID2.order, 'Viaje'), v2Cls(ID2.line, 'Pasajero')],
+      associations: [
+        {
+          id: ID2.assoc,
+          sourceClassId: ID2.order,
+          targetClassId: ID2.line,
+          sourceMultiplicity: '*',
+          targetMultiplicity: '0..*',
+          directed: false,
+          aggregation: 'composite',
+          aggregationEnd: 'source',
+        },
+      ],
+    });
+    const viaje = entityOf(generate(d, { outputRoot: ROOT }).files, 'Viaje');
+    const pasajero = entityOf(generate(d, { outputRoot: ROOT }).files, 'Pasajero');
+    const collection = viaje.relationships.find((r) => r.targetEntity === 'Pasajero');
+    expect(collection?.kind).toBe('OneToMany');
+    expect(collection?.orphanRemoval).toBe(true);
+    expect(collection?.cascade).toBe(true);
+    const parentRef = pasajero.relationships.find((r) => r.targetEntity === 'Viaje');
+    expect(parentRef?.kind).toBe('ManyToOne');
+    expect(parentRef?.orphanRemoval).toBe(false);
+  });
 });
 
 describe('generalization → single-table inheritance (14.5)', () => {
@@ -754,6 +781,40 @@ describe('redundant FK attribute suppression (Hibernate DuplicateMappingExceptio
     const student = entityOf(result.files, 'Student');
     expect(student.relationships.some((r) => r.targetEntity === 'Enrollment' && r.kind === 'OneToMany')).toBe(true);
     expect(student.relationships.some((r) => r.targetEntity === 'Course')).toBe(false);
+  });
+
+  it('sanitizes attributes with embedded type colons like fechaSalida:date to clean field names and Java types', () => {
+    const flightId = randomUUID();
+    const d = diagram(
+      [
+        cls(flightId, 'Flight', [
+          attr(randomUUID(), 'fechaSalida:date', 'string'),
+          attr(randomUUID(), 'duracion:int', 'string'),
+          attr(randomUUID(), 'precioTotal:float', 'string'),
+          attr(randomUUID(), 'nombre:string: string', 'string'),
+        ]),
+      ],
+      [],
+    );
+
+    const result = generate(d, { outputRoot: ROOT });
+    const flight = entityOf(result.files, 'Flight');
+
+    const fechaSalida = flight.fields.find((f) => f.name === 'fechaSalida');
+    expect(fechaSalida).toBeDefined();
+    expect(fechaSalida?.javaType).toBe('LocalDate');
+
+    const duracion = flight.fields.find((f) => f.name === 'duracion');
+    expect(duracion).toBeDefined();
+    expect(duracion?.javaType).toBe('Integer');
+
+    const precioTotal = flight.fields.find((f) => f.name === 'precioTotal');
+    expect(precioTotal).toBeDefined();
+    expect(precioTotal?.javaType).toBe('Float');
+
+    const nombre = flight.fields.find((f) => f.name === 'nombre');
+    expect(nombre).toBeDefined();
+    expect(nombre?.javaType).toBe('String');
   });
 });
 

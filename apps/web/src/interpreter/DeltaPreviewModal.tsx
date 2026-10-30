@@ -9,48 +9,62 @@
 import type { Delta } from '@app/core';
 
 /** Una línea legible por humanos por cada kind/op de delta. */
-export function describeDelta(delta: Delta): string {
+export function describeDelta(delta: Delta, isEn: boolean = false): string {
   switch (delta.kind) {
     case 'class':
       switch (delta.op) {
         case 'create':
-          return `Add class "${delta.name ?? '?'}"`;
+          return isEn ? `Add class "${delta.name ?? '?'}"` : `Crear clase "${delta.name ?? '?'}"`;
         case 'rename':
-          return `Rename class to "${delta.newName ?? '?'}"`;
+          return isEn ? `Rename class to "${delta.newName ?? '?'}"` : `Renombrar clase a "${delta.newName ?? '?'}"`;
         case 'reposition':
-          return `Move class to (${delta.newPosition?.x ?? '?'}, ${delta.newPosition?.y ?? '?'})`;
+          return isEn
+            ? `Move class to (${delta.newPosition?.x ?? '?'}, ${delta.newPosition?.y ?? '?'})`
+            : `Mover clase a (${delta.newPosition?.x ?? '?'}, ${delta.newPosition?.y ?? '?'})`;
         case 'delete':
-          return 'Delete class';
+          return isEn ? 'Delete class' : 'Eliminar clase';
       }
       break;
     case 'member':
       switch (delta.op) {
         case 'addAttribute':
-          return `Add attribute "${delta.name ?? '?'}: ${delta.type ?? '?'}"`;
+          return isEn
+            ? `Add attribute "${delta.name ?? '?'}: ${delta.type ?? '?'}"`
+            : `Agregar atributo "${delta.name ?? '?'}: ${delta.type ?? '?'}"`;
         case 'editAttribute':
-          return `Edit attribute to "${delta.name ?? '?'}: ${delta.type ?? '?'}"`;
+          return isEn
+            ? `Edit attribute to "${delta.name ?? '?'}: ${delta.type ?? '?'}"`
+            : `Modificar atributo a "${delta.name ?? '?'}: ${delta.type ?? '?'}"`;
         case 'deleteAttribute':
-          return 'Delete attribute';
+          return isEn ? 'Delete attribute' : 'Eliminar atributo';
         case 'addMethod':
-          return `Add method "${delta.name ?? '?'}" returning "${delta.returnType ?? '?'}"`;
+          return isEn
+            ? `Add method "${delta.name ?? '?'}" returning "${delta.returnType ?? '?'}"`
+            : `Agregar método "${delta.name ?? '?'}" que retorna "${delta.returnType ?? '?'}"`;
         case 'editMethod':
-          return `Edit method to "${delta.name ?? '?'}" returning "${delta.returnType ?? '?'}"`;
+          return isEn
+            ? `Edit method to "${delta.name ?? '?'}" returning "${delta.returnType ?? '?'}"`
+            : `Modificar método a "${delta.name ?? '?'}" que retorna "${delta.returnType ?? '?'}"`;
         case 'deleteMethod':
-          return 'Delete method';
+          return isEn ? 'Delete method' : 'Eliminar método';
       }
       break;
     case 'association':
       switch (delta.op) {
         case 'create':
-          return 'Add association';
+          return isEn ? 'Add association' : 'Crear asociación';
         case 'updateMultiplicity':
-          return `Update multiplicities to "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`;
+          return isEn
+            ? `Update multiplicities to "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`
+            : `Actualizar multiplicidades a "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`;
         case 'delete':
-          return 'Delete association';
+          return isEn ? 'Delete association' : 'Eliminar asociación';
       }
       break;
     case 'batch':
-      return `Apply ${delta.deltas.length} changes: ${delta.deltas.map((inner) => describeDelta(inner)).join('; ')}`;
+      return isEn
+        ? `Apply ${delta.deltas.length} changes: ${delta.deltas.map((inner) => describeDelta(inner, isEn)).join('; ')}`
+        : `Aplicar ${delta.deltas.length} cambios: ${delta.deltas.map((inner) => describeDelta(inner, isEn)).join('; ')}`;
   }
 }
 

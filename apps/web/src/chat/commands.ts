@@ -145,15 +145,15 @@ export function buildContextReport(
   let recommendation: string;
 
   if (totalTokens < 1200) {
-    speedStatus = isEn ? '🟢 Optimal (~3 - 6 sec latency)' : '🟢 Óptimo (~3 - 6 seg de latencia)';
+    speedStatus = isEn ? 'Optimal (~15 - 25 sec latency)' : 'Óptimo (~15 - 25 seg de latencia)';
     speedDiagnosis = isEn
-      ? 'Context is lightweight. Ollama responds with maximum agility on CPU.'
-      : 'Contexto liviano. Ollama responde con agilidad máxima en CPU.';
+      ? 'Context is lightweight. Ollama responds with expected agility on CPU.'
+      : 'Contexto liviano. Ollama responde con agilidad esperada en CPU.';
     recommendation = isEn
       ? 'No action required. Memory is operating at top speed.'
-      : 'No requiere acción. La memoria está operando a velocidad tope.';
+      : 'No requiere acción. La memoria está operando a velocidad adecuada.';
   } else if (totalTokens < 2400) {
-    speedStatus = isEn ? '🟡 Moderate (~10 - 20 sec latency)' : '🟡 Moderado (~10 - 20 seg de latencia)';
+    speedStatus = isEn ? 'Moderate (~25 - 40 sec latency)' : 'Moderado (~25 - 40 seg de latencia)';
     speedDiagnosis = isEn
       ? 'Context is growing. Processing prior conversational history adds noticeable CPU time.'
       : 'El contexto está creciendo. Evaluar el historial previo agrega tiempo de CPU notable.';
@@ -161,18 +161,18 @@ export function buildContextReport(
       ? 'Consider typing /reset when starting a new design topic.'
       : 'Te sugerimos usar /reset cuando comiences un tema de diseño nuevo.';
   } else {
-    speedStatus = isEn ? '🔴 Heavy (> 30 - 45 sec latency)' : '🔴 Pesado (> 30 - 45 seg de latencia)';
+    speedStatus = isEn ? 'Heavy (> 45 sec latency)' : 'Pesado (> 45 seg de latencia)';
     speedDiagnosis = isEn
       ? 'High token load. Risk of server timeouts or sluggish response on CPU.'
       : 'Carga alta de tokens. Riesgo de demoras excesivas o timeouts en CPU.';
     recommendation = isEn
-      ? '⚡ Recommended action: Run /reset now to purge conversation history and restore 3s speeds.'
-      : '⚡ Acción recomendada: Ejecutá /reset ahora para vaciar el historial y recuperar respuestas de 3s.';
+      ? 'Recommended action: Run /reset now to purge conversation history and restore normal speeds.'
+      : 'Acción recomendada: Ejecutá /reset ahora para vaciar el historial y recuperar velocidad.';
   }
 
   if (isEn) {
     return [
-      '📊 Amongus Context & Speed Monitor',
+      'Amongus Context & Speed Monitor',
       `• Estimated Total Context: ~${totalTokens} tokens`,
       `  - Base Metamodel & Tutor Prompt: ~${basePromptTokens} tokens`,
       `  - Canvas State (${canvasClassCount} classes): ~${canvasTokens} tokens`,
@@ -185,7 +185,7 @@ export function buildContextReport(
   }
 
   return [
-    '📊 Monitor de Contexto y Velocidad de Amongus',
+    'Monitor de Contexto y Velocidad de Amongus',
     `• Contexto Total Estimado: ~${totalTokens} tokens`,
     `  - Metamodelo base y Prompt de Arquitectura: ~${basePromptTokens} tokens`,
     `  - Estado actual del Lienzo (${canvasClassCount} clases): ~${canvasTokens} tokens`,

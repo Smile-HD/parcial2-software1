@@ -1000,6 +1000,29 @@ function fieldModifierFor(visibility: '+' | '-' | '#' | '~'): 'private' | 'prote
   return 'private'; // '+' mantiene campos privados + accesores públicos (convención JPA)
 }
 
+/**
+ * Extrae y sanea el nombre de un atributo UML cuando contiene sintaxis embebida de tipo
+ * (ej. "fechaSalida:date", "nombre:string: string", "+ fechaSalida : date", o "precioTotal:float").
+ */
+function extractAttributeNameAndType(rawName: string, declaredType: string): { name: string; type: string } {
+  let cleanName = (rawName || '').trim();
+  let cleanType = (declaredType || '').trim();
+
+  if (cleanName.includes(':')) {
+    const colonParts = cleanName.split(':').map((p) => p.trim()).filter(Boolean);
+    if (colonParts.length > 0) {
+      cleanName = colonParts[0]!;
+      const embeddedType = colonParts[colonParts.length - 1];
+      if (embeddedType && (!cleanType || cleanType.toLowerCase() === 'string' || cleanType.toLowerCase() === '')) {
+        cleanType = embeddedType;
+      }
+    }
+  }
+
+  cleanName = cleanName.replace(/^[-+#~]\s*/, '').trim();
+  return { name: cleanName, type: cleanType };
+}
+
 /** Mapea los atributos de una clase a campos de entidad Java, resolviendo nombres duplicados y normalizando. */
 function mapFieldsForClass(
   cls: Class,
@@ -1008,7 +1031,8 @@ function mapFieldsForClass(
   const usedFieldNames = new Set<string>(['id']);
   const fields: EntityFieldModel[] = [];
   for (const a of cls.attributes) {
-    const candidateName = normalizeJavaIdentifier(a.name, 'camel');
+    const { name: parsedName } = extractAttributeNameAndType(a.name, a.type);
+    const candidateName = normalizeJavaIdentifier(parsedName, 'camel');
     if (candidateName === 'id') {
       warnings.push({
         code: 'id-attribute-primary-key',
@@ -1028,7 +1052,8 @@ function mapField(
   warnings: CodegenWarning[],
   usedFieldNames?: Set<string>,
 ): EntityFieldModel {
-  let name = normalizeJavaIdentifier(attribute.name, 'camel');
+  const { name: parsedName, type: effectiveType } = extractAttributeNameAndType(attribute.name, attribute.type);
+  let name = normalizeJavaIdentifier(parsedName, 'camel');
   if (name !== attribute.name) {
     warnings.push({
       code: 'normalized-identifier',
@@ -1052,18 +1077,18 @@ function mapField(
     }
     usedFieldNames.add(name);
   }
-  const { javaType, mapped } = mapAttributeType(attribute.type);
+  const { javaType, mapped } = mapAttributeType(effectiveType || attribute.type);
   if (!mapped) {
     warnings.push({
       code: 'unmapped-type',
-      message: `Attribute type "${attribute.type}" on ${cls.name}.${attribute.name} has no mapping; falling back to String`,
+      message: `Attribute type "${effectiveType || attribute.type}" on ${cls.name}.${attribute.name} has no mapping; falling back to String`,
       element: `${cls.name}.${attribute.name}`,
     });
   }
   return {
     name,
     javaType,
-    declaredType: attribute.type,
+    declaredType: effectiveType || attribute.type,
     visibility: attribute.visibility,
     isStatic: attribute.isStatic,
     isDerived: attribute.isDerived,
@@ -1246,27 +1271,47 @@ function attachRelationship(
     }
   }
 
+  // En JPA, orphanRemoval SOLO es válido para OneToMany y OneToOne (jakarta.persistence no lo soporta en ManyToMany).
+  // Además, según UML 2.5.1 (9.5.3), una composición implica propiedad exclusiva: la parte no puede pertenecer
+  // a múltiples contenedores a la vez. Si el diagrama tiene composición con multiplicidad muchos a muchos,
+  // el contenedor se mapea como OneToMany y la parte como ManyToOne.
+  let sourceKind = pair.kind;
+  let targetKind = inverseKind(pair.kind);
+
+  if (isComposite) {
+    if (sourceIsContainer && sourceKind === 'ManyToMany') {
+      sourceKind = 'OneToMany';
+      targetKind = 'ManyToOne';
+    } else if (targetIsContainer && targetKind === 'ManyToMany') {
+      targetKind = 'OneToMany';
+      sourceKind = 'ManyToOne';
+    }
+  }
+
+  const sourceOrphanRemoval = (sourceKind === 'OneToMany' || sourceKind === 'OneToOne') && sourceIsContainer;
+  const targetOrphanRemoval = (targetKind === 'OneToMany' || targetKind === 'OneToOne') && targetIsContainer;
+
   sourceEntity.relationships.push({
     associationId: assoc.id,
     targetEntity: target.javaName,
-    kind: pair.kind,
-    owningSide: pair.owningSide,
-    thisSideIsOwning: pair.sourceOwning,
+    kind: sourceKind,
+    owningSide: sourceKind === 'OneToMany' ? 'target' : (sourceKind === 'ManyToOne' ? 'source' : pair.owningSide),
+    thisSideIsOwning: sourceKind === 'ManyToOne' || (sourceKind === 'OneToOne' && pair.sourceOwning),
     sourceMultiplicity: assoc.sourceMultiplicity ?? null,
     targetMultiplicity: assoc.targetMultiplicity ?? null,
     cascade: sourceIsContainer,
-    orphanRemoval: sourceIsContainer,
+    orphanRemoval: sourceOrphanRemoval,
   });
   targetEntity.relationships.push({
     associationId: assoc.id,
     targetEntity: source.javaName,
-    kind: inverseKind(pair.kind),
-    owningSide: pair.owningSide,
-    thisSideIsOwning: pair.targetOwning,
+    kind: targetKind,
+    owningSide: targetKind === 'OneToMany' ? 'target' : (targetKind === 'ManyToOne' ? 'source' : pair.owningSide),
+    thisSideIsOwning: targetKind === 'ManyToOne' || (targetKind === 'OneToOne' && pair.targetOwning),
     sourceMultiplicity: assoc.sourceMultiplicity ?? null,
     targetMultiplicity: assoc.targetMultiplicity ?? null,
     cascade: targetIsContainer,
-    orphanRemoval: targetIsContainer,
+    orphanRemoval: targetOrphanRemoval,
   });
 }
 

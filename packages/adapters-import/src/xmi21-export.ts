@@ -261,14 +261,28 @@ export function exportDiagramToXmi(diagram: Diagram): string {
       const attrId = attr.id;
       const isStatic = attr.isStatic ? 'true' : 'false';
       const isDerived = attr.isDerived ? 'true' : 'false';
-      lines.push(`      <ownedAttribute xmi:type="uml:Property" xmi:id="${attrId}" name="${esc(attr.name)}"${visAttr(attr.visibility)} isStatic="${isStatic}" isReadOnly="false" isDerived="${isDerived}" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
+      let cleanAttrName = (attr.name || '').trim();
+      let cleanAttrType = (attr.type || '').trim();
+      if (cleanAttrName.includes(':')) {
+        const colonParts = cleanAttrName.split(':').map((p) => p.trim()).filter(Boolean);
+        if (colonParts.length > 0) {
+          cleanAttrName = colonParts[0]!;
+          const embeddedType = colonParts[colonParts.length - 1];
+          if (embeddedType && (!cleanAttrType || cleanAttrType.toLowerCase() === 'string' || cleanAttrType === '')) {
+            cleanAttrType = embeddedType;
+          }
+        }
+      }
+      cleanAttrName = cleanAttrName.replace(/^[-+#~]\s*/, '').trim();
+
+      lines.push(`      <ownedAttribute xmi:type="uml:Property" xmi:id="${attrId}" name="${esc(cleanAttrName)}"${visAttr(attr.visibility)} isStatic="${isStatic}" isReadOnly="false" isDerived="${isDerived}" isOrdered="false" isUnique="true" isDerivedUnion="false">`);
       if (attr.multiplicity) {
         lines.push(`        ${multiplicityXml(attr.multiplicity)}`);
       } else {
         lines.push(`        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="1"/>`);
         lines.push(`        <upperValue xmi:type="uml:LiteralInteger" xmi:id="${randomUUID()}" value="1"/>`);
       }
-      const resolved = resolveDataType(attr.type, diagram.classes, true);
+      const resolved = resolveDataType(cleanAttrType || attr.type, diagram.classes, true);
       if (resolved) {
         if (!resolved.isClass) primitiveTypesMap.set(resolved.id, resolved);
         lines.push(`        <type xmi:idref="${esc(resolved.id)}"/>`);

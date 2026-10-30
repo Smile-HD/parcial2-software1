@@ -2,6 +2,11 @@ import { Pool } from 'pg';
 import { z } from 'zod';
 import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel } from './domain-synthesizer.js';
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
+import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
+import { auditDiagramOOAD } from './diagram-auditor.js';
+
+export const DEFAULT_LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 280;
+export const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 60000;
 
 export const ChatChannelTypeSchema = z.enum(['group', 'direct_bot']);
 export type ChatChannelType = z.infer<typeof ChatChannelTypeSchema>;
@@ -280,16 +285,51 @@ export function summarizeDiagramForPrompt(diagram?: any): string {
     const attrs = (c.attributes || []).map((a: any) => `${a.name}: ${a.type || 'string'}`).join(', ');
     const methods = (c.methods || []).map((m: any) => `${m.name}(): ${m.returnType || 'void'}`).join(', ');
     const details = [attrs ? `atributos: [${attrs}]` : null, methods ? `metodos: [${methods}]` : null].filter(Boolean).join(' | ');
-    return `- Clase "${c.name}"${details ? ` (${details})` : ''}`;
+    const isAbs = c.isAbstract ? ' [abstract]' : '';
+    const isIntf = c.isInterface ? ' [interface]' : '';
+    return `- Clase "${c.name}"${isAbs}${isIntf}${details ? ` (${details})` : ''}`;
   }).join('\n');
 
   const associations = (diagram.associations || []).map((a: any) => {
     const src = classMap.get(a.sourceClassId) || a.sourceClassId;
     const tgt = classMap.get(a.targetClassId) || a.targetClassId;
-    return `- Relacion entre "${src}" y "${tgt}" (${a.aggregation && a.aggregation !== 'none' ? a.aggregation : 'asociacion'})`;
+    const agg = a.aggregation && a.aggregation !== 'none' ? a.aggregation : 'asociacion';
+    const mult = `multiplicidad: ${a.sourceMultiplicity || '1'} a ${a.targetMultiplicity || '1'}`;
+    const roles = [
+      a.sourceRole ? `rol origen: "${a.sourceRole}"` : null,
+      a.targetRole ? `rol destino: "${a.targetRole}"` : null,
+    ].filter(Boolean).join(', ');
+    const assocCls = a.associationClassId ? ` [clase de asociacion: "${classMap.get(a.associationClassId) || a.associationClassId}"]` : '';
+    return `- Relacion entre "${src}" y "${tgt}" (${agg}, ${mult}${roles ? `, ${roles}` : ''}${assocCls})`;
   }).join('\n');
 
-  return `CLASES EN EL LIENZO:\n${classesStr}\n\nRELACIONES EN EL LIENZO:\n${associations || 'Ninguna (las clases estan desconectadas sin relaciones entre si)'}`;
+  const generalizations = (diagram.generalizations || []).map((g: any) => {
+    const src = classMap.get(g.sourceClassId) || g.sourceClassId;
+    const tgt = classMap.get(g.targetClassId) || g.targetClassId;
+    return `- Herencia: "${src}" hereda de "${tgt}"`;
+  }).join('\n');
+
+  const realizations = (diagram.realizations || []).map((r: any) => {
+    const src = classMap.get(r.sourceClassId) || r.sourceClassId;
+    const tgt = classMap.get(r.targetClassId) || r.targetClassId;
+    return `- Realizacion: "${src}" implementa "${tgt}"`;
+  }).join('\n');
+
+  const dependencies = (diagram.dependencies || []).map((d: any) => {
+    const src = classMap.get(d.sourceClassId) || d.sourceClassId;
+    const tgt = classMap.get(d.targetClassId) || d.targetClassId;
+    return `- Dependencia: "${src}" depende de "${tgt}"`;
+  }).join('\n');
+
+  const sections = [
+    `CLASES EN EL LIENZO:\n${classesStr}`,
+    `RELACIONES EN EL LIENZO:\n${associations || 'Ninguna asociacion directa.'}`,
+  ];
+  if (generalizations.length > 0) sections.push(`HERENCIAS (GENERALIZACIONES):\n${generalizations.join('\n')}`);
+  if (realizations.length > 0) sections.push(`REALIZACIONES (INTERFACES):\n${realizations.join('\n')}`);
+  if (dependencies.length > 0) sections.push(`DEPENDENCIAS:\n${dependencies.join('\n')}`);
+
+  return sections.join('\n\n');
 }
 
 export async function generateAmongusReply(
@@ -336,7 +376,7 @@ export async function generateAmongusReply(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `${senderName}: ${userContent}` },
         ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000 }
+        { timeoutMs: DEFAULT_LLM_TIMEOUT_MS, maxTokens: DEFAULT_LLM_MAX_TOKENS }
       );
       const clean = stripEmojis(response);
       if (clean.length > 0) {
@@ -410,11 +450,39 @@ export async function processUnifiedAmongusTurn(
       normalized.trim()
     );
 
-  if (isAmbiguous) {
+  const isVagueReferent =
+    /(?:ponele|pon\s+le|ponle|agregale|agrega\s+le|sumale|metele|modificame|cambiale|add\s+to|put\s+into)\s+.*(?:esa\s+clase|esa\s+entidad|esa\s+cosa|that\s+class|that\s+entity)/i.test(
+      normalized
+    ) ||
+    /^(?:ponele|pon\s+le|ponle|agregale|agrega\s+le|sumale|metele)\s+(?:m[aá]s\s+)?(?:cosas|atributos|campos|metodos|datos)$/i.test(
+      normalized.trim()
+    );
+
+  if (isAmbiguous || isVagueReferent) {
+    const existingClasses = Array.isArray(diagram?.classes) && diagram.classes.length > 0
+      ? diagram.classes.map((c: any) => `"${c.name}"`).join(', ')
+      : null;
+
+    if (existingClasses) {
+      return {
+        replyContent: isEn
+          ? `Which class would you like to modify, ${senderName}? Classes on canvas: ${existingClasses}. Please tell me the specific class name and what attributes or methods to add.`
+          : `¿A cuál de las clases querés agregarle cosas, ${senderName}? En el lienzo tenés: ${existingClasses}. Por favor indicame el nombre de la clase y qué atributos o métodos querés sumarle.`,
+      };
+    }
+
     return {
       replyContent: isEn
         ? `What domain or specific entities would you like to model, ${senderName}? Please tell me which classes and attributes to include or type '/model <topic>' (e.g. /model library or /model airline) so I can prepare an exact proposal on the canvas.`
         : `¿Qué entidades o dominio te gustaría modelar, ${senderName}? Podés decirme qué clases y atributos querés incluir o escribir '/model <tema>' (ej. /model biblioteca o /model aerolinea) para que arme la propuesta exacta en el lienzo.`,
+    };
+  }
+
+  // 0c. Inspección factual determinista del estado del lienzo (0 ms, 0% alucinación)
+  const factualReply = resolveDiagramFactualQuery(userContent, diagram, language);
+  if (factualReply) {
+    return {
+      replyContent: factualReply,
     };
   }
 
@@ -472,23 +540,25 @@ export async function processUnifiedAmongusTurn(
     const classCount = diagram?.classes?.length || 0;
     const historyCount = chatHistory?.length || 0;
     const baseTokens = 450;
-    const canvasTokens = classCount * 35;
-    const historyTokens = historyCount * 65;
+    const canvasTokens = Math.ceil(diagramContext.length / 4);
+    const historyTokens = Math.ceil(
+      (chatHistory || []).reduce((acc, m) => acc + (m.content?.length || 0), 0) / 4
+    );
     const totalTokens = baseTokens + canvasTokens + historyTokens;
 
-    let latency = isEn ? '🟢 Fast (~3-6s on CPU)' : '🟢 Rápida (~3-6s en CPU)';
-    let tip = isEn ? 'Memory is optimal.' : 'Memoria óptima.';
+    let latency = isEn ? 'Optimal (~15-25s on CPU)' : 'Óptima (~15-25s en CPU)';
+    let tip = isEn ? 'Context size is well-balanced.' : 'Tamaño de contexto balanceado.';
     if (totalTokens >= 2400) {
-      latency = isEn ? '🔴 Heavy (>30s on CPU)' : '🔴 Pesada (>30s en CPU)';
-      tip = isEn ? 'Use /reset to clear history.' : 'Usá /reset para limpiar el historial.';
+      latency = isEn ? 'Heavy (>45s on CPU)' : 'Pesada (>45s en CPU)';
+      tip = isEn ? 'Use /reset to clear conversational memory.' : 'Usá /reset para limpiar la memoria conversacional.';
     } else if (totalTokens >= 1200) {
-      latency = isEn ? '🟡 Moderate (~10-20s on CPU)' : '🟡 Moderada (~10-20s en CPU)';
+      latency = isEn ? 'Moderate (~25-40s on CPU)' : 'Moderada (~25-40s en CPU)';
       tip = isEn ? 'Acceptable speed.' : 'Velocidad aceptable.';
     }
 
     const reply = isEn
-      ? `📊 Context Status: ~${totalTokens} total tokens (Base: ${baseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}). Velocity: ${latency}. Tip: ${tip}`
-      : `📊 Estado del Contexto: ~${totalTokens} tokens totales (Base: ${baseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}). Velocidad: ${latency}. Consejo: ${tip}`;
+      ? `Context Status: ~${totalTokens} total tokens (Base: ${baseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}). Estimated CPU Latency: ${latency}. Recommendation: ${tip}`
+      : `Estado del Contexto: ~${totalTokens} tokens totales (Base: ${baseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}). Latencia estimada en CPU: ${latency}. Recomendación: ${tip}`;
 
     return { replyContent: reply };
   }
@@ -513,52 +583,58 @@ export async function processUnifiedAmongusTurn(
     }
   }
 
-  if (trimmedLower === '/audit') {
-    const auditPrompt = isEn
-      ? [
-          'You are Amongus, a senior software architect conducting a formal OOAD and UML quality audit of the current diagram.',
-          `CURRENT CANVAS STATE:\n${diagramContext}`,
-          'EVALUATE AND REPORT (under 3 concise sections, NO emojis, NO code blocks):',
-          '1. Structural Cohesion & Orphan Classes: Are there disconnected classes?',
-          '2. Responsibility & Complexity: Are any classes overloaded with attributes or methods?',
-          '3. Relationship Quality: Are compositions, aggregations, and multiplicities appropriate?',
-          '4. Recommended Improvements: Specific concrete architectural next steps.',
-        ].join('\n')
-      : [
-          'Sos Amongus, un arquitecto de software senior realizando una auditoría formal de calidad OOAD y UML del diagrama actual.',
-          `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
-          'EVALUÁ Y REPORTÁ (en 3 secciones claras y concisas, SIN emojis, SIN bloques de código):',
-          '1. Cohesión estructural y Clases huérfanas: ¿Hay clases desconectadas o aisladas?',
-          '2. Responsabilidad y Complejidad: ¿Hay clases sobrecargadas de atributos o métodos (God Classes)?',
-          '3. Calidad de Relaciones: ¿Las composiciones, agregaciones y multiplicidades son correctas?',
-          '4. Mejoras Recomendadas: Próximos pasos concretos de arquitectura.',
-        ].join('\n');
+  const isAuditIntent =
+    trimmedLower === '/audit' ||
+    /(?:est[aá]\s+bien\s+(?:armado|hecho|planteado|dise[ñn]ado)\s+(?:el\s+modelo|el\s+diagrama|el\s+sistema)|qu[eé]\s+le\s+falta\s+(?:al\s+modelo|al\s+diagrama)?|c[oó]mo\s+ves\s+el\s+(?:modelo|diagrama)|evalua\s+(?:el\s+modelo|el\s+diagrama)|audita\s+(?:el\s+modelo|el\s+diagrama)|is\s+the\s+model\s+(?:good|well\s+designed)|what\s+is\s+missing\s+in\s+the\s+(?:model|diagram))/i.test(
+      normalized
+    );
 
-    let auditChunks = '';
-    const wrappedAuditChunk = (chunk: string) => {
-      auditChunks += chunk;
-      onChunk?.(chunk);
+  if (isAuditIntent) {
+    const report = auditDiagramOOAD(diagram, language);
+    return {
+      replyContent: report,
     };
+  }
 
-    try {
-      const auditResult = await llm.chat(
-        [
-          { role: 'system', content: auditPrompt },
-          { role: 'user', content: 'Ejecutar auditoría OOAD del diagrama actual' },
-        ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 2000, onChunk: wrappedAuditChunk }
-      );
-      return { replyContent: stripEmojis(auditResult).trim() };
-    } catch {
-      if (auditChunks.trim().length > 30) {
-        return { replyContent: stripEmojis(auditChunks).trim() };
-      }
+function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = []): string {
+  if (!text) return text;
+  const fourthItemMatch = text.search(/(?:\r?\n|^)\s*4[\.\)\-]\s+/);
+  let cleaned = fourthItemMatch !== -1 ? text.slice(0, fourthItemMatch).trim() : text.trim();
+
+  if (existingClassNames.length >= 2) {
+    const blocks = cleaned.split(/\n\s*\n/);
+    const filteredBlocks = blocks.filter((block) => {
+      const match = block.match(/\*\*(?:Clase\s+)?["']?([^"'*]+)["']?\*\*/i);
+      if (!match) return true;
+      const proposed = match[1]!.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const hits = existingClassNames.filter((ec) => {
+        const cleanEc = ec.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return cleanEc.length >= 3 && proposed.includes(cleanEc);
+      });
+      return hits.length < 2;
+    });
+    if (filteredBlocks.length > 0) {
+      cleaned = filteredBlocks.join('\n\n');
+    }
+  }
+
+  return cleaned;
+}
+
+  if (trimmedLower === '/layout' || trimmedLower === '/layout canvas') {
+    const classCount = diagram?.classes?.length || 0;
+    if (classCount === 0) {
       return {
         replyContent: isEn
-          ? 'Could not complete the audit at this time. Please try again.'
-          : 'No se pudo completar la auditoría en este momento. Por favor intentá nuevamente.',
+          ? 'The canvas is currently empty. Add classes before running /layout.'
+          : 'El lienzo está vacío actualmente. Agregá clases antes de ejecutar /layout.',
       };
     }
+    return {
+      replyContent: isEn
+        ? `The /layout command is executed in the web interface to reposition the ${classCount} classes without overlaps. Click Auto-Layout in the canvas toolbar or run /layout in the web chat.`
+        : `El comando /layout se ejecuta en la interfaz web para reposicionar las ${classCount} clases sin solapamientos. Hacé clic en Auto-Layout en la barra del lienzo o ejecutá /layout en el chat web.`,
+    };
   }
 
   if (trimmedLower === '/suggest') {
@@ -578,35 +654,37 @@ export async function processUnifiedAmongusTurn(
           'You are Amongus, a senior software architecture tutor.',
           `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
           domainGrounding,
-          'Suggest exactly 2 or 3 essential missing entities or relationships (max 3) with a concise 2-line explanation each.',
+          'Suggest strictly 2 or 3 essential missing entities (max 3). STOP immediately after entity 3. DO NOT output item 4.',
           'CRITICAL OOAD ARCHITECTURE RULES:',
           '- Structure every suggestion in this exact order: 1. Class name -> 2. Attributes -> 3. Relationships -> 4. Concise explanation.',
           '- Example format:',
           '  1. **Clase "ConsultaVeterinaria"** (atributos: [fecha: date, diagnostico: string]) (relaciones: [Asociación con Paciente, Asociación con Medico]) - Explicación: Registra la atención médica entre paciente y veterinario.',
           '- Every suggested entity MUST include 2 to 3 realistic domain attributes with clean types. NEVER suggest an empty class.',
-          '- Most relationships are plain associations (aggregation: "none"). Use composition for whole-part lifecycle dependencies, and aggregation for independent collections.',
-          '- Intermediate association classes (e.g. Consulta, Inscripcion, DetalleFactura) are completely valid and welcome when an association holds attributes, dates, or state.',
+          '- DEFAULT TO DIRECT RELATIONSHIPS: Most relationships are plain associations, compositions, or aggregations. Do NOT create an intermediate class for simple 1:1 or 1:N relations.',
+          '- INTERMEDIATE ASSOCIATION CLASSES: Use an association class ONLY when there is a true Many-to-Many (M:N) relationship that genuinely carries its own link attributes (e.g. Boleto between Pasajero and Vuelo, or Inscripcion between Estudiante and Curso). For relations without link attributes, use direct links without intermediate classes.',
+          '- NEVER CONCATENATE CLASS NAMES: Every class name must be an autonomous real-world domain noun (e.g. Boleto, Aeronave, CheckIn). NEVER invent compound names by gluing existing classes together (e.g. NEVER "VueloPasajero" or "AeropuertoAerolinea").',
           '- In inheritance, clearly state who is subclass and who is superclass. Subclasses inherit attributes and do not repeat them.',
           '- NEVER suggest duplicate relationships between classes that are already connected.',
           '- FORMAT: Always separate each numbered entity suggestion with a blank line (double newline).',
-          'Provide clear architectural reasoning without code blocks or JSON, ensuring the reply is complete and concise.',
+          '- STOP STRICTLY AFTER 3 ENTITIES. Do not write entity 4.',
         ].filter(Boolean).join('\n')
       : [
           'Sos Amongus, tutor senior de arquitectura de software.',
           `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
           domainGrounding,
-          'Sugerí exactamente 2 o 3 entidades clave faltantes o relaciones clave (máximo 3) con una explicación concisa de 2 líneas cada una.',
+          'Sugerí estrictamente 2 o 3 entidades clave faltantes (máximo 3). TERMINÁ inmediatamente después de la entidad 3. NUNCA escribas la entidad 4.',
           'REGLAS CRÍTICAS DE ARQUITECTURA OOAD:',
           '- Estructurá cada sugerencia en este orden exacto: 1. Clase -> 2. Atributos -> 3. Relaciones -> 4. Explicación concisa.',
           '- Formato de ejemplo:',
           '  1. **Clase "ConsultaVeterinaria"** (atributos: [fecha: date, diagnostico: string]) (relaciones: [Asociación con Paciente, Asociación con Medico]) - Explicación: Registra la atención médica entre un paciente y su médico.',
           '- Cada entidad sugerida DEBE incluir 2 a 3 atributos de dominio con tipos. NUNCA sugieras clases vacías sin atributos.',
-          '- La gran mayoría de referencias son asociaciones simples (agregación: none). Usá composición solo para dependencias de ciclo de vida todo-parte, y agregación solo para colecciones independientes.',
-          '- Las clases de asociación intermedia (ej. Consulta, Inscripción, DetalleFactura, Historial) son totalmente válidas y bienvenidas cuando la relación posee atributos, fecha o estado propio.',
+          '- PRIORIZÁ RELACIONES DIRECTAS: La gran mayoría de referencias son asociaciones simples, composiciones o agregaciones directas. NUNCA crees clases intermedias para relaciones 1:1 o 1:N.',
+          '- CLASES DE ASOCIACIÓN INTERMEDIAS: Usá clase de asociación ÚNICAMENTE cuando exista una relación muchos a muchos (M:N) que realmente posea atributos propios del enlace (ej: Boleto entre Pasajero y Vuelo con asiento/precio, o Inscripción entre Estudiante y Curso con fecha/nota). Para relaciones sin atributos de enlace, usá relaciones directas sin clase intermedia.',
+          '- NUNCA CONCATENES NOMBRES DE CLASES: Todo nombre de clase debe ser un sustantivo autónomo y conceptual del dominio (ej: Boleto, Aeronave, Tripulación). NUNCA inventes nombres pegando clases existentes (ej: NUNCA "VueloPasajero" ni "AeropuertoAerolinea").',
           '- En herencia, especificá claramente quién es la subclase y quién la superclase. Las subclases heredan y no repiten atributos.',
           '- NUNCA sugieras relaciones redundantes entre clases que ya están conectadas.',
           '- FORMATO: Separá SIEMPRE cada entidad sugerida con un renglón en blanco (doble salto de línea).',
-          'Explicá claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON. Sé directo y asegurá que tu respuesta esté completa.',
+          '- TERMINÁ ESTRICTAMENTE DESPUÉS DE LA TERCERA ENTIDAD. No escribas la entidad 4.',
         ].filter(Boolean).join('\n');
 
     let suggestChunks = '';
@@ -615,18 +693,20 @@ export async function processUnifiedAmongusTurn(
       onChunk?.(chunk);
     };
 
+    const existingNames = (diagram.classes || []).map((c: any) => c.name);
+
     try {
       const suggestResult = await llm.chat(
         [
           { role: 'system', content: suggestPrompt },
           { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
         ],
-        { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 2000, onChunk: wrappedSuggestChunk }
+        { timeoutMs: Math.min(DEFAULT_LLM_TIMEOUT_MS, 30000), maxTokens: Math.min(DEFAULT_LLM_MAX_TOKENS, 260), onChunk: wrappedSuggestChunk }
       );
-      return { replyContent: stripEmojis(suggestResult).trim() };
+      return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestResult), existingNames).trim() };
     } catch {
       if (suggestChunks.trim().length > 30) {
-        return { replyContent: stripEmojis(suggestChunks).trim() };
+        return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestChunks), existingNames).trim() };
       }
       return {
         replyContent: isEn
@@ -777,7 +857,7 @@ export async function processUnifiedAmongusTurn(
               '   - MODIFYING OR CHANGING RELATIONSHIPS: To change an existing relationship (e.g. change composition to association, or update multiplicities), emit the association between those two classes with the new "aggregation": "none" or updated multiplicities.',
               '   - RECURSIVE ASSOCIATIONS: When a class relates to itself (e.g. Employee supervises Employee), put the same class name in source and target and assign roles ("sourceRole": "supervisor", "targetRole": "subordinate").',
               '   - ROLES ON EDGES: You can include "sourceRole", "targetRole" and "name" to label relationship paths.',
-              '   - ASSOCIATION CLASSES: When an M:N relation has attributes, specify "associationClass": "ClassName" on the association and declare it in "classes".',
+              '   - ASSOCIATION CLASSES: Use an association class ONLY when an M:N relationship genuinely carries its own link attributes (e.g. Enrollment between Student and Course with date/grade). In that case, specify "associationClass": "ClassName" on the association and declare it in "classes". For relationships without link attributes (1:1, 1:N, or attribute-less M:N), use direct associations without intermediate classes. NEVER concatenate class names (e.g. NEVER "StudentCourse").',
               '   - INHERITANCE / GENERALIZATION: Use "generalizations": [{"subclass": "Child", "superclass": "Parent"}] for "is-a" relationships. Subclasses inherit attributes and do not repeat them. NEVER create an association between a subclass and its superclass.',
               '   - ZERO DUPLICATES: Between any two classes, create AT MOST ONE relationship. NEVER output two associations or association + aggregation between the same pair of classes.',
               '   - ZERO ORPHAN OR EMPTY CLASSES: Every class must have 2 to 4 domain attributes with types and be connected to at least one other class.',
@@ -862,7 +942,7 @@ export async function processUnifiedAmongusTurn(
               '   - MODIFICAR O CAMBIAR RELACIONES EXISTENTES: Si el usuario pide cambiar una relación existente (ej. cambiar composición a asociación simple, o cambiar multiplicidades), emití la asociación entre esas clases con el nuevo "aggregation": "none" o las nuevas multiplicidades.',
               '   - ASOCIACIONES RECURSIVAS: Cuando una clase se relaciona consigo misma (ej. Empleado supervisa a Empleado), poné la misma clase en source y target y asigná roles claros ("sourceRole": "supervisor", "targetRole": "subordinado").',
               '   - ROLES EN EL CAMINO DE LA RELACIÓN: Podés incluir "sourceRole", "targetRole" y "name" para rotular el camino de las relaciones.',
-              '   - CLASES DE ASOCIACIÓN: Cuando una relación M:N tenga atributos propios, especificá "associationClass": "NombreClase" en la asociación y definí esa clase en "classes".',
+              '   - CLASES DE ASOCIACIÓN: Usá una clase de asociación ÚNICAMENTE cuando una relación M:N posea atributos propios del vínculo (ej: Inscripcion entre Estudiante y Curso con fecha/nota). En ese caso, especificá "associationClass": "NombreClase" en la asociación y definila en "classes". Para relaciones sin atributos de enlace (1:1, 1:N o M:N sin atributos), usá asociaciones directas sin clases intermedias. NUNCA nombres clases concatenando nombres existentes (ej: NUNCA "EstudianteCurso").',
               '   - HERENCIA / GENERALIZACIÓN: Usá "generalizations": [{"subclass": "Hijo", "superclass": "Padre"}] para relaciones "es un" (is-a). Las subclases heredan atributos y no los repiten. NUNCA crees una asociación entre una subclase y su superclase.',
               '   - CERO DUPLICADOS: Entre cualquier par de clases debe haber COMO MÁXIMO UNA relación. NUNCA generes dos asociaciones ni asociación + agregación entre el mismo par de clases.',
               '   - CERO CLASES VACÍAS NI HUÉRFANAS: Toda clase debe tener entre 2 y 4 atributos de dominio con tipos y estar conectada al menos con otra clase.',
@@ -911,7 +991,7 @@ export async function processUnifiedAmongusTurn(
 
     const raw = await llm.chat(
       messages,
-      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, maxTokens: 2000, onChunk: isAction ? undefined : onChunk }
+      { timeoutMs: DEFAULT_LLM_TIMEOUT_MS, maxTokens: DEFAULT_LLM_MAX_TOKENS, onChunk: isAction ? undefined : onChunk }
     );
 
     // 1. Sanitizar prefijo Amongus y colapsar bucles de repetición degenerativos (ej. "de emergencia de emergencia...")
@@ -953,28 +1033,34 @@ export async function processUnifiedAmongusTurn(
     // 2b. Resiliencia: si el usuario solicitó modelar o crear un dominio/sistema pero el modelo no devolvió JSON,
     // sintetizar la propuesta directamente para que el usuario reciba su tarjeta visual en lugar de texto plano
     if (!hasAnyContent && isAction) {
-      try {
-        const recentHistory = (chatHistory || [])
-          .slice(-4)
-          .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
-          .join('\n');
-        const synthesisPrompt = [
-          `Historial reciente de la conversación:\n${recentHistory}`,
-          `Última explicación del asistente:\n${clean}`,
-          `Instrucción del usuario:\n${userContent}`,
-          'Generá el modelo de clases y asociaciones necesario para implementar lo solicitado o discutido en el chat.',
-        ].join('\n\n');
-        const synthesized = await synthesizeDomainModel(synthesisPrompt, diagramId, llm, diagram, true);
-        if (synthesized && synthesized.deltas.length > 0) {
-          const defaultReply = isEn
-            ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'
-            : 'Preparé la propuesta para este cambio. Podés ver los elementos en el lienzo y confirmarla para que se construya en vivo.';
-          return {
-            replyContent: defaultReply,
-            batchDelta: synthesized,
-          };
-        }
-      } catch {}
+      const isExplicitModelingRequest =
+        /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur)/i.test(
+          userContent
+        );
+      if (isExplicitModelingRequest) {
+        try {
+          const recentHistory = (chatHistory || [])
+            .slice(-2)
+            .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
+            .join('\n');
+          const synthesisPrompt = [
+            `Historial reciente de la conversación:\n${recentHistory}`,
+            `Última explicación del asistente:\n${clean}`,
+            `Instrucción del usuario:\n${userContent}`,
+            'Generá el modelo de clases y asociaciones necesario para implementar lo solicitado o discutido en el chat.',
+          ].join('\n\n');
+          const synthesized = await synthesizeDomainModel(synthesisPrompt, diagramId, llm, diagram, true);
+          if (synthesized && synthesized.deltas.length > 0) {
+            const defaultReply = isEn
+              ? 'I have prepared the proposal for this change. You can preview the elements on the canvas and confirm to apply them.'
+              : 'Preparé la propuesta para este cambio. Podés ver los elementos en el lienzo y confirmarla para que se construya en vivo.';
+            return {
+              replyContent: defaultReply,
+              batchDelta: synthesized,
+            };
+          }
+        } catch {}
+      }
     }
 
     // 3. Si no fue propuesta o fue una explicación conversacional:
@@ -984,8 +1070,21 @@ export async function processUnifiedAmongusTurn(
     if (clean.length > 0) {
       return { replyContent: clean };
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error in processUnifiedAmongusTurn:', err);
+    if (
+      err &&
+      (err.name === 'AbortError' ||
+        err.message?.includes('aborted') ||
+        err.message?.includes('timeout') ||
+        err.code === 'ETIMEDOUT')
+    ) {
+      return {
+        replyContent: isEn
+          ? 'The local model exceeded the response time limit (60s). Please ask a more specific question, or use commands like /audit or /model.'
+          : 'El modelo local de lenguaje excedió el tiempo límite de respuesta (60s). Probá con una consulta más puntual, o usá comandos directos como /audit o /model.',
+      };
+    }
   }
 
   return {
