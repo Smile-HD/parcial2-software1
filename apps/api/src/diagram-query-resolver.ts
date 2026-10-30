@@ -101,6 +101,16 @@ export function resolveDiagramFactualQuery(
       );
     });
 
+    const alsoAsksCount =
+      /(?:cu[aá]ntas?\s+clases?\s+(?:tiene|hay|existen)|c[oó]mo\s+se\s+llaman\s+(?:las\s+clases|todas)|qu[eé]\s+clases?\s+(?:tiene|hay|existen|est[aá]n)|how\s+many\s+classes|what\s+classes\s+(?:are\s+there|exist))/i.test(
+        rawNorm
+      );
+    const countPrefix = alsoAsksCount
+      ? isEn
+        ? `The current diagram has ${classes.length} classes. `
+        : `El diagrama actual tiene ${classes.length} clases. `
+      : '';
+
     if (mentionedClasses.length >= 2) {
       const c1 = mentionedClasses[0];
       const c2 = mentionedClasses[1];
@@ -161,38 +171,38 @@ export function resolveDiagramFactualQuery(
         ].filter(Boolean).join(', ');
 
         if (isEn) {
-          return `The relationship between "${srcName}" and "${tgtName}" is a ${typeEn} from "${srcName}" to "${tgtName}". Multiplicity: source "${srcName}" is ${srcMult}, target "${tgtName}" is ${tgtMult}.${rolesDesc ? ` Roles: ${rolesDesc}.` : ''}${assocClsDescEn}`;
+          return `${countPrefix}The relationship between "${srcName}" and "${tgtName}" is a ${typeEn} from "${srcName}" to "${tgtName}". Multiplicity: source "${srcName}" is ${srcMult}, target "${tgtName}" is ${tgtMult}.${rolesDesc ? ` Roles: ${rolesDesc}.` : ''}${assocClsDescEn}`;
         }
-        return `La relación entre "${srcName}" y "${tgtName}" es una ${typeLabel} desde "${srcName}" hacia "${tgtName}". Multiplicidad: origen "${srcName}" tiene ${srcMult}, destino "${tgtName}" tiene ${tgtMult}.${rolesDesc ? ` Roles: ${rolesDesc}.` : ''}${assocClsDesc}`;
+        return `${countPrefix}La relación entre "${srcName}" y "${tgtName}" es una ${typeLabel} desde "${srcName}" hacia "${tgtName}". Multiplicidad: origen "${srcName}" tiene ${srcMult}, destino "${tgtName}" tiene ${tgtMult}.${rolesDesc ? ` Roles: ${rolesDesc}.` : ''}${assocClsDesc}`;
       }
 
       if (gen) {
         const child = classMap.get(gen.sourceClassId)?.name || gen.sourceClassId;
         const parent = classMap.get(gen.targetClassId)?.name || gen.targetClassId;
         return isEn
-          ? `Inheritance (generalization): "${child}" inherits from "${parent}".`
-          : `Herencia (generalización): "${child}" hereda de "${parent}".`;
+          ? `${countPrefix}Inheritance (generalization): "${child}" inherits from "${parent}".`
+          : `${countPrefix}Herencia (generalización): "${child}" hereda de "${parent}".`;
       }
 
       if (real) {
         const implementer = classMap.get(real.sourceClassId)?.name || real.sourceClassId;
         const iface = classMap.get(real.targetClassId)?.name || real.targetClassId;
         return isEn
-          ? `Realization: "${implementer}" implements interface "${iface}".`
-          : `Realización: "${implementer}" implementa la interfaz "${iface}".`;
+          ? `${countPrefix}Realization: "${implementer}" implements interface "${iface}".`
+          : `${countPrefix}Realización: "${implementer}" implementa la interfaz "${iface}".`;
       }
 
       if (dep) {
         const src = classMap.get(dep.sourceClassId)?.name || dep.sourceClassId;
         const tgt = classMap.get(dep.targetClassId)?.name || dep.targetClassId;
         return isEn
-          ? `Dependency: "${src}" depends on "${tgt}".`
-          : `Dependencia: "${src}" depende de "${tgt}".`;
+          ? `${countPrefix}Dependency: "${src}" depends on "${tgt}".`
+          : `${countPrefix}Dependencia: "${src}" depende de "${tgt}".`;
       }
 
       return isEn
-        ? `There is no direct relationship between "${c1.name}" and "${c2.name}" in the current diagram.`
-        : `No existe una relación directa entre "${c1.name}" y "${c2.name}" en el diagrama actual.`;
+        ? `${countPrefix}There is no direct relationship between "${c1.name}" and "${c2.name}" in the current diagram.`
+        : `${countPrefix}No existe una relación directa entre "${c1.name}" y "${c2.name}" en el diagrama actual.`;
     }
   }
 

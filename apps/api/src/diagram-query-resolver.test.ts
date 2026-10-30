@@ -186,4 +186,15 @@ describe('Diagram Factual Query Resolver (Deterministic Diagram State)', () => {
     );
     expect(res2).toBeNull();
   });
+
+  it('answers compound queries with both class count and relationship details', () => {
+    const res = resolveDiagramFactualQuery(
+      'cuantas clases hay y cual es la relacion entre Viaje y Pasajero?',
+      fixtureDiagram,
+      'es'
+    );
+    expect(res).not.toBeNull();
+    expect(res).toContain('El diagrama actual tiene 4 clases.');
+    expect(res).toContain('La relación entre "Viaje" y "Pasajero" es una composición');
+  });
 });

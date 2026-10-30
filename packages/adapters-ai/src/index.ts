@@ -141,7 +141,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 1. crear clase / diagrama [+ opcional "con atributos a, b y c"]
-    const createClass = /\b(?:add|create|crea|agregá|agrega|añade)\b[\s\S]*?\b(?:class(?:es)?|clase|diagrama)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const createClass = /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (createClass) {
       const name = createClass[1]!;
       const position = nextPosition(currentIr);
@@ -221,16 +221,16 @@ export class FakeLlm implements LlmPort {
     }
 
     // 2b. eliminar clase específica
-    const deleteClassWithKeyword = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|borra|borrá|borrar|borrame|borráme|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|tabla|table)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const deleteClassWithKeyword = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|elmina|borra|borrá|borrar|borrame|borráme|brra|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|calse|clse|tabla|table|entidad)\s+(?:llamada\s+|llamado\s+|llamda\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     let targetClassName: string | null = null;
     if (deleteClassWithKeyword) {
       targetClassName = deleteClassWithKeyword[1];
     } else {
       // Intentar detectar si dice "borra/elimina <NombreClase>" donde NombreClase es una clase existente en el diagrama
-      const deleteDirect = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|borra|borrá|borrar|borrame|borráme|sacar|sacá|saca)\s+(?:a\s+|la\s+|el\s+)?([A-Za-z_]\w*)\b/i.exec(utterance);
+      const deleteDirect = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|elmina|borra|borrá|borrar|borrame|borráme|brra|sacar|sacá|saca)\s+(?:a\s+|la\s+|el\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\b/i.exec(utterance);
       if (deleteDirect) {
         const potentialName = deleteDirect[1];
-        if (!/^(todas?|todos?|all|el|la|los|las|un|una|canvas|lienzo|diagrama|todo)$/i.test(potentialName)) {
+        if (!/^(todas?|todos?|all|el|la|los|las|un|una|canvas|lienzo|diagrama|todo|clase|calse|clse|tabla|table|entidad)$/i.test(potentialName)) {
           if (classIdByName(currentIr, potentialName) !== null) {
             targetClassName = potentialName;
           }

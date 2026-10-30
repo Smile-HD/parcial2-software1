@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { processUnifiedAmongusTurn } from './chat.js';
+import { processUnifiedAmongusTurn, breakDegenerativeLoops } from './chat.js';
 
 describe('processUnifiedAmongusTurn', () => {
   it('returns connected presence list and count when asked in Spanish', async () => {
@@ -77,5 +77,64 @@ describe('processUnifiedAmongusTurn', () => {
     expect(result.replyContent).toContain('/layout');
     expect(result.replyContent).toContain('solapamientos');
     expect(result.batchDelta).toBeUndefined();
+  });
+
+  it('rejects unvalidated noise symbols and bare numbers immediately', async () => {
+    const resSymbols = await processUnifiedAmongusTurn(
+      '###@@@!!!',
+      'Carlos',
+      'es',
+      'diag-1'
+    );
+    expect(resSymbols.replyContent).toContain('No entendí tu mensaje');
+    expect(resSymbols.batchDelta).toBeUndefined();
+
+    const resNumbers = await processUnifiedAmongusTurn(
+      '1234567890',
+      'Carlos',
+      'es',
+      'diag-1'
+    );
+    expect(resNumbers.replyContent).toContain('No entendí tu mensaje');
+    expect(resNumbers.batchDelta).toBeUndefined();
+  });
+
+  it('handles out-of-domain philosophical questions cleanly without looping or creating classes', async () => {
+    const res = await processUnifiedAmongusTurn(
+      '¿qué es la vida?',
+      'Carlos',
+      'es',
+      'diag-1'
+    );
+    expect(res.replyContent).toContain('Como tutor de arquitectura y diseño UML');
+    expect(res.batchDelta).toBeUndefined();
+  });
+
+  it('informs truthfully when deleting a non-existent class', async () => {
+    const mockDiagram = {
+      id: 'diag-1',
+      name: 'Test',
+      classes: [{ id: 'c1', name: 'Libro' }, { id: 'c2', name: 'Autor' }],
+      associations: [],
+    };
+
+    const res = await processUnifiedAmongusTurn(
+      'borra la calse Pago que no existe',
+      'Carlos',
+      'es',
+      'diag-1',
+      undefined,
+      mockDiagram
+    );
+    expect(res.replyContent).toContain('La clase "Pago" no existe en el diagrama actual');
+    expect(res.replyContent).toContain('"Libro", "Autor"');
+    expect(res.batchDelta).toBeUndefined();
+  });
+
+  it('breakDegenerativeLoops collapses repeated lines and removes fake URLs', () => {
+    const loopText = `Clase Libro con id y titulo\nClase Libro con id y titulo\nClase Libro con id y titulo\nClase Autor con nombre\nAquí está el diagrama: http://i.imgur.com/fake-diagram.png`;
+    const cleaned = breakDegenerativeLoops(loopText);
+    expect(cleaned).not.toContain('imgur.com');
+    expect(cleaned.split('\n').filter((l) => l.includes('Clase Libro')).length).toBeLessThanOrEqual(2);
   });
 });

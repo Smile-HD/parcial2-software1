@@ -276,6 +276,34 @@ export function stripEmojis(text: string): string {
   return text.replace(/\p{Extended_Pictographic}/gu, '').replace(/\s{2,}/g, ' ').trim();
 }
 
+export function breakDegenerativeLoops(text: string): string {
+  if (!text) return text;
+  let s = text;
+  // 1. Colapsar repetición inmediata de fragmentos de 4 a 80 caracteres repetidos 2 o más veces
+  s = s.replace(/(.{4,80}?)(?:\s*\1){2,}/gi, '$1');
+
+  // 2. Colapsar repetición de líneas enteras
+  const lines = s.split('\n');
+  const seen = new Map<string, number>();
+  const deduped: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim().toLowerCase();
+    if (trimmed.length > 15) {
+      const count = (seen.get(trimmed) || 0) + 1;
+      seen.set(trimmed, count);
+      if (count > 2) continue;
+    }
+    deduped.push(line);
+  }
+  s = deduped.join('\n');
+
+  // 3. Purgar URLs falsas o inventadas
+  s = s.replace(/https?:\/\/(?:www\.)?(?:i\.)?imgur\.com\/\S+/gi, '');
+  s = s.replace(/https?:\/\/\S*(?:your-diagram|example\.com|placeholder)\S*/gi, '');
+
+  return s.trim();
+}
+
 export function summarizeDiagramForPrompt(diagram?: any): string {
   if (!diagram || !diagram.classes || diagram.classes.length === 0) {
     return 'Lienzo actualmente vacio (sin clases ni relaciones).';
@@ -413,6 +441,32 @@ export async function processUnifiedAmongusTurn(
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
+  // 00a. Guardrail de entrada: descartar ruido léxico, símbolos puros o números sin texto (0 ms, 0 tokens)
+  const rawClean = userContent.trim();
+  const letterCount = (rawClean.match(/[\p{L}]/gu) || []).length;
+  if (letterCount < 2) {
+    return {
+      replyContent: isEn
+        ? `I didn't understand your message, ${senderName}. You can ask architectural questions, request UML modeling actions (e.g. 'create class User'), or use commands like /help, /model, or /suggest.`
+        : `No entendí tu mensaje, ${senderName}. Podés hacerme consultas de arquitectura, pedirme cambios en el diagrama (ej. "creá la clase Usuario") o usar comandos como /help, /model o /suggest.`,
+    };
+  }
+
+  // 00b. Detección temprana de borrado de clase inexistente (evita bloqueos o alucinaciones en modelos chicos)
+  const deleteClassMatch = /\b(?:delete|remove|elimina|eliminá|eliminar|elmina|borra|borrá|borrar|brra|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|calse|clse|tabla|table|entidad)\s+(?:llamada\s+|llamado\s+|llamda\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(userContent);
+  if (deleteClassMatch) {
+    const targetName = deleteClassMatch[1]!;
+    const existingClassNames = ((diagram?.classes as any[]) || []).map((c: any) => c.name);
+    const exists = existingClassNames.some((n: string) => n.toLowerCase() === targetName.toLowerCase());
+    if (!exists && existingClassNames.length > 0) {
+      return {
+        replyContent: isEn
+          ? `The class "${targetName}" does not exist in the current diagram. Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`
+          : `La clase "${targetName}" no existe en el diagrama actual. Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`,
+      };
+    }
+  }
+
   // 0a. Detección inmediata de consultas sobre personas/usuarios conectados en la sala
   const isPresenceQuery =
     /cu[aá]nt[ao]s?\s+(?:personas?|usuarios?|compa[ñn]eros?|miembros?|gente|conectad[ao]s?)|qui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:conectad[ao]s?|en\s+la\s+sala|en\s+el\s+diagrama|en\s+la\s+sesi[oó]n|ac[aá]|aqu[ií])|how\s+many\s+(?:users?|people|peers?|members?)|who\s+is\s+(?:connected|online|in\s+the\s+room|in\s+the\s+session)/i.test(
@@ -483,6 +537,55 @@ export async function processUnifiedAmongusTurn(
   if (factualReply) {
     return {
       replyContent: factualReply,
+    };
+  }
+
+  // 0d. Filtro fuera de dominio / preguntas filosóficas o de cultura general
+  const isToolQuery =
+    /(?:c[oó]mo\s+(?:se\s+)?export|c[oó]mo\s+(?:se\s+)?guarda|c[oó]mo\s+(?:se\s+)?usa|c[oó]mo\s+funciona\s+(?:la\s+herramienta|el\s+editor|el\s+lienzo|el\s+layout|el\s+audit|el\s+chat|amongus|la\s+voz)|qu[eé]\s+(?:herramientas?|funciones?|capacidades?|comandos?|opciones?)\s+(?:tiene|hay|ofrece|soporta)|para\s+qu[eé]\s+sirve\s+(?:el\s+layout|el\s+audit|el\s+export|spring|xmi|png)|exportaci[oó]n|importaci[oó]n|how\s+to\s+export|how\s+does\s+(?:the\s+tool|the\s+editor|layout|audit|amongus)\s+work|what\s+tools\s+(?:are\s+there|exist))/i.test(
+      normalized
+    );
+
+  const isQuestionPrefix = /^(?:que|por\s*que|como|cual|cuales|quien|quienes|cuanto|cuanta|cuantos|cuantas|explic|diferencia|ayuda|significa|para\s+que|what|why|how|who|where|which|can\s+you|could\s+you|explain)/i.test(
+    normalized.replace(/^[¿?¡!\s]+/, '').trim()
+  );
+
+  const isExplicitQuestion =
+    isToolQuery ||
+    isQuestionPrefix ||
+    normalized.includes('?');
+
+  const isImperativeAction =
+    /^(?:por\s+favor\s+)?(?:agreg[aá]|agrga|agregar|craer|cre[aá]|crear|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|brra|borrar|elimi[nñ][aá]|elmina|eliminar|arm[aá]|gener[aá]|constru[yí]|add|create|connect|link|delete|remove)\b/i.test(
+      normalized.replace(/^[¿?¡!\s]+/, '').trim()
+    );
+
+  const isAction =
+    !isExplicitQuestion &&
+    !isToolQuery &&
+    (isImperativeAction ||
+      /(agreg|agrga|crea|craer|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|brra|elimin|elmina|hace|haz|arma|genera|constru|plante|propon|levant|falt|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|pizzeria|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
+        normalized
+      ));
+
+  const isSoftwareOrDomainQuery =
+    /(?:uml|clase|class|calse|clse|objeto|entidad|entity|metodo|method|atributo|attribute|relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|herencia|generalizaci[oó]n|interfaz|interface|patr[oó]n|dise[ñn]o|arquitectura|software|sistema|modelo|spring|java|c[oó]digo|code|export|import|layout|audit|tabla|base\s+de\s+datos|bd|db|api|endpoint|backend|frontend|canvas|lienzo|diagrama|amongus|whisper|micro|audio|presencia|usuario|sala|room|peer|ayuda|help|comand|propuest|delta|multiplicidad)/i.test(
+      normalized
+    ) ||
+    matchCanonicalDomain(userContent) !== null ||
+    (Array.isArray(diagram?.classes) &&
+      diagram.classes.some((c: any) => normalized.includes(c.name.toLowerCase())));
+
+  const isPhilosophicalOrOutOfDomain =
+    /^(?:qu[eé]\s+(?:es|significa)\s+(?:la\s+vida|el\s+amor|la\s+muerte|el\s+universo|la\s+felicidad|dios|el\s+sentido)|qui[eé]n\s+(?:gan[oó]|invent[oó]|descubri[oó]|es\s+(?:messi|maradona|el\s+presidente))|cu[aá]nto\s+(?:es|vale)\s+\d+|contame\s+un\s+chiste|h[aá]blame\s+de\s+(?:filosof[ií]a|pol[ií]tica)|recit[aá]|qu[eé]\s+opinas\s+de\s+(?:la\s+vida|dios))/i.test(
+      normalized.replace(/^[¿?¡!\s]+/, '').trim()
+    ) || (isExplicitQuestion && !isSoftwareOrDomainQuery && !isToolQuery);
+
+  if (isPhilosophicalOrOutOfDomain && !isToolQuery) {
+    return {
+      replyContent: isEn
+        ? `As a software architecture and UML tutor, my specialty is helping you design, structure, and audit software systems (classes, relationships, OOAD patterns, and Spring Boot generation). Is there a software domain or diagram concept you would like to explore?`
+        : `Como tutor de arquitectura y diseño UML, mi especialidad es ayudarte a diseñar, estructurar y auditar sistemas de software (clases, relaciones, principios OOAD y generación a Spring Boot). ¿Hay algún sistema o concepto de software que quieras que modelemos o analicemos?`,
     };
   }
 
@@ -780,33 +883,6 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
   if (!activePeers.includes(senderName)) activePeers.push(senderName);
   const activePeersSummary = activePeers.join(', ');
 
-  const isToolQuery =
-    /(?:c[oó]mo\s+(?:se\s+)?export|c[oó]mo\s+(?:se\s+)?guarda|c[oó]mo\s+(?:se\s+)?usa|c[oó]mo\s+funciona\s+(?:la\s+herramienta|el\s+editor|el\s+lienzo|el\s+layout|el\s+audit|el\s+chat|amongus|la\s+voz)|qu[eé]\s+(?:herramientas?|funciones?|capacidades?|comandos?|opciones?)\s+(?:tiene|hay|ofrece|soporta)|para\s+qu[eé]\s+sirve\s+(?:el\s+layout|el\s+audit|el\s+export|spring|xmi|png)|exportaci[oó]n|importaci[oó]n|how\s+to\s+export|how\s+does\s+(?:the\s+tool|the\s+editor|layout|audit|amongus)\s+work|what\s+tools\s+(?:are\s+there|exist))/i.test(
-      normalized
-    );
-
-  const isQuestionPrefix = /^(?:que|por\s*que|como|cual|cuales|quien|quienes|cuanto|cuanta|cuantos|cuantas|explic|diferencia|ayuda|significa|para\s+que|what|why|how|who|where|which|can\s+you|could\s+you|explain)/i.test(
-    normalized.replace(/^[¿?¡!\s]+/, '').trim()
-  );
-
-  const isExplicitQuestion =
-    isToolQuery ||
-    isQuestionPrefix ||
-    normalized.includes('?');
-
-  const isImperativeAction =
-    /^(?:por\s+favor\s+)?(?:agreg[aá]|cre[aá]|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|elimin[aá]|arm[aá]|gener[aá]|constru[yí]|add|create|connect|link|delete|remove)\b/i.test(
-      normalized.replace(/^[¿?¡!\s]+/, '').trim()
-    );
-
-  const isAction =
-    !isExplicitQuestion &&
-    !isToolQuery &&
-    (isImperativeAction ||
-      /(agreg|crea|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|elimin|hace|haz|arma|genera|constru|plante|propon|levant|falt|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
-        normalized
-      ));
-
   const systemPrompt = isEn
     ? [
         'You are Amongus, a senior software architecture tutor inside a web collaborative UML modeling tool.',
@@ -994,8 +1070,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
     );
 
     // 1. Sanitizar prefijo Amongus y colapsar bucles de repetición degenerativos (ej. "de emergencia de emergencia...")
-    let clean = stripEmojis(raw).replace(/^Amongus:\s*/i, '').trim();
-    clean = clean.replace(/(.{4,40}?)\1{3,}/gi, '$1').trim();
+    let clean = breakDegenerativeLoops(stripEmojis(raw).replace(/^Amongus:\s*/i, '').trim());
 
     // 2. Si el modelo devolvió una propuesta de modelado estructurada en JSON
     const parsedModel = robustParseDomainJson(clean);
@@ -1064,7 +1139,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
 
     // 3. Si no fue propuesta o fue una explicación conversacional:
     // Purgar cualquier bloque ```json ... ``` huérfano para que el usuario nunca vea código crudo en la burbuja de chat
-    clean = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\n{3,}/g, '\n\n').trim();
+    clean = breakDegenerativeLoops(clean.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\n{3,}/g, '\n\n').trim());
 
     if (clean.length > 0) {
       return { replyContent: clean };
