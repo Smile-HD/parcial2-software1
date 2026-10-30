@@ -164,6 +164,21 @@ describe('Diagram Factual Query Resolver (Deterministic Diagram State)', () => {
     );
     expect(res1).toBeNull();
 
+    // Caso exacto del hallazgo 9: comando imperativo con la palabra "atributos"
+    const resImperativeWithAttrs = resolveDiagramFactualQuery(
+      'creá una clase Cliente con atributos nombre, email y telefono',
+      fixtureDiagram,
+      'es'
+    );
+    expect(resImperativeWithAttrs).toBeNull();
+
+    const resImperativeAdd = resolveDiagramFactualQuery(
+      'Agregá una clase nueva llamada Cliente al diagrama',
+      fixtureDiagram,
+      'es'
+    );
+    expect(resImperativeAdd).toBeNull();
+
     const res2 = resolveDiagramFactualQuery(
       '¿Qué ventajas tiene usar agregación en lugar de composición en este dominio?',
       fixtureDiagram,

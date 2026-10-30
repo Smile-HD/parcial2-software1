@@ -367,23 +367,60 @@ export function computeAutoLayout(
     }
   });
 
-  // 8. Post-garantía absoluta contra solapamientos tras grid snap
-  for (let i = 0; i < allNodeIds.length; i++) {
-    for (let j = i + 1; j < allNodeIds.length; j++) {
-      const idA = allNodeIds[i];
-      const idB = allNodeIds[j];
-      const posA = finalPositions[idA];
-      const posB = finalPositions[idB];
-      if (!posA || !posB) continue;
-      const szA = sizeMap.get(idA)!;
-      const szB = sizeMap.get(idB)!;
+  // 8. Post-garantía absoluta iterativa contra solapamientos tras grid snap
+  const MIN_MARGIN_X = 80;
+  const MIN_MARGIN_Y = 60;
 
-      const collidesX = Math.abs((posA.x + szA.width / 2) - (posB.x + szB.width / 2)) < (szA.width + szB.width) / 2 + 40;
-      const collidesY = Math.abs((posA.y + szA.height / 2) - (posB.y + szB.height / 2)) < (szA.height + szB.height) / 2 + 40;
-      if (collidesX && collidesY) {
-        posB.x = posA.x + szA.width + 60;
+  for (let pass = 0; pass < 25; pass++) {
+    let hadCollision = false;
+
+    for (let i = 0; i < allNodeIds.length; i++) {
+      for (let j = i + 1; j < allNodeIds.length; j++) {
+        const idA = allNodeIds[i]!;
+        const idB = allNodeIds[j]!;
+        const posA = finalPositions[idA];
+        const posB = finalPositions[idB];
+        if (!posA || !posB) continue;
+
+        const szA = sizeMap.get(idA)!;
+        const szB = sizeMap.get(idB)!;
+
+        const reqDistX = (szA.width + szB.width) / 2 + MIN_MARGIN_X;
+        const reqDistY = (szA.height + szB.height) / 2 + MIN_MARGIN_Y;
+
+        const centerAx = posA.x + szA.width / 2;
+        const centerAy = posA.y + szA.height / 2;
+        const centerBx = posB.x + szB.width / 2;
+        const centerBy = posB.y + szB.height / 2;
+
+        const dx = centerBx - centerAx;
+        const dy = centerBy - centerAy;
+
+        const overlapX = reqDistX - Math.abs(dx);
+        const overlapY = reqDistY - Math.abs(dy);
+
+        if (overlapX > 0 && overlapY > 0) {
+          hadCollision = true;
+          if (overlapX <= overlapY) {
+            const shift = Math.ceil((overlapX + 20) / 20) * 20;
+            if (dx >= 0) {
+              posB.x += shift;
+            } else {
+              posA.x += shift;
+            }
+          } else {
+            const shift = Math.ceil((overlapY + 20) / 20) * 20;
+            if (dy >= 0) {
+              posB.y += shift;
+            } else {
+              posA.y += shift;
+            }
+          }
+        }
       }
     }
+
+    if (!hadCollision) break;
   }
 
   return finalPositions;

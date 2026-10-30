@@ -242,121 +242,138 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Formatear Reporte Final
+  // Cálculo de Puntuación de Salud Arquitectónica (0 - 100)
+  // ─────────────────────────────────────────────────────────────────────────────
+  let score = 100;
+  if (totalMalformedAttrs > 0) score -= Math.min(30, totalMalformedAttrs * 4);
+  if (components.length > 1) score -= 15;
+  if (orphanClasses.length > 0) score -= Math.min(20, orphanClasses.length * 10);
+  if (totalMethods === 0) score -= 15;
+  if (relIssues.length > 0) score -= Math.min(15, relIssues.length * 5);
+  if (complexityIssues.length > 0) score -= 10;
+  score = Math.max(15, score);
+
+  const healthStatus =
+    score >= 85
+      ? (isEn ? 'Healthy (Production-ready)' : 'Saludable (Listo para producción)')
+      : score >= 60
+      ? (isEn ? 'Needs Attention' : 'Requiere Atención')
+      : (isEn ? 'Critical (Action Required)' : 'Crítico (Atención Inmediata)');
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Formatear Reporte Final en Markdown Ejecutivo
   // ─────────────────────────────────────────────────────────────────────────────
   const output: string[] = [];
 
   if (isEn) {
-    output.push('AUDIT REPORT — OOAD & UML METAMODEL QUALITY');
-    output.push('====================================================');
-    output.push(
-      `Analyzed: ${classes.length} classes, ${associations.length} associations, ${generalizations.length} generalizations.`
-    );
+    output.push('### AUDIT REPORT — OOAD & UML METAMODEL QUALITY');
+    output.push(`**Overall Health**: **${score}/100** — *${healthStatus}*`);
+    output.push(`**Analyzed elements**: ${classes.length} classes, ${associations.length} associations, ${generalizations.length} generalizations.`);
     output.push('');
 
-    output.push('1. STRUCTURAL COHESION & DOMAINS:');
+    output.push('#### 1. Structural Cohesion & Domains');
     if (domainIssues.length === 0) {
-      output.push('  All classes are properly connected in a unified cohesive graph.');
+      output.push('• All classes are properly connected in a unified cohesive graph.');
     } else {
-      for (const iss of domainIssues) output.push(`  ${iss}`);
+      for (const iss of domainIssues) output.push(`• ${iss}`);
     }
     output.push('');
 
-    output.push('2. ATTRIBUTE INTEGRITY & DATA QUALITY:');
+    output.push('#### 2. Attribute Integrity & Data Quality');
     if (attrIssues.length === 0) {
-      output.push('  All attributes have clean names and standard types without duplication.');
+      output.push('• All attributes have clean names and standard types without duplication.');
     } else {
-      output.push(`  Detected ${totalMalformedAttrs} malformed or duplicate attributes:`);
+      output.push(`• Detected ${totalMalformedAttrs} malformed or duplicate attributes:`);
       for (const iss of attrIssues) output.push(`  - ${iss}`);
     }
     output.push('');
 
-    output.push('3. BEHAVIOR & DOMAIN COMPLETENESS:');
-    for (const iss of behaviorIssues) output.push(`  ${iss}`);
+    output.push('#### 3. Behavior & Encapsulation (OOAD)');
+    for (const iss of behaviorIssues) output.push(`• ${iss}`);
     output.push('');
 
-    output.push('4. RELATIONSHIPS & MULTIPLICITIES:');
+    output.push('#### 4. Relationships & Multiplicities');
     if (relIssues.length === 0) {
-      output.push('  All associations define explicit multiplicities on both ends.');
+      output.push('• All associations define explicit multiplicities on both ends.');
     } else {
-      for (const iss of relIssues) output.push(`  - ${iss}`);
+      for (const iss of relIssues) output.push(`• ${iss}`);
     }
 
     if (complexityIssues.length > 0) {
       output.push('');
-      output.push('5. COMPLEXITY & RESPONSIBILITY:');
-      for (const iss of complexityIssues) output.push(`  - ${iss}`);
+      output.push('#### 5. Complexity & Single Responsibility');
+      for (const iss of complexityIssues) output.push(`• ${iss}`);
     }
 
     output.push('');
-    output.push('RECOMMENDED ARCHITECTURAL ACTIONS:');
+    output.push('#### Recommended Architectural Actions');
+    let actionIdx = 1;
     if (totalMalformedAttrs > 0) {
-      output.push('  Clean up type-leaked attributes to prevent compile errors during Spring Boot export.');
+      output.push(`${actionIdx++}. **[High Priority]** Clean up type-leaked attributes to prevent compile errors during Spring Boot export.`);
     }
     if (components.length > 1) {
-      output.push('  Connect disjoint subgraphs with a business transaction class or separate into separate diagrams.');
+      output.push(`${actionIdx++}. **[High Priority]** Connect disjoint subgraphs with a business transaction class or separate into distinct diagrams.`);
     }
     if (totalMethods === 0) {
-      output.push('  Add domain methods (e.g. calculateTotal(), bookTicket()) to overcome anemic classes.');
+      output.push(`${actionIdx++}. **[Medium Priority]** Add domain methods (e.g. calculateTotal(), bookTicket()) to overcome anemic classes.`);
     }
     if (totalMalformedAttrs === 0 && components.length <= 1 && totalMethods > 0) {
-      output.push('  The diagram demonstrates solid OOAD cohesion and structural integrity.');
+      output.push(`1. The diagram demonstrates solid OOAD cohesion and structural integrity.`);
     }
   } else {
-    output.push('INFORME DE AUDITORÍA — CALIDAD OOAD Y METAMODELO UML');
-    output.push('====================================================');
-    output.push(
-      `Análisis: ${classes.length} clases, ${associations.length} asociaciones, ${generalizations.length} herencias.`
-    );
+    output.push('### Auditoría Arquitectónica del Dominio (Calidad OOAD y UML)');
+    output.push(`**Salud del Modelo**: **${score}/100** — *${healthStatus}*`);
+    output.push(`**Elementos analizados**: ${classes.length} clases, ${associations.length} asociaciones, ${generalizations.length} herencias.`);
     output.push('');
 
-    output.push('1. COHESIÓN ESTRUCTURAL Y DOMINIOS:');
+    output.push('#### 1. Cohesión Estructural y Dominios');
     if (domainIssues.length === 0) {
-      output.push('  Todas las clases están conectadas coherentemente en un único grafo unificado.');
+      output.push('• Todas las clases están conectadas coherentemente en un único grafo unificado.');
     } else {
-      for (const iss of domainIssues) output.push(`  ${iss}`);
+      for (const iss of domainIssues) output.push(`• ${iss}`);
     }
     output.push('');
 
-    output.push('2. INTEGRIDAD DE ATRIBUTOS Y CALIDAD DE DATOS:');
+    output.push('#### 2. Integridad de Atributos y Calidad de Datos');
     if (attrIssues.length === 0) {
-      output.push('  Todos los atributos presentan nombres limpios y tipos válidos sin duplicados.');
+      output.push('• Todos los atributos presentan nombres limpios y tipos válidos sin duplicados.');
     } else {
-      output.push(`  Se detectaron ${totalMalformedAttrs} atributos malformados o duplicados:`);
+      output.push(`• Se detectaron ${totalMalformedAttrs} atributos malformados o duplicados:`);
       for (const iss of attrIssues) output.push(`  - ${iss}`);
     }
     output.push('');
 
-    output.push('3. COMPORTAMIENTO Y COMPLETITUD OOAD:');
-    for (const iss of behaviorIssues) output.push(`  ${iss}`);
+    output.push('#### 3. Comportamiento y Completitud OOAD');
+    for (const iss of behaviorIssues) output.push(`• ${iss}`);
     output.push('');
 
-    output.push('4. CALIDAD DE RELACIONES Y MULTIPLICIDADES:');
+    output.push('#### 4. Calidad de Relaciones y Multiplicidades');
     if (relIssues.length === 0) {
-      output.push('  Todas las asociaciones cuentan con multiplicidades explícitas en ambos extremos.');
+      output.push('• Todas las asociaciones cuentan con multiplicidades explícitas en ambos extremos.');
     } else {
-      for (const iss of relIssues) output.push(`  - ${iss}`);
+      for (const iss of relIssues) output.push(`• ${iss}`);
     }
 
     if (complexityIssues.length > 0) {
       output.push('');
-      output.push('5. COMPLEJIDAD Y RESPONSABILIDAD:');
-      for (const iss of complexityIssues) output.push(`  - ${iss}`);
+      output.push('#### 5. Complejidad y Responsabilidad Única');
+      for (const iss of complexityIssues) output.push(`• ${iss}`);
     }
 
     output.push('');
-    output.push('ACCIONES ARQUITECTÓNICAS RECOMENDADAS:');
+    output.push('#### Plan de Acción Arquitectónico Recomendado');
+    let actionIdx = 1;
     if (totalMalformedAttrs > 0) {
-      output.push('  Sanitizar los atributos con tipo incrustado para evitar errores de compilación al exportar a Spring Boot.');
+      output.push(`${actionIdx++}. **[Prioridad Alta]** Sanitizar los atributos con tipo incrustado para evitar errores de compilación al exportar a Spring Boot.`);
     }
     if (components.length > 1) {
-      output.push('  Conectar los subgrafos desconectados con la entidad transaccional integradora o dividirlos en diagramas separados.');
+      output.push(`${actionIdx++}. **[Prioridad Alta]** Conectar los subgrafos desconectados con la entidad transaccional integradora o dividirlos en diagramas separados.`);
     }
     if (totalMethods === 0) {
-      output.push('  Superar el modelo anémico dotando a las entidades principales de métodos de negocio (ej. calcularCosto(), reservar()).');
+      output.push(`${actionIdx++}. **[Diseño OOAD]** Superar el modelo anémico dotando a las entidades principales de métodos de negocio (ej. calcularCosto(), reservar()).`);
     }
     if (totalMalformedAttrs === 0 && components.length <= 1 && totalMethods > 0) {
-      output.push('  El modelo exhibe solidez estructural y alta cohesión según principios OOAD.');
+      output.push(`1. El modelo exhibe solidez estructural y alta cohesión según principios OOAD.`);
     }
   }
 

@@ -36,6 +36,18 @@ export function resolveDiagramFactualQuery(
   const rawNorm = normalizeStr(userQuery);
   const isEn = language === 'en' || /\b(?:how many|what classes|list attributes|where does)\b/i.test(userQuery);
 
+  // Si la instrucción es una acción imperativa de modelado (crear, agregar, modificar, eliminar),
+  // NUNCA debe ser tratada como consulta factual de lectura.
+  const isImperativeAction =
+    /\b(?:cre[aá]|crear|agreg[aá]|agregar|a[ñn]ad[eé]|a[ñn]adir|dise[ñn][aá]|model[aá]|constru[yí]|arm[aá]|incorpor[aá]|insert[aá]|borr[aá]|elimin[aá]|quit[aá]|conect[aá]|vincul[aá]|relacion[aá]|cambi[aá]|modific[aá]|renombr[aá]|add|create|make|build|insert|delete|remove|connect|link|change|modify)\b/i.test(
+      rawNorm
+    ) &&
+    !/^(?:c[oó]mo\s+(?:se\s+)?|qu[eé]\s+|how\s+to|what\s+is|can\s+you\s+explain|por\s*qu[eé])/i.test(rawNorm);
+
+  if (isImperativeAction) {
+    return null;
+  }
+
   const classes: any[] = Array.isArray(diagram.classes) ? diagram.classes : [];
   const associations: any[] = Array.isArray(diagram.associations) ? diagram.associations : [];
   const generalizations: any[] = Array.isArray(diagram.generalizations) ? diagram.generalizations : [];
@@ -190,11 +202,13 @@ export function resolveDiagramFactualQuery(
   //     "Cuantos atributos tiene la clase Viaje?",
   //     "Lista textualmente los atributos de la clase Pasajero, con su tipo, sin interpretar nada."
   // ─────────────────────────────────────────────────────────────────────────────
-  const isAttrOrMethodQuery =
-    /(?:atributo|campo|propiedad|metodo|operaci[oó]n|attribute|field|property|method|operation)/i.test(
+  const isInspectionAsking =
+    /(?:qu[eé]|cu[aá]les?|cu[aá]ntos?|lista(?:r)?|mostra(?:r)?|dame|decime|what|which|how\s+many|list|show|tell\s+me)/i.test(
       rawNorm
-    ) ||
-    /^(?:lista(?:r)?|mostra(?:r)?|cu[aá]les?\s+son|cu[aá]ntos?)\s+(?:los\s+)?(?:atributos|metodos|campos)/i.test(
+    );
+  const isAttrOrMethodQuery =
+    isInspectionAsking &&
+    /(?:atributo|campo|propiedad|metodo|operaci[oó]n|attribute|field|property|method|operation)/i.test(
       rawNorm
     );
 

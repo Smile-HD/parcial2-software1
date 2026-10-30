@@ -525,10 +525,35 @@ function parseRealXmi21(xmiRoot: any, model: XmiModel): void {
       }
 
       const rawType = attr['@_type'] || attr['type']?.['@_xmi:idref'] || attr['type']?.['@_idref'] || attr['type']?.['@_href']?.replace(/^#/, '') || (typeof attr['type'] === 'string' ? attr['type'] : undefined);
+      const rawName = String(attr['@_name'] || attr['name'] || 'unnamed');
+
+      // Sanear en la ingesta: separar nombre de tipo incrustado (ej. "fechaSalida:date" -> "fechaSalida", "Date")
+      let cleanName = rawName.trim();
+      let effectiveType = resolveType(rawType) ?? rawType ?? 'String';
+
+      if (cleanName.includes(':')) {
+        const colonParts = cleanName.split(':').map((p) => p.trim()).filter(Boolean);
+        if (colonParts.length > 0) {
+          cleanName = colonParts[0]!;
+          const embeddedType = colonParts[colonParts.length - 1];
+          if (embeddedType && (effectiveType === 'String' || !effectiveType)) {
+            const mapped = resolveType(embeddedType);
+            effectiveType = mapped ?? embeddedType;
+          }
+        }
+      }
+      cleanName = cleanName.replace(/^[-+#~]\s*/, '').trim();
+      if (!cleanName) cleanName = 'unnamed';
+
+      // Si el nombre resultante es exclusivamente una palabra reservada de tipo y ya hay atributos en la clase, ignorar
+      if (/^(string|int|float|boolean|date|type)$/i.test(cleanName) && classAttrs.length > 0) {
+        continue;
+      }
+
       classAttrs.push({
         id: attrId || randomUUID(),
-        name: attr['@_name'] || attr['name'] || 'unnamed',
-        type: resolveType(rawType) ?? rawType ?? 'String',
+        name: cleanName,
+        type: effectiveType,
         visibility: attr['@_visibility'] || '+',
         isStatic: attr['@_isStatic'] === 'true',
         isDerived: attr['@_isDerived'] === 'true',

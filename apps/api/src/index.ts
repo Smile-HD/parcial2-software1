@@ -783,9 +783,22 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       reply.raw.write(`event: user_message\ndata: ${JSON.stringify(message)}\n\n`);
     }
 
-    // Si es canal directo, menciona a Amongus o es un comando slash (/), generamos respuesta contextual del asistente
+    // Si es canal directo, menciona a Amongus, es un comando slash (/), es una orden explícita de modelado o el usuario está solo en la sala, generamos respuesta del asistente
     const isSlashCommand = parsed.data.content.trim().startsWith('/');
-    if (parsed.data.channelType === 'direct_bot' || parsed.data.content.includes('@Amongus') || isSlashCommand) {
+    const isExplicitModelingCommand =
+      /^(?:por\s+favor\s+)?(?:cre[aá]|agreg[aá]|a[ñn]ad[eé]|dise[ñn][aá]|model[aá]|constru[yí]|arm[aá]|borr[aá]|elimin[aá]|quit[aá]|conect[aá]|vincul[aá]|relacion[aá]|add|create|make|build|delete|remove|connect)\b/i.test(
+        parsed.data.content.trim()
+      );
+    const isAloneInRoom = !parsed.data.peerUsers || parsed.data.peerUsers.length <= 1;
+
+    const shouldBotParticipate =
+      parsed.data.channelType === 'direct_bot' ||
+      parsed.data.content.includes('@Amongus') ||
+      isSlashCommand ||
+      isExplicitModelingCommand ||
+      isAloneInRoom;
+
+    if (shouldBotParticipate) {
       const isEn = parsed.data.language === 'en';
       let deltaId: string | null = null;
       let delta: import('@app/core').Delta | null = null;

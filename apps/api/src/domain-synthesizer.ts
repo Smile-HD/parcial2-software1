@@ -422,8 +422,8 @@ export function expandSemanticDomainToDelta(
         }
         name = name.replace(/^[-+*#~]\s*/, '').replace(/\s+/g, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
         if (!name) return;
-        // Ignorar placeholders literales del esquema como "type", "string", "int", "attribute"
-        if (/^(type|tipo|string|int|float|boolean|attribute|attr)$/i.test(name)) return;
+        // Ignorar placeholders literales del esquema como "type", "string", "int", "attribute", "date"
+        if (/^(type|tipo|string|int|float|boolean|attribute|attr|date)$/i.test(name)) return;
         if (name.toLowerCase() === 'name' && type.toLowerCase() === 'string' && attrList.length > 3) return;
 
         const rawType = type.toLowerCase().trim().replace(/\[\]$/, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
