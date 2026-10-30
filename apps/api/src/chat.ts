@@ -5,8 +5,8 @@ import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-cata
 import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
 import { auditDiagramOOAD } from './diagram-auditor.js';
 
-export const DEFAULT_LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 280;
-export const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 60000;
+export const DEFAULT_LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 2000;
+export const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 180000;
 
 export const ChatChannelTypeSchema = z.enum(['group', 'direct_bot']);
 export type ChatChannelType = z.infer<typeof ChatChannelTypeSchema>;
@@ -654,7 +654,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
           'You are Amongus, a senior software architecture tutor.',
           `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
           domainGrounding,
-          'Suggest strictly 2 or 3 essential missing entities (max 3). STOP immediately after entity 3. DO NOT output item 4.',
+          'Suggest exactly 2 or 3 essential missing entities or relationships (max 3) with a concise 2-line explanation each.',
           'CRITICAL OOAD ARCHITECTURE RULES:',
           '- Structure every suggestion in this exact order: 1. Class name -> 2. Attributes -> 3. Relationships -> 4. Concise explanation.',
           '- Example format:',
@@ -666,13 +666,13 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
           '- In inheritance, clearly state who is subclass and who is superclass. Subclasses inherit attributes and do not repeat them.',
           '- NEVER suggest duplicate relationships between classes that are already connected.',
           '- FORMAT: Always separate each numbered entity suggestion with a blank line (double newline).',
-          '- STOP STRICTLY AFTER 3 ENTITIES. Do not write entity 4.',
+          'Provide clear architectural reasoning without code blocks or JSON, ensuring the reply is complete and concise.',
         ].filter(Boolean).join('\n')
       : [
           'Sos Amongus, tutor senior de arquitectura de software.',
           `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
           domainGrounding,
-          'Sugerí estrictamente 2 o 3 entidades clave faltantes (máximo 3). TERMINÁ inmediatamente después de la entidad 3. NUNCA escribas la entidad 4.',
+          'Sugerí exactamente 2 o 3 entidades clave faltantes o relaciones clave (máximo 3) con una explicación concisa de 2 líneas cada una.',
           'REGLAS CRÍTICAS DE ARQUITECTURA OOAD:',
           '- Estructurá cada sugerencia en este orden exacto: 1. Clase -> 2. Atributos -> 3. Relaciones -> 4. Explicación concisa.',
           '- Formato de ejemplo:',
@@ -684,7 +684,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
           '- En herencia, especificá claramente quién es la subclase y quién la superclase. Las subclases heredan y no repiten atributos.',
           '- NUNCA sugieras relaciones redundantes entre clases que ya están conectadas.',
           '- FORMATO: Separá SIEMPRE cada entidad sugerida con un renglón en blanco (doble salto de línea).',
-          '- TERMINÁ ESTRICTAMENTE DESPUÉS DE LA TERCERA ENTIDAD. No escribas la entidad 4.',
+          'Explicá claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON. Sé directo y asegurá que tu respuesta esté completa.',
         ].filter(Boolean).join('\n');
 
     let suggestChunks = '';
@@ -701,7 +701,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
           { role: 'system', content: suggestPrompt },
           { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
         ],
-        { timeoutMs: Math.min(DEFAULT_LLM_TIMEOUT_MS, 30000), maxTokens: Math.min(DEFAULT_LLM_MAX_TOKENS, 260), onChunk: wrappedSuggestChunk }
+        { timeoutMs: DEFAULT_LLM_TIMEOUT_MS, maxTokens: DEFAULT_LLM_MAX_TOKENS, onChunk: wrappedSuggestChunk }
       );
       return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestResult), existingNames).trim() };
     } catch {
@@ -1040,7 +1040,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
       if (isExplicitModelingRequest) {
         try {
           const recentHistory = (chatHistory || [])
-            .slice(-2)
+            .slice(-4)
             .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
             .join('\n');
           const synthesisPrompt = [
