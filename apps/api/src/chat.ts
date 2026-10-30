@@ -598,8 +598,7 @@ export async function processUnifiedAmongusTurn(
 
 function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = []): string {
   if (!text) return text;
-  const fourthItemMatch = text.search(/(?:\r?\n|^)\s*4[\.\)\-]\s+/);
-  let cleaned = fourthItemMatch !== -1 ? text.slice(0, fourthItemMatch).trim() : text.trim();
+  let cleaned = text.trim();
 
   if (existingClassNames.length >= 2) {
     const blocks = cleaned.split(/\n\s*\n/);
@@ -646,45 +645,47 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
       };
     }
 
+    const classCount = diagram.classes.length;
+    const existingNames = diagram.classes.map((c: any) => c.name);
     const domainMatch = matchCanonicalDomain(diagramContext);
     const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
 
     const suggestPrompt = isEn
       ? [
           'You are Amongus, a senior software architecture tutor.',
-          `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
+          `CURRENT CANVAS CONTEXT (${classCount} classes):\n${diagramContext}`,
           domainGrounding,
-          'Suggest exactly 2 or 3 essential missing entities or relationships (max 3) with a concise 2-line explanation each.',
-          'CRITICAL OOAD ARCHITECTURE RULES:',
-          '- Structure every suggestion in this exact order: 1. Class name -> 2. Attributes -> 3. Relationships -> 4. Concise explanation.',
-          '- Example format:',
-          '  1. **Clase "ConsultaVeterinaria"** (atributos: [fecha: date, diagnostico: string]) (relaciones: [Asociación con Paciente, Asociación con Medico]) - Explicación: Registra la atención médica entre paciente y veterinario.',
-          '- Every suggested entity MUST include 2 to 3 realistic domain attributes with clean types. NEVER suggest an empty class.',
-          '- DEFAULT TO DIRECT RELATIONSHIPS: Most relationships are plain associations, compositions, or aggregations. Do NOT create an intermediate class for simple 1:1 or 1:N relations.',
-          '- INTERMEDIATE ASSOCIATION CLASSES: Use an association class ONLY when there is a true Many-to-Many (M:N) relationship that genuinely carries its own link attributes (e.g. Boleto between Pasajero and Vuelo, or Inscripcion between Estudiante and Curso). For relations without link attributes, use direct links without intermediate classes.',
-          '- NEVER CONCATENATE CLASS NAMES: Every class name must be an autonomous real-world domain noun (e.g. Boleto, Aeronave, CheckIn). NEVER invent compound names by gluing existing classes together (e.g. NEVER "VueloPasajero" or "AeropuertoAerolinea").',
-          '- In inheritance, clearly state who is subclass and who is superclass. Subclasses inherit attributes and do not repeat them.',
-          '- NEVER suggest duplicate relationships between classes that are already connected.',
-          '- FORMAT: Always separate each numbered entity suggestion with a blank line (double newline).',
-          'Provide clear architectural reasoning without code blocks or JSON, ensuring the reply is complete and concise.',
+          'CRITICAL ARCHITECTURAL RULES (AVOID OVER-ENGINEERING & COMBINATORIAL BLOAT):',
+          '- PROPOSAL LIMIT (MAX 5 NEW CLASSES): In this suggestion, propose AT MOST 5 new classes (minimum 1 if essential entities are missing, maximum 5). NEVER propose more than 5 classes at once.',
+          '- IF DOMAIN IS ALREADY COVERED: If the existing classes already represent the core domain concepts and no essential entity is truly missing, DO NOT invent superfluous classes or artificial intermediaries! In that case, propose ZERO new classes and focus EXCLUSIVELY on refining existing classes (attributes and methods).',
+          '- PRIORITIZE REFINING EXISTING CLASSES (ATTRIBUTES & METHODS):',
+          '  1. ADD MISSING ATTRIBUTES: Suggest essential missing domain attributes on existing classes (e.g. status, seatNumber, basePrice, dateOfBirth).',
+          '  2. REMOVE OR CLEAN MALFORMED ATTRIBUTES: Suggest removing redundant attributes, duplicate fields, or type-leaked names (e.g. clean "name:string").',
+          '  3. ADD BUSINESS METHODS: Suggest essential business operations to overcome an anemic domain model (e.g. calculateTotal(), bookSeat(), cancel()).',
+          '- STRICT ANTI-CHIMERA RULE: NEVER invent compound class names by concatenating two existing class names (e.g. NEVER "AirportAirline", "FlightPassenger", "PaymentInvoice"). Relationships between existing entities must be direct associations, not artificial intermediate classes.',
+          '- FORMAT: Structure your suggestion with clear, direct sections:',
+          '  1. **New Essential Entities** (only if truly missing, at most 5 classes; omit if none needed)',
+          '  2. **Attributes to Add or Remove in Existing Classes** (key attributes to add or cleanup)',
+          '  3. **Key Business Methods** (operations to give life to entities)',
+          'Provide clear, concise architectural reasoning without code blocks or JSON.',
         ].filter(Boolean).join('\n')
       : [
           'Sos Amongus, tutor senior de arquitectura de software.',
-          `ESTADO ACTUAL DEL LIENZO:\n${diagramContext}`,
+          `ESTADO ACTUAL DEL LIENZO (${classCount} clases):\n${diagramContext}`,
           domainGrounding,
-          'Sugerí exactamente 2 o 3 entidades clave faltantes o relaciones clave (máximo 3) con una explicación concisa de 2 líneas cada una.',
-          'REGLAS CRÍTICAS DE ARQUITECTURA OOAD:',
-          '- Estructurá cada sugerencia en este orden exacto: 1. Clase -> 2. Atributos -> 3. Relaciones -> 4. Explicación concisa.',
-          '- Formato de ejemplo:',
-          '  1. **Clase "ConsultaVeterinaria"** (atributos: [fecha: date, diagnostico: string]) (relaciones: [Asociación con Paciente, Asociación con Medico]) - Explicación: Registra la atención médica entre un paciente y su médico.',
-          '- Cada entidad sugerida DEBE incluir 2 a 3 atributos de dominio con tipos. NUNCA sugieras clases vacías sin atributos.',
-          '- PRIORIZÁ RELACIONES DIRECTAS: La gran mayoría de referencias son asociaciones simples, composiciones o agregaciones directas. NUNCA crees clases intermedias para relaciones 1:1 o 1:N.',
-          '- CLASES DE ASOCIACIÓN INTERMEDIAS: Usá clase de asociación ÚNICAMENTE cuando exista una relación muchos a muchos (M:N) que realmente posea atributos propios del enlace (ej: Boleto entre Pasajero y Vuelo con asiento/precio, o Inscripción entre Estudiante y Curso con fecha/nota). Para relaciones sin atributos de enlace, usá relaciones directas sin clase intermedia.',
-          '- NUNCA CONCATENES NOMBRES DE CLASES: Todo nombre de clase debe ser un sustantivo autónomo y conceptual del dominio (ej: Boleto, Aeronave, Tripulación). NUNCA inventes nombres pegando clases existentes (ej: NUNCA "VueloPasajero" ni "AeropuertoAerolinea").',
-          '- En herencia, especificá claramente quién es la subclase y quién la superclase. Las subclases heredan y no repiten atributos.',
-          '- NUNCA sugieras relaciones redundantes entre clases que ya están conectadas.',
-          '- FORMATO: Separá SIEMPRE cada entidad sugerida con un renglón en blanco (doble salto de línea).',
-          'Explicá claramente el por qué de cada sugerencia desde la perspectiva OOAD, sin bloques de código ni JSON. Sé directo y asegurá que tu respuesta esté completa.',
+          'REGLAS CRÍTICAS DE ARQUITECTURA (EVITAR SOBREINGENIERÍA Y ALUCINACIONES COMBINATORIAS):',
+          '- LÍMITE DE LA PROPUESTA (MÁXIMO 5 CLASES NUEVAS): En esta sugerencia podés proponer como MÁXIMO 5 clases nuevas (mínimo 1 si faltan conceptos clave, máximo 5). NUNCA propongas más de 5 clases en una sola respuesta.',
+          '- SI EL DOMINIO YA ESTÁ CUBIERTO: Si las clases existentes ya representan los conceptos nucleares del dominio y no falta ninguna entidad esencial, ¡NO inventes clases superfluas ni intermediarios artificiosos solo para rellenar! En ese caso, proponé CERO clases nuevas y dedicate EXCLUSIVAMENTE a enriquecer atributos y métodos de las clases existentes.',
+          '- PRIORIZÁ ENRIQUECER Y DEPURAR LAS CLASES EXISTENTES (ATRIBUTOS Y MÉTODOS):',
+          '  1. AUMENTAR ATRIBUTOS FALTANTES: Detectá clases existentes a las que les falten atributos clave del dominio (ej. agregar "estado", "asiento", "precioBase", "fechaEmision") y sugerí incorporarlos.',
+          '  2. QUITAR O SANEAR ATRIBUTOS: Sugerí quitar o limpiar atributos redundantes, duplicados o malformados (ej. corregir "nombre:string" o eliminar campos innecesarios).',
+          '  3. MÉTODOS DE NEGOCIO: Sugerí métodos clave en las entidades principales para superar el modelo de dominio anémico (ej. calcularTotal(), reservar(), emitirBoleto()).',
+          '- REGLA ESTRICTA ANTI-QUIMERAS: NUNCA inventes nombres combinando o fusionando clases existentes (ej: NUNCA "AeropuertoAerolinea", "VueloPasajero", "PagoFactura"). Si dos entidades interactúan, usá una asociación directa simple (1..* o *..*), NUNCA una clase intermedia artificiosa.',
+          '- FORMATO DE SUGERENCIAS:',
+          '  1. **Nuevas Entidades Clave** (sólo si realmente faltan en el negocio, máximo 5 clases; omitir esta sección si el dominio ya está cubierto)',
+          '  2. **Atributos a Aumentar o Quitar en Clases Existentes** (atributos clave a sumar o sanear)',
+          '  3. **Métodos de Negocio Clave** (operaciones de negocio para dotar de comportamiento al modelo)',
+          'Explicá el por qué desde la perspectiva de diseño OOAD limpio, sin bloques de código ni JSON. Sé directo y conciso.',
         ].filter(Boolean).join('\n');
 
     let suggestChunks = '';
@@ -692,8 +693,6 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
       suggestChunks += chunk;
       onChunk?.(chunk);
     };
-
-    const existingNames = (diagram.classes || []).map((c: any) => c.name);
 
     try {
       const suggestResult = await llm.chat(
