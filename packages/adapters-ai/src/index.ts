@@ -10,6 +10,7 @@
  */
 import {
   DeltaSchema,
+  applyDelta,
   type AssociationDelta,
   type ClassDelta,
   type Dependency,
@@ -32,7 +33,15 @@ export * from './stt.js';
 export * from './retry-repairing-llm.js';
 export * from './vision.js';
 export * from './repair.js';
+export * from './normalizer.js';
 import { repairModelIdentifiers } from './repair.js';
+import {
+  normalizeUmlUtterance,
+  sanitizeUmlType,
+  inferAttributeType,
+  splitCompoundUtterance,
+  extractExclusionClasses,
+} from './normalizer.js';
 
 // ── helpers compartidos ────────────────────────────────────────────────────
 
@@ -57,45 +66,6 @@ function deltaBase(diagram: Diagram): { id: string; diagramId: string; timestamp
 
 const WHOLE_DESIGN_REQUEST = /\b(generate|genera|generá|dise[ñn]a|dise[ñn]o)\b[\s\S]*\b(design|dise[ñn]o|full|completo|complete|system|sistema|library|biblioteca)\b/i;
 
-// ── normalizador determinista de typos UML en español ───────────────────────────
-
-export function normalizeUmlUtterance(raw: string): string {
-  let s = raw;
-  s = s.replace(/\bagrga\b/gi, 'agrega');
-  s = s.replace(/\b(?:calse|clse)\b/gi, 'clase');
-  s = s.replace(/\b(?:craer|creaer|crrea|crer)\b/gi, 'crear');
-  s = s.replace(/\b(?:llamda|llamd[ao])\b/gi, 'llamada');
-  s = s.replace(/\b(?:atriutos?|atribtos?|atibutos?|atribs?|atrivutos?)\b/gi, 'atributos');
-  s = s.replace(/\b(?:nomvre|nobmre)\b/gi, 'nombre');
-  s = s.replace(/\b(?:elmina)\b/gi, 'elimina');
-  s = s.replace(/\b(?:brra)\b/gi, 'borra');
-  s = s.replace(/\b(?:fctura|fatura)\b/gi, 'Factura');
-  s = s.replace(/\b(?:nimero)\b/gi, 'numero');
-  s = s.replace(/\b(?:improte)\b/gi, 'importe');
-  s = s.replace(/\b(?:totl)\b/gi, 'total');
-  s = s.replace(/\b(?:usario|usuaio)\b/gi, 'Usuario');
-  s = s.replace(/\b(?:poducto|prodcuto)\b/gi, 'Producto');
-  s = s.replace(/\b(?:clente)\b/gi, 'Cliente');
-  return s;
-}
-
-export function inferAttributeType(attrName: string): string {
-  const lower = attrName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (/^(?:cantidad|stock|edad|ano|anio|capacidad|legajo|numero|orden|piso|habitacion|telefono|codigo|id|count)$/.test(lower)) {
-    return 'int';
-  }
-  if (/^(?:precio|total|subtotal|monto|saldo|costo|peso|altura|cargahoraria|importe|tasa|sueldo|salario|promedio)$/.test(lower)) {
-    return 'float';
-  }
-  if (/^(?:fecha|fechacreacion|fechanacimiento|vencimiento|creadoen|actualizadoen|date|datetime|timestamp)$/.test(lower)) {
-    return 'date';
-  }
-  if (/^(?:activo|habilitado|esadmin|disponible|pagado|estado|isadmin|active|enabled)$/.test(lower)) {
-    return 'boolean';
-  }
-  return 'string';
-}
-
 // ── FakeLlm ────────────────────────────────────────────────────────────────
 
 /**
@@ -104,12 +74,53 @@ export function inferAttributeType(attrName: string): string {
  */
 export class FakeLlm implements LlmPort {
   async interpret(rawUtterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
+    const refused = (reason: string): LlmResult => ({ kind: 'refused', reason });
     const utterance = normalizeUmlUtterance(rawUtterance);
     if (WHOLE_DESIGN_REQUEST.test(utterance)) {
       return {
         kind: 'refused',
         reason: 'I edit an existing model on explicit instruction; I do not generate whole designs.',
       };
+    }
+
+    // Multi-comando compuesto separado por ';' (ej. S5: "creá una clase Factura con numero, total y fecha; renombrá la clase Estudiante a Alumno; y borrá la clase Usuario")
+    const parts = splitCompoundUtterance(rawUtterance);
+    if (parts.length > 1) {
+      let runningIr: Diagram = currentIr;
+      const collectedDeltas: Delta[] = [];
+
+      for (const part of parts) {
+        const subResult = await this.interpret(part, _deltaJsonSchema, runningIr);
+        if (subResult.kind === 'delta') {
+          const val = subResult.value;
+          if (val.kind === 'batch') {
+            collectedDeltas.push(...val.deltas);
+            for (const d of val.deltas) {
+              const res = applyDelta(runningIr, d);
+              if (res.ok) {
+                runningIr = res.value;
+              }
+            }
+          } else {
+            collectedDeltas.push(val);
+            const res = applyDelta(runningIr, val);
+            if (res.ok) {
+              runningIr = res.value;
+            }
+          }
+        } else {
+          return refused(`Part "${part}" failed: ${subResult.reason}`);
+        }
+      }
+
+      if (collectedDeltas.length > 0) {
+        const combinedBatch: Delta = {
+          kind: 'batch',
+          ...deltaBase(currentIr),
+          deltas: collectedDeltas,
+        };
+        return { kind: 'delta', value: combinedBatch };
+      }
     }
 
     // Unidad 9 — Heurísticas de adornos UML a partir de la elocución (opcional).
@@ -127,8 +138,6 @@ export class FakeLlm implements LlmPort {
       ...(isStatic !== undefined ? { isStatic } : {}),
       ...(isDerived !== undefined ? { isDerived } : {}),
     };
-
-    const refused = (reason: string): LlmResult => ({ kind: 'refused', reason });
 
     // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE.
     // Soporta orden directo ("agrega atributo X a Y"), orden con clase al inicio ("editame la tabla Y, agregale un atributo llamado X")
@@ -204,12 +213,16 @@ export class FakeLlm implements LlmPort {
           .filter((s) => s.length > 0);
 
         const memberDeltas: MemberDelta[] = [];
-        for (const item of items) {
-          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)$/i.exec(item);
+        for (let item of items) {
+          item = item.replace(/^(?:and|y|e)\s+/i, '').trim();
+          if (!item) continue;
+
+          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b)\s+([A-Za-z_][\w\s.]*)$/i.exec(item);
           if (typedMatch) {
             const rawAttrName = typedMatch[1]!.trim();
             const attrParts = rawAttrName.split(/\s+/);
             const camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+            const sanitizedType = sanitizeUmlType(typedMatch[2]!.trim(), camelName);
             memberDeltas.push({
               kind: 'member',
               op: 'addAttribute',
@@ -217,7 +230,7 @@ export class FakeLlm implements LlmPort {
               classId: create.classId,
               memberId: crypto.randomUUID(),
               name: camelName,
-              type: typedMatch[2]!,
+              type: sanitizedType,
               ...adornments,
             });
           } else {
@@ -252,7 +265,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 2. renombrar clase
-    const rename = /\b(?:rename|renombra|renombrá)\b[\s\S]*?\b(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+(?:to|a)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const rename = /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (rename) {
       const classId = classIdByName(currentIr, rename[1]!);
       if (classId === null) return refused(`Unknown class "${rename[1]}"`);
@@ -298,10 +311,30 @@ export class FakeLlm implements LlmPort {
       if (currentIr.classes.length === 0) {
         return refused('No classes to delete');
       }
+
+      // Detectar excepciones: "menos Libro y Autor", "excepto X", "salvo Y", "excluding Z"
+      const exceptMatch = /\b(?:menos|excepto|salvo|excluding|except)\s+([\s\S]+)$/i.exec(utterance);
+      let classesToDelete = currentIr.classes;
+      if (exceptMatch) {
+        const rawExceptions = exceptMatch[1]!;
+        const excludedWords = rawExceptions
+          .split(/\s*,\s*|\s+(?:and|y|o)\s+|\s+/i)
+          .map((w) => w.replace(/[^A-Za-z0-9_ñÑáéíóúÁÉÍÓÚ]/g, '').toLowerCase().trim())
+          .filter(Boolean);
+        const excludedSet = new Set(excludedWords);
+        classesToDelete = currentIr.classes.filter(
+          (cls) => !excludedSet.has(cls.name.toLowerCase())
+        );
+      }
+
+      if (classesToDelete.length === 0) {
+        return refused('No classes to delete after applying exceptions.');
+      }
+
       const batch: BatchDelta = {
         kind: 'batch',
         ...deltaBase(currentIr),
-        deltas: currentIr.classes.map((cls) => ({
+        deltas: classesToDelete.map((cls) => ({
           kind: 'class',
           op: 'delete',
           ...deltaBase(currentIr),

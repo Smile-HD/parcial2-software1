@@ -211,6 +211,8 @@ describe('FakeLlm', () => {
       expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'nombre', type: 'string' });
       expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'email', type: 'string' });
       expect(value.deltas?.[3]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'edad', type: 'string' });
+    });
+
     it('interprets class creation with attributes when keyword "atributos" is omitted (Bug 3)', async () => {
       const llm = new FakeLlm();
       const diagram = makeDiagram();
@@ -1398,5 +1400,131 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         expect(assocDelta.newAssociationClassId).toBe(receiptId);
       }
     });
+
+    it('interprets typo-heavy utterance "agrg una clse Empleado cn los atrbutos nbre, sueldo y feha de ingreso" (S1)', async () => {
+      const llm = new FakeLlm();
+      const result = await llm.interpret('agrg una clse Empleado cn los atrbutos nbre, sueldo y feha de ingreso', {}, makeDiagram());
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as any;
+        expect(batch.deltas[0].name).toBe('Empleado');
+        const attrNames = batch.deltas.slice(1).map((d: any) => d.name);
+        expect(attrNames).toContain('nombre');
+        expect(attrNames).toContain('sueldo');
+        expect(attrNames).toContain('fechaDeIngreso');
+      }
+    });
+
+    it('sanitizes invalid attribute types like banana and color to standard UML types (S2)', async () => {
+      const llm = new FakeLlm();
+      const result = await llm.interpret(
+        'crea una clase Venta con los atributos fechaDeVenta de tipo banana, monto de tipo numero raro, y porcentaje de tipo color',
+        {},
+        makeDiagram()
+      );
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as any;
+        expect(batch.deltas[0].name).toBe('Venta');
+        const memberDeltas = batch.deltas.slice(1);
+        const fechaAttr = memberDeltas.find((d: any) => d.name === 'fechaDeVenta');
+        expect(fechaAttr).toBeDefined();
+        // fechaDeVenta should fallback to date because banana is not a valid type and name contains fecha
+        expect(fechaAttr.type).toBe('date');
+
+        const montoAttr = memberDeltas.find((d: any) => d.name === 'monto');
+        expect(montoAttr).toBeDefined();
+        // numero raro -> int
+        expect(montoAttr.type).toBe('int');
+
+        const porcentajeAttr = memberDeltas.find((d: any) => d.name === 'porcentaje');
+        expect(porcentajeAttr).toBeDefined();
+        // color is invalid -> fallback to float for porcentaje
+        expect(porcentajeAttr.type).toBe('float');
+      }
+    });
+
+    it('preserves excluded classes when user asks to delete all except specific classes (S3)', async () => {
+      const llm = new FakeLlm();
+      const base = makeDiagram();
+      const testDiagram: Diagram = {
+        ...base,
+        classes: [
+          { id: '1', diagramId: base.id, name: 'Libro', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: false },
+          { id: '2', diagramId: base.id, name: 'Autor', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: false },
+          { id: '3', diagramId: base.id, name: 'Editorial', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: false },
+          { id: '4', diagramId: base.id, name: 'Prestamo', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: false },
+        ],
+      };
+
+      const result = await llm.interpret('borrá todas las clases del diagrama menos Libro y Autor', {}, testDiagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as any;
+        // Should only delete Editorial and Prestamo (2 classes), preserving Libro and Autor
+        expect(batch.deltas.length).toBe(2);
+        const deletedIds = batch.deltas.map((d: any) => d.classId);
+        expect(deletedIds).toContain('3');
+        expect(deletedIds).toContain('4');
+        expect(deletedIds).not.toContain('1');
+        expect(deletedIds).not.toContain('2');
+      }
+    });
+
+    it('interprets compound multi-action prompt separated by semicolons (S5)', async () => {
+      const llm = new FakeLlm();
+      const base = makeDiagram();
+      const estudianteId = crypto.randomUUID();
+      const usuarioId = crypto.randomUUID();
+      const testDiagram: Diagram = {
+        ...base,
+        classes: [
+          { id: estudianteId, diagramId: base.id, name: 'Estudiante', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: false },
+          { id: usuarioId, diagramId: base.id, name: 'Usuario', position: { x: 0, y: 0 }, attributes: [], methods: [], isAbstract: false },
+        ],
+      };
+
+      const prompt = 'creá una clase Factura con numero, total y fecha; renombrá la clase Estudiante a Alumno; y borrá la clase Usuario';
+      const result = await llm.interpret(prompt, {}, testDiagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as any;
+        // Actions:
+        // 1. Create Factura + 3 attributes (4 deltas)
+        // 2. Rename Estudiante to Alumno (1 delta)
+        // 3. Delete Usuario (1 delta)
+        expect(batch.deltas.length).toBe(6);
+
+        // 1. Factura
+        const createFactura = batch.deltas.find((d: any) => d.kind === 'class' && d.op === 'create');
+        expect(createFactura).toBeDefined();
+        expect(createFactura.name).toBe('Factura');
+
+        // Attributes
+        const attrNames = batch.deltas.filter((d: any) => d.kind === 'member').map((d: any) => d.name);
+        expect(attrNames).toContain('numero');
+        expect(attrNames).toContain('total');
+        expect(attrNames).toContain('fecha');
+
+        // 2. Rename
+        const renameDelta = batch.deltas.find((d: any) => d.kind === 'class' && d.op === 'rename');
+        expect(renameDelta).toBeDefined();
+        expect(renameDelta.classId).toBe(estudianteId);
+        expect(renameDelta.newName).toBe('Alumno');
+
+        // 3. Delete
+        const deleteDelta = batch.deltas.find((d: any) => d.kind === 'class' && d.op === 'delete');
+        expect(deleteDelta).toBeDefined();
+        expect(deleteDelta.classId).toBe(usuarioId);
+      }
+    });
   });
 });
+

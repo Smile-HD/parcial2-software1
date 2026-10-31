@@ -368,12 +368,18 @@ export function ChatPanel({
     }
   }, [safeMessages.length, activeProposal?.deltaId, visibleInterpreterError, interpreterRefusal, streamingBotMessage, isOpen]);
 
-  // Determinar la propuesta pendiente más reciente (prioriza activeProposal o el último mensaje del chat con delta pendiente)
+  // Determinar la propuesta pendiente más reciente (prioriza activeProposal o el último mensaje del chat con delta pendiente si es reciente)
   const pendingChatProposal = useMemo(() => {
+    const NOW = Date.now();
     for (let i = safeMessages.length - 1; i >= 0; i--) {
       const m = safeMessages[i];
       if (m?.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId)) {
-        return { deltaId: m.deltaId, delta: m.delta };
+        // Solo considerar como propuesta activa de previsualización si fue creada en los últimos 15 minutos
+        const msgTime = new Date(m.createdAt).getTime();
+        const isRecent = !isNaN(msgTime) && NOW - msgTime < 15 * 60 * 1000;
+        if (isRecent) {
+          return { deltaId: m.deltaId, delta: m.delta };
+        }
       }
     }
     return null;

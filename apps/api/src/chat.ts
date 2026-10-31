@@ -4,10 +4,14 @@ import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainMod
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
 import { auditDiagramOOAD } from './diagram-auditor.js';
-import { normalizeUmlUtterance } from '@app/adapters-ai';
+import {
+  normalizeUmlUtterance,
+  detectContradiction,
+  findClosestSlashCommand,
+} from '@app/adapters-ai';
 
 export const DEFAULT_LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 2000;
-export const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 180000;
+export const DEFAULT_LLM_TIMEOUT_MS = Math.max(120000, Number(process.env.LLM_TIMEOUT_MS) || 180000);
 
 export const ChatChannelTypeSchema = z.enum(['group', 'direct_bot']);
 export type ChatChannelType = z.infer<typeof ChatChannelTypeSchema>;
@@ -467,6 +471,16 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
+  // 00a2. Detección temprana de comandos contradictorios (S4: crear y borrar la misma clase a la vez)
+  const contradiction = detectContradiction(cleanContent);
+  if (contradiction.contradictory && contradiction.className) {
+    return {
+      replyContent: isEn
+        ? `Contradictory request detected: you asked to both create and delete the class "${contradiction.className}" in the same message. Please clarify which action you want to perform.`
+        : `Detecté una solicitud contradictoria: estás pidiendo crear y eliminar la clase "${contradiction.className}" en el mismo mensaje. Por favor indicá cuál de las dos acciones preferís realizar.`,
+    };
+  }
+
   // 00b. Detección temprana de borrado de clase inexistente (evita bloqueos o alucinaciones en modelos chicos)
   const deleteClassMatch = /\b(?:delete|remove|elimina|eliminá|eliminar|elmina|borra|borrá|borrar|brra|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|calse|clse|tabla|table|entidad)\s+(?:llamada\s+|llamado\s+|llamda\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(userContent);
   if (deleteClassMatch) {
@@ -706,12 +720,6 @@ export async function processUnifiedAmongusTurn(
       replyContent: isEn
         ? `As a software architecture and UML tutor, my specialty is helping you design, structure, and audit software systems (classes, relationships, OOAD patterns, and Spring Boot generation). Is there a software domain or diagram concept you would like to explore?`
         : `Como tutor de arquitectura y diseño UML, mi especialidad es ayudarte a diseñar, estructurar y auditar sistemas de software (clases, relaciones, principios OOAD y generación a Spring Boot). ¿Hay algún sistema o concepto de software que quieras que modelemos o analicemos?`,
-    };
-  }
-
-  if (!llm || typeof llm.chat !== 'function') {
-    return {
-      replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers),
     };
   }
 
@@ -997,6 +1005,26 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
     };
   }
 
+  // S7: Intercepción de slash commands desconocidos o con typo (ej. /auditt)
+  if (trimmedLower.startsWith('/')) {
+    const rawCmd = trimmedLower.split(/\s+/)[0]!;
+    const suggestion = findClosestSlashCommand(rawCmd);
+    const didYouMean = suggestion
+      ? (isEn ? ` Did you mean ${suggestion}?` : ` ¿Quisiste decir ${suggestion}?`)
+      : '';
+    return {
+      replyContent: isEn
+        ? `Unknown command "${rawCmd}".${didYouMean} Type /help to see available commands.`
+        : `Comando "${rawCmd}" no reconocido.${didYouMean} Escribí /help para ver los comandos disponibles.`,
+    };
+  }
+
+  if (!llm || typeof llm.chat !== 'function') {
+    return {
+      replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers),
+    };
+  }
+
   const activePeers = peerUsers && peerUsers.length > 0
     ? Array.from(new Set(peerUsers))
     : [senderName];
@@ -1264,6 +1292,13 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
     // Purgar cualquier bloque ```json ... ``` huérfano para que el usuario nunca vea código crudo en la burbuja de chat
     clean = breakDegenerativeLoops(clean.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\n{3,}/g, '\n\n').trim());
 
+    // S1 Guardrail: Evitar falso positivo conversacional si el LLM dice que preparó propuesta pero no hay batchDelta
+    if (/(?:prepar[eé]\s+la\s+propuesta|cre[eé]\s+la\s+propuesta|aqu[ií]\s+est[aá]\s+la\s+propuesta|prepared\s+the\s+proposal)/i.test(clean)) {
+      clean = isEn
+        ? 'I could not interpret the requested changes into a proposal. Please specify the class name and attributes (e.g., "create class Employee with name and salary").'
+        : 'No pude interpretar los cambios para generar la propuesta. Por favor indicá el nombre de la clase y los atributos (ej. "creá la clase Empleado con nombre y sueldo").';
+    }
+
     if (clean.length > 0) {
       return { replyContent: clean };
     }
@@ -1276,10 +1311,11 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
         err.message?.includes('timeout') ||
         err.code === 'ETIMEDOUT')
     ) {
+      const timeoutSec = Math.round(DEFAULT_LLM_TIMEOUT_MS / 1000);
       return {
         replyContent: isEn
-          ? 'The local model exceeded the response time limit (60s). Please ask a more specific question, or use commands like /audit or /model.'
-          : 'El modelo local de lenguaje excedió el tiempo límite de respuesta (60s). Probá con una consulta más puntual, o usá comandos directos como /audit o /model.',
+          ? `The local model exceeded the response time limit (${timeoutSec}s). Please ask a more specific question, or use commands like /audit or /model.`
+          : `El modelo local de lenguaje excedió el tiempo límite de respuesta (${timeoutSec}s). Probá con una consulta más puntual, o usá comandos directos como /audit o /model.`,
       };
     }
   }

@@ -9,7 +9,17 @@
 import type { Delta } from '@app/core';
 
 /** Una línea legible por humanos por cada kind/op de delta. */
-export function describeDelta(delta: Delta, isEn: boolean = false): string {
+export function describeDelta(
+  delta: Delta,
+  isEn: boolean = true,
+  classNamesById?: Map<string, string> | Record<string, string>
+): string {
+  const getClassName = (id?: string | null): string | undefined => {
+    if (!id || !classNamesById) return undefined;
+    if (classNamesById instanceof Map) return classNamesById.get(id);
+    return (classNamesById as Record<string, string>)[id];
+  };
+
   switch (delta.kind) {
     case 'class':
       switch (delta.op) {
@@ -21,8 +31,12 @@ export function describeDelta(delta: Delta, isEn: boolean = false): string {
           return isEn
             ? `Move class to (${delta.newPosition?.x ?? '?'}, ${delta.newPosition?.y ?? '?'})`
             : `Mover clase a (${delta.newPosition?.x ?? '?'}, ${delta.newPosition?.y ?? '?'})`;
-        case 'delete':
-          return isEn ? 'Delete class' : 'Eliminar clase';
+        case 'delete': {
+          const clsName = getClassName(delta.classId);
+          return isEn
+            ? (clsName ? `Delete class "${clsName}"` : 'Delete class')
+            : (clsName ? `Eliminar clase "${clsName}"` : 'Eliminar clase');
+        }
       }
       break;
     case 'member':

@@ -199,4 +199,45 @@ describe('processUnifiedAmongusTurn', () => {
     expect(cleaned).not.toContain('imgur.com');
     expect(cleaned.split('\n').filter((l) => l.includes('Clase Libro')).length).toBeLessThanOrEqual(2);
   });
+
+  it('detects contradictory requests like creating and deleting the same class (S4)', async () => {
+    const res = await processUnifiedAmongusTurn(
+      'creá la clase Factura y borrá la clase Factura',
+      'Carlos',
+      'es',
+      'diag-1'
+    );
+    expect(res.replyContent).toContain('Detecté una solicitud contradictoria');
+    expect(res.replyContent).toContain('Factura');
+    expect(res.batchDelta).toBeUndefined();
+  });
+
+  it('intercepts unknown slash commands with closest suggestion (S7)', async () => {
+    const res = await processUnifiedAmongusTurn(
+      '/auditt',
+      'Carlos',
+      'es',
+      'diag-1'
+    );
+    expect(res.replyContent).toContain('Comando "/auditt" no reconocido');
+    expect(res.replyContent).toContain('¿Quisiste decir /audit?');
+    expect(res.batchDelta).toBeUndefined();
+  });
+
+  it('guards against false-positive proposal text when no batchDelta is produced (S1)', async () => {
+    const mockLlm = {
+      chat: async () => '¡Listo! Preparé la propuesta para este cambio con los elementos solicitados.',
+    };
+    const res = await processUnifiedAmongusTurn(
+      'hola Amongus, como andas',
+      'Carlos',
+      'es',
+      'diag-1',
+      mockLlm
+    );
+    expect(res.replyContent).not.toContain('Preparé la propuesta');
+    expect(res.replyContent).toContain('No pude interpretar los cambios para generar la propuesta');
+    expect(res.batchDelta).toBeUndefined();
+  });
 });
+

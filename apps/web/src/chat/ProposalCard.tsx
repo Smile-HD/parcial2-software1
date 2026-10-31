@@ -30,12 +30,20 @@ export function ProposalCard({
   const { lang } = useT();
   const isEn = lang === 'en';
 
-  const summary = describeDelta(delta, isEn);
+  const classNameMap = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of existingClasses) {
+      if (c.id && c.name) map.set(c.id, c.name);
+    }
+    return map;
+  }, [existingClasses]);
+
+  const summary = describeDelta(delta, isEn, classNameMap);
 
   // Agrupamiento estructurado cuando es un batchDelta
   const parsedBatch = delta.kind === 'batch' ? parseBatchDelta(delta, isEn, existingClasses) : null;
   const items: string[] = delta.kind === 'batch'
-    ? delta.deltas.map((d) => describeDelta(d, isEn))
+    ? delta.deltas.map((d) => describeDelta(d, isEn, classNameMap))
     : [summary];
 
   return (
