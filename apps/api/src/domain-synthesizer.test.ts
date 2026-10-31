@@ -849,6 +849,66 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(assoc.targetMultiplicity).toBe('1..*');
     }
   });
+
+  it('correctly resolves 1:1 explicit cardinality (M2 Round 5)', () => {
+    const model: SemanticDomainModel = {
+      classes: [
+        { name: 'Persona', attributes: [{ name: 'nombre', type: 'string' }] },
+        { name: 'Pasaporte', attributes: [{ name: 'numero', type: 'string' }] },
+      ],
+      associations: [
+        {
+          source: 'Persona',
+          target: 'Pasaporte',
+          aggregation: 'none',
+          sourceMultiplicity: '*',
+          targetMultiplicity: '*',
+        },
+      ],
+    };
+
+    const prompt = 'crea Persona y Pasaporte relacionadas uno a uno: cada persona posee exactamente un pasaporte y cada pasaporte pertenece a una sola persona';
+    const delta = expandSemanticDomainToDelta(model, emptyDiagram.id, emptyDiagram, prompt);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const assoc = applied.value.associations[0];
+      expect(assoc.sourceMultiplicity).toBe('1');
+      expect(assoc.targetMultiplicity).toBe('1');
+    }
+  });
+
+  it('correctly resolves domain verbs for multiplicity (M4 Round 5: opera muchos vuelos, despega desde un unico)', () => {
+    const model: SemanticDomainModel = {
+      classes: [
+        { name: 'Aeropuerto', attributes: [{ name: 'codigoIATA', type: 'string' }] },
+        { name: 'Vuelo', attributes: [{ name: 'numero', type: 'string' }] },
+      ],
+      associations: [
+        {
+          source: 'Aeropuerto',
+          target: 'Vuelo',
+          aggregation: 'none',
+          sourceMultiplicity: '*',
+          targetMultiplicity: '*',
+        },
+      ],
+    };
+
+    const prompt = 'un aeropuerto opera muchos vuelos y cada vuelo despega desde un unico aeropuerto';
+    const delta = expandSemanticDomainToDelta(model, emptyDiagram.id, emptyDiagram, prompt);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const assoc = applied.value.associations[0];
+      expect(assoc.sourceMultiplicity).toBe('1');
+      expect(assoc.targetMultiplicity).toBe('0..*');
+    }
+  });
 });
 
 

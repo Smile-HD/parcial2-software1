@@ -39,6 +39,19 @@ export interface ChatMessage {
   delta?: any | null;
 }
 
+export function parseDelta(raw: any): any {
+  if (!raw) return undefined;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 export async function insertChatMessage(
   pool: Pool,
   diagramId: string,
@@ -64,7 +77,7 @@ export async function insertChatMessage(
     content: row.content,
     createdAt: row.created_at.toISOString(),
     deltaId: row.delta_id ?? undefined,
-    delta: row.delta ?? undefined,
+    delta: parseDelta(row.delta),
   };
 }
 
@@ -96,7 +109,7 @@ export async function insertBotReply(
     content: row.content,
     createdAt: row.created_at.toISOString(),
     deltaId: row.delta_id ?? undefined,
-    delta: row.delta ?? undefined,
+    delta: parseDelta(row.delta),
   };
 }
 
@@ -144,7 +157,7 @@ export async function listChatMessages(
     content: row.content,
     createdAt: row.created_at.toISOString(),
     deltaId: row.delta_id ?? undefined,
-    delta: row.delta ?? undefined,
+    delta: parseDelta(row.delta),
   }));
 }
 
@@ -552,6 +565,99 @@ export async function processUnifiedAmongusTurn(
     return {
       replyContent: factualReply,
     };
+  }
+
+  // 0c1. Interceptor de preguntas teóricas de modelado UML y OOAD (evita confusión/alucinación en SLM locales)
+  const isTheoreticalUmlQuestion =
+    /(?:diferencia\s+(?:hay\s+)?entre\s+agregaci[oó]n\s+y\s+composici[oó]n|agregaci[oó]n\s+vs\s+composici[oó]n|cu[aá]ndo\s+usar\s+(?:agregaci[oó]n|composici[oó]n)|difference\s+between\s+aggregation\s+and\s+composition)/i.test(
+      userContent
+    );
+  if (isTheoreticalUmlQuestion) {
+    const theoreticalReply = isEn
+      ? `In UML, both aggregation and composition represent "whole-part" relationships (has-a), but they differ fundamentally in lifecycle dependency and exclusivity:
+
+1. **Composition (Filled Diamond — Strong Form)**:
+   - **Strict Lifecycle Dependency**: The part cannot exist without the whole. If the container is destroyed, its parts are destroyed with it.
+   - **Exclusive Ownership**: A part belongs to exactly one container at any given time (multiplicity on the whole end is always 1).
+   - **Example**: \`Invoice\` and \`InvoiceItem\`, or \`Building\` and \`Room\`. An invoice line item has no domain purpose without the invoice.
+
+2. **Aggregation (Hollow Diamond — Weak Form)**:
+   - **Independent Lifecycle**: Parts exist independently before, during, and after belonging to the whole. If the container is destroyed, parts continue to exist.
+   - **Shared Membership**: An entity can belong to multiple aggregators or none.
+   - **Example**: \`Department\` and \`Professor\`, or \`Team\` and \`Player\`. If the department closes, the professor still exists and can be reassigned.
+
+**Practical OOAD Rule of Thumb**: Default to **plain association**. Only use **composition** when there is strict lifecycle dependency and the child entity has no independent identity outside the parent.`
+      : `En UML, tanto la agregación como la composición representan relaciones "todo-parte" (has-a), pero difieren radicalmente en la dependencia de ciclo de vida y la exclusividad:
+
+1. **Composición (Rombo relleno — Fuerte)**:
+   - **Dependencia de ciclo de vida estricta**: La parte no puede existir sin el todo. Si el objeto contenedor se destruye, sus partes se destruyen con él.
+   - **Pertenencia exclusiva**: Cada parte pertenece exactamente a un único contenedor a la vez (la multiplicidad del todo siempre es 1).
+   - **Ejemplo**: \`Factura\` y \`DetalleFactura\`, o \`Edificio\` y \`Habitacion\`. Un renglón de factura carece de sentido de existencia en el negocio si no pertenece a una factura.
+
+2. **Agregación (Rombo hueco — Débil)**:
+   - **Ciclo de vida independiente**: Las partes existen por sí mismas antes, durante y después de pertenecer al todo. Si el contenedor se destruye, las partes continúan existiendo.
+   - **Pertenencia compartida**: Un elemento puede pertenecer a varios contenedores o a ninguno.
+   - **Ejemplo**: \`Departamento\` y \`Profesor\`, o \`Equipo\` y \`Jugador\`. Si el departamento cierra, el profesor sigue existiendo y puede pertenecer a otro departamento.
+
+**Criterio OOAD práctico**: Por defecto, usá siempre **asociación simple**. Solo usá **composición** cuando exista una relación existencial indivisible donde la parte no tenga identidad de negocio fuera del todo.`;
+
+    return {
+      replyContent: theoreticalReply,
+    };
+  }
+
+  // 0c2. Interceptor de relaciones reflexivas explícitas sobre clases existentes (evita clases intermedias alucinadas)
+  const isReflexiveIntent =
+    /(?:relaci[oó]n\s+reflexiva|reflexiva|consigo\s+misma|auto-?asociaci[oó]n|self-?association|reflexive\s+association)/i.test(
+      userContent
+    );
+  if (isReflexiveIntent && diagram && Array.isArray(diagram.classes) && diagram.classes.length > 0) {
+    const existingClasses = diagram.classes as Array<{ id: string; name: string }>;
+    const targetClass = existingClasses.find((c) =>
+      new RegExp(`\\b${c.name}\\b`, 'i').test(userContent)
+    );
+    if (targetClass) {
+      let multSource = '0..*';
+      let multTarget = '0..*';
+      if (/\b(?:1\s*:\s*1|uno\s+a\s+uno|1\s+a\s+1)\b/i.test(userContent)) {
+        multSource = '1';
+        multTarget = '1';
+      } else if (/\b(?:1\s*:\s*n|uno\s+a\s+muchos|1\s+a\s+muchos)\b/i.test(userContent)) {
+        multSource = '1';
+        multTarget = '0..*';
+      }
+
+      const nameMatch = /(?:relaci[oó]n\s+reflexiva\s+(?:de\s+)?|con\s+nombre\s+|llamada\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(userContent);
+      const assocName = nameMatch && !/(?:consigo|misma|con|de|en|sobre)/i.test(nameMatch[1]!) ? nameMatch[1] : 'amistad';
+
+      const assocDelta: import('@app/core').AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        baseVersion: diagram.version ?? 0,
+        associationId: crypto.randomUUID(),
+        sourceClassId: targetClass.id,
+        targetClassId: targetClass.id,
+        directed: false,
+        name: assocName,
+        sourceRole: assocName,
+        targetRole: assocName,
+        sourceMultiplicity: multSource,
+        targetMultiplicity: multTarget,
+      };
+
+      const batch: import('@app/core').BatchDelta = {
+        kind: 'batch',
+        baseVersion: diagram.version ?? 0,
+        deltas: [assocDelta],
+      };
+
+      return {
+        replyContent: isEn
+          ? `Added a reflexive relationship to class "${targetClass.name}". You can preview it on the canvas and confirm to apply.`
+          : `Preparé la relación reflexiva sobre la clase "${targetClass.name}". Podés previsualizarla en el lienzo y confirmarla para aplicarla.`,
+        batchDelta: batch,
+      };
+    }
   }
 
   // 0d. Filtro fuera de dominio / preguntas filosóficas o de cultura general

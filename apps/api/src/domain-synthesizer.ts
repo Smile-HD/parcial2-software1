@@ -246,8 +246,17 @@ export function extractExplicitMultiplicities(
   let multForSource: string | undefined;
   let multForTarget: string | undefined;
 
-  // 1. Patrón: "[X] tiene (muchos|muchas|varios|varias|uno o muchos|uno o mas|1 o mas|1 o muchos|0..*|1..*) [Y]"
-  const hasManyRegex = /(?:un|una|cada|el|la)?\s*([a-záéíóúñ]+)\s+(?:tiene|posee|contiene|incluye|guarda)\s+(uno\s+o\s+muchos|uno\s+o\s+m[aá]s|una\s+o\s+muchas|una\s+o\s+m[aá]s|1\s+o\s+muchos|1\s+o\s+m[aá]s|muchos|muchas|varios|varias|0\.\.\*|1\.\.\*)\s+([a-záéíóúñ]+)/gi;
+  // Direct 1:1, N:M or 1:N patterns
+  if (/\b(?:1\s*:\s*1|uno\s+a\s+uno|1\s+a\s+1|one\s+to\s+one)\b/i.test(lower)) {
+    multForSource = '1';
+    multForTarget = '1';
+  } else if (/\b(?:muchos\s+a\s+muchos|n\s*:\s*m|m\s*:\s*n|\*\s*a\s*\*|\*\s*:\s*\*)\b/i.test(lower)) {
+    multForSource = '0..*';
+    multForTarget = '0..*';
+  }
+
+  // 1. Patrón: "[X] <verbo> (muchos|muchas|varios|varias|uno o muchos|uno o mas|1 o mas|1 o muchos|0..*|1..*) [Y]"
+  const hasManyRegex = /(?:un|una|cada|el|la)?\s*([a-záéíóúñ]+)\s+(?:tiene|posee|contiene|incluye|guarda|opera|alberga|administra|gestiona|recibe|atiende|registra|aloja|[a-záéíóúñ]{3,15})\s+(uno\s+o\s+muchos|uno\s+o\s+m[aá]s|una\s+o\s+muchas|una\s+o\s+m[aá]s|1\s+o\s+muchos|1\s+o\s+m[aá]s|muchos|muchas|varios|varias|0\.\.\*|1\.\.\*)\s+([a-záéíóúñ]+)/gi;
   let match: RegExpExecArray | null;
   while ((match = hasManyRegex.exec(lower)) !== null) {
     const subj = match[1]!;
@@ -265,8 +274,8 @@ export function extractExplicitMultiplicities(
     }
   }
 
-  // 2. Patrón: "(cada|un|una) [Y] pertenece a (un solo|una sola|un unico|una unica|solo un|solo una|un|uno|1) [X]"
-  const belongsToOneRegex = /(?:cada|un|una)?\s*([a-záéíóúñ]+)\s+(?:pertenece\s+a|corresponde\s+a|est[aá]\s+asociad[ao]\s+a)\s+(?:un\s+[uú]nico|una\s+[uú]nica|un\s+solo|una\s+sola|solo\s+un[ao]?|un[ao]?|1)\s+([a-záéíóúñ]+)/gi;
+  // 2. Patrón: "[Y] <verbo pertenencia/origen> (un solo|un unico|exactamente un|1) [X]"
+  const belongsToOneRegex = /(?:cada|un|una)?\s*([a-záéíóúñ]+)\s+(?:pertenece\s+a|corresponde\s+a|est[aá]\s+asociad[ao]\s+a|despega\s+(?:desde|de)|sale\s+de|opera\s+en|trabaja\s+en|se\s+asocia\s+a|se\s+vincula\s+a)\s+(?:un\s+[uú]nico|una\s+[uú]nica|un\s+solo|una\s+sola|exactamente\s+un[ao]?|solo\s+un[ao]?|un[ao]?|1)\s+([a-záéíóúñ]+)/gi;
   while ((match = belongsToOneRegex.exec(lower)) !== null) {
     const item = match[1]!;
     const owner = match[2]!;
@@ -278,28 +287,22 @@ export function extractExplicitMultiplicities(
     }
   }
 
-  // 3. Patrón: "(cada|un|una) [Y] tiene (un solo|una sola|un unico|una unica|solo un|solo una|un|uno|1) [X]"
-  const hasOneRegex = /(?:cada|un|una)?\s*([a-záéíóúñ]+)\s+(?:tiene|posee)\s+(?:un\s+[uú]nico|una\s+[uú]nica|un\s+solo|una\s+sola|solo\s+un[ao]?|un[ao]?|1)\s+([a-záéíóúñ]+)/gi;
+  // 3. Patrón: "[X] (tiene|posee) (un solo|un unico|exactamente un|1) [Y]"
+  const hasOneRegex = /(?:cada|un|una)?\s*([a-záéíóúñ]+)\s+(?:tiene|posee)\s+(?:un\s+[uú]nico|una\s+[uú]nica|un\s+solo|una\s+sola|exactamente\s+un[ao]?|solo\s+un[ao]?|1)\s+([a-záéíóúñ]+)/gi;
   while ((match = hasOneRegex.exec(lower)) !== null) {
-    const item = match[1]!;
-    const other = match[2]!;
+    const subj = match[1]!;
+    const obj = match[2]!;
 
-    if (classWordMatches(other, sourceName) && classWordMatches(item, targetName)) {
-      multForSource = '1';
-    } else if (classWordMatches(other, targetName) && classWordMatches(item, sourceName)) {
+    if (classWordMatches(subj, sourceName) && classWordMatches(obj, targetName)) {
       multForTarget = '1';
+    } else if (classWordMatches(subj, targetName) && classWordMatches(obj, sourceName)) {
+      multForSource = '1';
     }
   }
 
-  // 4. Frases directas de cardinalidad: "1 a muchos", "1:N", "uno a muchos", "muchos a muchos", "N:M", "1 a 1", "1:1"
+  // 3. Frases directas de cardinalidad: "1 a muchos", "1:N", "uno a muchos"
   if (!multForSource && !multForTarget) {
-    if (/\b(?:muchos\s+a\s+muchos|n\s*:\s*m|m\s*:\s*n|\*\s*a\s*\*)\b/i.test(lower)) {
-      multForSource = '0..*';
-      multForTarget = '0..*';
-    } else if (/\b(?:1\s*:\s*1|uno\s+a\s+uno|1\s+a\s+1)\b/i.test(lower)) {
-      multForSource = '1';
-      multForTarget = '1';
-    } else if (/\b(?:1\s*:\s*n|1\s+a\s+muchos|uno\s+a\s+muchos|1\s+a\s+n)\b/i.test(lower)) {
+    if (/\b(?:1\s*:\s*n|1\s+a\s+muchos|uno\s+a\s+muchos|1\s+a\s+n)\b/i.test(lower)) {
       multForSource = '1';
       multForTarget = '0..*';
     }

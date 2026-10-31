@@ -151,6 +151,48 @@ describe('processUnifiedAmongusTurn', () => {
     expect(res.batchDelta).toBeUndefined();
   });
 
+  it('answers theoretical questions about aggregation vs composition with pedagogical OOAD criteria', async () => {
+    const res = await processUnifiedAmongusTurn(
+      '¿Qué diferencia hay entre agregación y composición y cuándo usar cada una?',
+      'Carlos',
+      'es',
+      'diag-1'
+    );
+    expect(res.replyContent).toContain('Composición (Rombo relleno');
+    expect(res.replyContent).toContain('Agregación (Rombo hueco');
+    expect(res.replyContent).toContain('Dependencia de ciclo de vida');
+    expect(res.batchDelta).toBeUndefined();
+  });
+
+  it('handles explicit reflexive self-association on existing class without hallucinating classes', async () => {
+    const mockDiagram = {
+      id: 'diag-1',
+      version: 1,
+      classes: [{ id: 'user-123', name: 'Usuario' }],
+      associations: [],
+    };
+
+    const res = await processUnifiedAmongusTurn(
+      'con la clase Usuario que ya existe, agregale una relacion reflexiva de amistad consigo misma con cardinalidad muchos a muchos',
+      'Carlos',
+      'es',
+      'diag-1',
+      undefined,
+      mockDiagram
+    );
+
+    expect(res.replyContent).toContain('relación reflexiva sobre la clase "Usuario"');
+    expect(res.batchDelta).toBeDefined();
+    expect(res.batchDelta?.deltas).toHaveLength(1);
+    const assoc = res.batchDelta?.deltas[0] as any;
+    expect(assoc.kind).toBe('association');
+    expect(assoc.sourceClassId).toBe('user-123');
+    expect(assoc.targetClassId).toBe('user-123');
+    expect(assoc.name).toBe('amistad');
+    expect(assoc.sourceMultiplicity).toBe('0..*');
+    expect(assoc.targetMultiplicity).toBe('0..*');
+  });
+
   it('breakDegenerativeLoops collapses repeated lines and removes fake URLs', () => {
     const loopText = `Clase Libro con id y titulo\nClase Libro con id y titulo\nClase Libro con id y titulo\nClase Autor con nombre\nAquí está el diagrama: http://i.imgur.com/fake-diagram.png`;
     const cleaned = breakDegenerativeLoops(loopText);

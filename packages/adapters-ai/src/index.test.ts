@@ -211,6 +211,39 @@ describe('FakeLlm', () => {
       expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'nombre', type: 'string' });
       expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'email', type: 'string' });
       expect(value.deltas?.[3]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'edad', type: 'string' });
+    it('interprets class creation with attributes when keyword "atributos" is omitted (Bug 3)', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+
+      const result = await llm.interpret('crea una clase Bodega con direccion y capacidad', schema, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind !== 'delta') return;
+      const validated = DeltaSchema.safeParse(result.value);
+      expect(validated.success).toBe(true);
+
+      const value = result.value as { kind: string; deltas?: any[] };
+      expect(value.kind).toBe('batch');
+      expect(value.deltas).toHaveLength(3);
+      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Bodega' });
+      expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'direccion', type: 'string' });
+      expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'capacidad', type: 'string' });
+    });
+
+    it('interprets typos like "crrea una clse Fctura con atrivutos numero y total"', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+
+      const result = await llm.interpret('crrea una clse Fctura con atrivutos numero y total', schema, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind !== 'delta') return;
+      const validated = DeltaSchema.safeParse(result.value);
+      expect(validated.success).toBe(true);
+
+      const value = result.value as { kind: string; deltas?: any[] };
+      expect(value.kind).toBe('batch');
+      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Factura' });
+      expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'numero', type: 'string' });
+      expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'total', type: 'string' });
     });
 
     it('interprets adding attribute to existing class without explicit type defaulting to string', async () => {

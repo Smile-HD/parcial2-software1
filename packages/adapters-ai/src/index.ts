@@ -63,13 +63,37 @@ export function normalizeUmlUtterance(raw: string): string {
   let s = raw;
   s = s.replace(/\bagrga\b/gi, 'agrega');
   s = s.replace(/\b(?:calse|clse)\b/gi, 'clase');
-  s = s.replace(/\b(?:craer|creaer)\b/gi, 'crear');
+  s = s.replace(/\b(?:craer|creaer|crrea|crer)\b/gi, 'crear');
   s = s.replace(/\b(?:llamda|llamd[ao])\b/gi, 'llamada');
-  s = s.replace(/\b(?:atriutos?|atribtos?|atibutos?|atribs?)\b/gi, 'atributos');
+  s = s.replace(/\b(?:atriutos?|atribtos?|atibutos?|atribs?|atrivutos?)\b/gi, 'atributos');
   s = s.replace(/\b(?:nomvre|nobmre)\b/gi, 'nombre');
   s = s.replace(/\b(?:elmina)\b/gi, 'elimina');
   s = s.replace(/\b(?:brra)\b/gi, 'borra');
+  s = s.replace(/\b(?:fctura|fatura)\b/gi, 'Factura');
+  s = s.replace(/\b(?:nimero)\b/gi, 'numero');
+  s = s.replace(/\b(?:improte)\b/gi, 'importe');
+  s = s.replace(/\b(?:totl)\b/gi, 'total');
+  s = s.replace(/\b(?:usario|usuaio)\b/gi, 'Usuario');
+  s = s.replace(/\b(?:poducto|prodcuto)\b/gi, 'Producto');
+  s = s.replace(/\b(?:clente)\b/gi, 'Cliente');
   return s;
+}
+
+export function inferAttributeType(attrName: string): string {
+  const lower = attrName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (/^(?:cantidad|stock|edad|ano|anio|capacidad|legajo|numero|orden|piso|habitacion|telefono|codigo|id|count)$/.test(lower)) {
+    return 'int';
+  }
+  if (/^(?:precio|total|subtotal|monto|saldo|costo|peso|altura|cargahoraria|importe|tasa|sueldo|salario|promedio)$/.test(lower)) {
+    return 'float';
+  }
+  if (/^(?:fecha|fechacreacion|fechanacimiento|vencimiento|creadoen|actualizadoen|date|datetime|timestamp)$/.test(lower)) {
+    return 'date';
+  }
+  if (/^(?:activo|habilitado|esadmin|disponible|pagado|estado|isadmin|active|enabled)$/.test(lower)) {
+    return 'boolean';
+  }
+  return 'string';
 }
 
 // ── FakeLlm ────────────────────────────────────────────────────────────────
@@ -156,7 +180,7 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 1. crear clase / diagrama [+ opcional "con atributos a, b y c"]
+    // 1. crear clase / diagrama [+ opcional "con atributos a, b y c" o "con a y b"]
     const createClass = /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     if (createClass) {
       const name = createClass[1]!;
@@ -170,7 +194,8 @@ export class FakeLlm implements LlmPort {
         position,
       };
 
-      const attrTail = /\b(?:with|con)\s+(?:an?\s+)?(?:attributes?|atributos?|atriutos?|campos?)\s+([\s\S]+)$/i.exec(utterance);
+      const afterClass = utterance.slice(createClass.index + createClass[0].length);
+      const attrTail = /\b(?:with|con)\s+(?:(?:an?\s+|los\s+|las\s+)?(?:attributes?|atributos?|atriutos?|atrivutos?|campos?|propiedades?)\s+)?([\s\S]+)$/i.exec(afterClass);
       if (attrTail) {
         const rawList = attrTail[1]!;
         const items = rawList
