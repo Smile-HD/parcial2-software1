@@ -40,6 +40,16 @@ describe('normalizer module', () => {
       expect(normalizeUmlUtterance('creala como clase')).toContain('crea como clase');
       expect(normalizeUmlUtterance('agregale atributos')).toContain('agrega atributos');
       expect(normalizeUmlUtterance('borralo')).toContain('borra');
+
+      // Formas sin tilde y teclados sin ñ
+      expect(normalizeUmlUtterance('construi una clase Pedido')).toContain('crea una clase Pedido');
+      expect(normalizeUmlUtterance('disena la clase Cuenta')).toContain('crea la clase Cuenta');
+      expect(normalizeUmlUtterance('disenar la clase Usuario')).toContain('crea la clase Usuario');
+      expect(normalizeUmlUtterance('anade atributos x e y')).toContain('agrega atributos x e y');
+      expect(normalizeUmlUtterance('anadir metodo calcular')).toContain('agrega metodos calcular');
+      expect(normalizeUmlUtterance('uni la clase A con B')).toContain('conecta la clase A con B');
+      expect(normalizeUmlUtterance('defini la clase Item')).toContain('crea la clase Item');
+      expect(normalizeUmlUtterance('suprimi la clase Item')).toContain('borra la clase Item');
     });
 
     it('is strictly domain-agnostic and preserves arbitrary class and attribute names', () => {

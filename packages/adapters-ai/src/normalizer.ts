@@ -21,155 +21,155 @@ export function normalizeUmlUtterance(raw: string): string {
   // Abarca: Tuteo (crea), Voseo (creá), Ustedeo (cree), Vosotros (cread), Infinitivo (crear)
   // Enclíticos: crealo, creala, creame, armalo, etc.
   s = s.replace(
-    /(?<!\p{L})(?:cre[aáe]|cread|crear|craer|creaer|crrea|crer|cre[aá]l[oa]|cr[eé]al[oa]|cre[aá]me|cr[eé]ame|cre[aá]nos|cr[eé]anos)(?!\p{L})/giu,
+    /(?<!\p{L})(?:cre[aáeé]|cread|crear|craer|creaer|crrea|crer|cre[aá]l[oa]|cr[eé]al[oa]|cre[aá]me|cr[eé]ame|cre[aá]nos|cr[eé]anos)(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:arm[aáe]|armad|armar|arm[aá]l[oa]|ármal[oa]|arm[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:arm[aáeé]|armad|armar|arm[aá]l[oa]|[aá]rmal[oa]|arm[aá]me)(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:constru[yí]|construya?|construid|construir|constru[yí]l[oa]|constrúyel[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:constru[yíi]|construy[ea]?|construid|construir|constru[yíi]l[oa]|constr[uú]yel[oa])(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:diseñ[aáe]|diseñad|diseñar|diseñ[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:(?:diseñ|diséñ|disen|disén)[aáeé]|(?:diseñ|disen)ad|(?:diseñ|disen)ar|(?:diseñ|diséñ|disen|disén)[aá]l[oa])(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:model[aáe]|modelad|modelar|model[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:model[aáeé]|modelad|modelar|model[aá]l[oa]|m[oó]delal[oa])(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:gener[aáe]|generad|generar|gener[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:gener[aáeé]|generad|generar|gener[aá]l[oa]|gen[eé]ral[oa])(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:defin[eía]|definid|definir|defin[eí]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:defin[eíiaé]|definid|definir|defin[eíi]l[oa]|def[ií]nal[oa])(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:insert[aáe]|insertad|insertar|insert[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:insert[aáeé]|insertad|insertar|insert[aá]l[oa]|ins[eé]rtal[oa])(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:registr[aáe]|registrad|registrar|registr[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:registr[aáeé]|registrad|registrar|registr[aá]l[oa]|reg[ií]stral[oa])(?!\p{L})/giu,
     'crea'
   );
 
   // ── B. Verbos de Borrado / Eliminación (borrar, eliminar, sacar, quitar, remover, suprimir, descartar)
   s = s.replace(
-    /(?<!\p{L})(?:borr[aáe]|borrad|borrar|brr[aá]|brrar|borr[aá]l[oa]|bórral[oa]|borr[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:borr[aáeé]|borrad|borrar|brr[aá]|brrar|borr[aá]l[oa]|b[oó]rral[oa]|borr[aá]me)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:elimin[aáe]|elmin[aáe]?|elimnar|eliminad|eliminar|elminar|elimin[aá]l[oa]|elimínal[oa]|elimin[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:elimin[aáeé]|elmin[aáe]?|elimnar|eliminad|eliminar|elminar|elimin[aá]l[oa]|elim[ií]nal[oa]|elimin[aá]me)(?!\p{L})/giu,
     'elimina'
   );
   s = s.replace(
-    /(?<!\p{L})(?:sac[aá]|saque|sacad|sacar|sac[aá]l[oa]|sácal[oa]|sac[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:sac[aáeé]|saque|sacad|sacar|sac[aá]l[oa]|s[aá]cal[oa]|sac[aá]me)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:quit[aáe]|quitad|quitar|quit[aá]l[oa]|quítal[oa]|quit[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:quit[aáeé]|quitad|quitar|quit[aá]l[oa]|qu[ií]tal[oa]|quit[aá]me)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:remov[eé]|remueva?|removed|remover|remov[eé]l[oa]|remuével[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:remov[eé]|remuev[ea]?|removad|removed|remover|remov[eé]l[oa]|remu[eé]vel[oa])(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:suprim[eía]|suprimid|suprimir|suprim[eí]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:suprim[eíiaé]|suprimid|suprimir|suprim[eíi]l[oa]|supr[ií]mal[oa])(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:descart[aáe]|descartad|descartar|descart[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:descart[aáeé]|descartad|descartar|descart[aá]l[oa]|desc[aá]rtal[oa])(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:vol[aá]|purg[aáe]|limpi[aáe])(?!\p{L})/giu,
+    /(?<!\p{L})(?:vol[aáeé]|purg[aáeé]|limpi[aáeé])(?!\p{L})/giu,
     'borra'
   );
 
   // ── C. Verbos de Agregar Miembros (agregar, añadir, meter, poner, sumar, incorporar, anexar)
   s = s.replace(
-    /(?<!\p{L})(?:agreg[aáe]|agrg|agrga|agre|agregad|agregar|agreg[aá]le[s]?|agrégale[s]?|agreg[aá]me|agrrename)(?!\p{L})/giu,
+    /(?<!\p{L})(?:agreg[aáeé]|agrg|agrga|agre|agregad|agregar|agreg[aá]le[s]?|agr[eé]gale[s]?|agreg[aá]me|agrrename)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:añad[eí]|añada|añadid|añadir|añad[eí]le[s]?|añádele[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:(?:añad|anad|añád|anád)[eíiaé]|(?:añad|anad)id|(?:añad|anad)ir|(?:añad|anad|añád|anád)[eíi]le[s]?)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:met[eé]|meta|meted|meter|met[eé]le[s]?|métele[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:met[eé]|meta|meted|meter|met[eé]le[s]?|m[eé]tele[s]?)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:pon|pon[eé]|ponga|poned|poner|pon[eé]le[s]?|pónle[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:pon|pon[eé]|ponga|poned|poner|pon[eé]le[s]?|p[oó]nle[s]?)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:sum[aáe]|sumad|sumar|sum[aá]le[s]?|súmale[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:sum[aáeé]|sumad|sumar|sum[aá]le[s]?|s[uú]male[s]?)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:incorpor[aáe]|incorporad|incorporar|incorpor[aá]le[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:incorpor[aáeé]|incorporad|incorporar|incorpor[aá]le[s]?|incorp[oó]rale[s]?)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:anex[aáe]|anexad|anexar|adicion[aáe]|adicionar)(?!\p{L})/giu,
+    /(?<!\p{L})(?:anex[aáeé]|anexad|anexar|adicion[aáeé]|adicionar)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:inclu[yí]|incluya?|incluid|incluir)(?!\p{L})/giu,
+    /(?<!\p{L})(?:inclu[yíi]|incluy[ea]?|incluid|incluir|inclu[yíi]le[s]?|incl[uú]yele[s]?)(?!\p{L})/giu,
     'agrega'
   );
 
   // ── D. Verbos de Renombrar / Modificar (renombrar, cambiar, modificar, actualizar, editar)
   s = s.replace(
-    /(?<!\p{L})(?:renombr[aáe]|renomvrar|renomra|rnombre|renombrad|renombrar|renombr[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:renombr[aáeé]|renomvrar|renomra|rnombre|renombrad|renombrar|renombr[aá]l[oa]|ren[oó]mbral[oa])(?!\p{L})/giu,
     'renombra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:cambi[aáe]|cambiad|cambiar|cambi[aá]le[s]?|cámbiale[s]?|cambi[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:cambi[aáeé]|cambiad|cambiar|cambi[aá]le[s]?|c[aá]mbiale[s]?|cambi[aá]l[oa]|c[aá]mbial[oa])(?!\p{L})/giu,
     'renombra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa]|modif[ií]cal[oa])(?!\p{L})/giu,
     'renombra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:actualiz[aá]|actualice|actualizad|actualizar|actualiz[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:actualiz[aá]|actualice|actualizad|actualizar|actualiz[aá]l[oa]|actual[ií]zal[oa])(?!\p{L})/giu,
     'renombra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:edit[aáe]|editad|editar|edit[aá]l[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:edit[aáeé]|editad|editar|edit[aá]l[oa]|ed[ií]tal[oa])(?!\p{L})/giu,
     'renombra'
   );
 
   // ── E. Verbos de Relación / Conexión (conectar, relacionar, asociar, vincular, unir, enlazar)
   s = s.replace(
-    /(?<!\p{L})(?:conect[aáe]|conectad|conectar|conect[aá]l[oa]s?|conéctal[oa]s?|conect[aá]le)(?!\p{L})/giu,
+    /(?<!\p{L})(?:conect[aáeé]|conectad|conectar|conect[aá]l[oa]s?|con[eé]ctal[oa]s?|conect[aá]le)(?!\p{L})/giu,
     'conecta'
   );
   s = s.replace(
-    /(?<!\p{L})(?:relacion[aáe]|relacionad|relacionar|relacion[aá]l[oa]s?|relaciónal[oa]s?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:relacion[aáeé]|relacionad|relacionar|relacion[aá]l[oa]s?|relaci[oó]nal[oa]s?)(?!\p{L})/giu,
     'conecta'
   );
   s = s.replace(
-    /(?<!\p{L})(?:asoci[aáe]|asociad|asociar|asoci[aá]l[oa]s?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:asoci[aáeé]|asociad|asociar|asoci[aá]l[oa]s?|as[oó]cial[oa]s?)(?!\p{L})/giu,
     'conecta'
   );
   s = s.replace(
-    /(?<!\p{L})(?:vincul[aáe]|vinculad|vincular|vincul[aá]l[oa]s?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:vincul[aáeé]|vinculad|vincular|vincul[aá]l[oa]s?|v[ií]nculal[oa]s?)(?!\p{L})/giu,
     'conecta'
   );
   s = s.replace(
-    /(?<!\p{L})(?:un[eí]|unid|unir|unan|un[eí]l[oa]s?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:un[eíi]|unid|unir|unan|un[eíi]l[oa]s?)(?!\p{L})/giu,
     'conecta'
   );
   s = s.replace(
-    /(?<!\p{L})(?:enlaz[aá]|enlace|enlazad|enlazar|enlaz[aá]l[oa]s?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:enlaz[aá]|enlace|enlazad|enlazar|enlaz[aá]l[oa]s?|enl[aá]zal[oa]s?)(?!\p{L})/giu,
     'conecta'
   );
 
