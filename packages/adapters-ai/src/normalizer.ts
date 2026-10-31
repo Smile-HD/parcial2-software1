@@ -17,46 +17,180 @@ export function normalizeUmlUtterance(raw: string): string {
   if (!raw) return '';
   let s = raw;
 
-  // Normalizar acentos en verbos imperativos hacia formas canónicas sin acento
-  // Usamos (?<!\p{L}) y (?!\p{L}) con bandera 'u' para que letras acentuadas (á, é, í, ó, ú, ñ)
-  // respeten los límites de palabra sin romperse como ocurre con \b en ASCII.
-  s = s.replace(/(?<!\p{L})(?:cre[aá]|crear|craer|creaer|crrea|crer|creame|creáme)(?!\p{L})/giu, 'crea');
-  s = s.replace(/(?<!\p{L})(?:agreg[aá]|agrg|agrga|agre|agregar|agregame|agregáme|agregale|agregále|añad[eí]|añadir|añadile|pon|ponele|sumal[eo])(?!\p{L})/giu, 'agrega');
-  s = s.replace(/(?<!\p{L})(?:elimin[aá]|elmin[aá]|eliminar|elminar|eliminame|elimináme)(?!\p{L})/giu, 'elimina');
-  s = s.replace(/(?<!\p{L})(?:borr[aá]|brr[aá]|borrar|brrar|borrame|borráme)(?!\p{L})/giu, 'borra');
-  s = s.replace(/(?<!\p{L})(?:sac[aá]|sacar|sacame|sacáme|quit[aá]|quitar|quitame|quitáme)(?!\p{L})/giu, 'borra');
-  s = s.replace(/(?<!\p{L})(?:renombr[aá]|renomvrar|renomra|rnombre|renombrar)(?!\p{L})/giu, 'renombra');
-  s = s.replace(/(?<!\p{L})(?:arm[aá]|armar|armame|armáme|constru[yí]|construir)(?!\p{L})/giu, 'crea');
+  // ── A. Verbos de Creación (crear, armar, construir, diseñar, modelar, generar, definir, registrar, etc.)
+  // Abarca: Tuteo (crea), Voseo (creá), Ustedeo (cree), Vosotros (cread), Infinitivo (crear)
+  // Enclíticos: crealo, creala, creame, armalo, etc.
+  s = s.replace(
+    /(?<!\p{L})(?:cre[aáe]|cread|crear|craer|creaer|crrea|crer|cre[aá]l[oa]|cr[eé]al[oa]|cre[aá]me|cr[eé]ame|cre[aá]nos|cr[eé]anos)(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:arm[aáe]|armad|armar|arm[aá]l[oa]|ármal[oa]|arm[aá]me)(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:constru[yí]|construya?|construid|construir|constru[yí]l[oa]|constrúyel[oa])(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:diseñ[aáe]|diseñad|diseñar|diseñ[aá]l[oa])(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:model[aáe]|modelad|modelar|model[aá]l[oa])(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:gener[aáe]|generad|generar|gener[aá]l[oa])(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:defin[eía]|definid|definir|defin[eí]l[oa])(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:insert[aáe]|insertad|insertar|insert[aá]l[oa])(?!\p{L})/giu,
+    'crea'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:registr[aáe]|registrad|registrar|registr[aá]l[oa])(?!\p{L})/giu,
+    'crea'
+  );
 
-  // Clasificadores y contenedores
+  // ── B. Verbos de Borrado / Eliminación (borrar, eliminar, sacar, quitar, remover, suprimir, descartar)
+  s = s.replace(
+    /(?<!\p{L})(?:borr[aáe]|borrad|borrar|brr[aá]|brrar|borr[aá]l[oa]|bórral[oa]|borr[aá]me)(?!\p{L})/giu,
+    'borra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:elimin[aáe]|elmin[aáe]?|elimnar|eliminad|eliminar|elminar|elimin[aá]l[oa]|elimínal[oa]|elimin[aá]me)(?!\p{L})/giu,
+    'elimina'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:sac[aá]|saque|sacad|sacar|sac[aá]l[oa]|sácal[oa]|sac[aá]me)(?!\p{L})/giu,
+    'borra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:quit[aáe]|quitad|quitar|quit[aá]l[oa]|quítal[oa]|quit[aá]me)(?!\p{L})/giu,
+    'borra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:remov[eé]|remueva?|removed|remover|remov[eé]l[oa]|remuével[oa])(?!\p{L})/giu,
+    'borra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:suprim[eía]|suprimid|suprimir|suprim[eí]l[oa])(?!\p{L})/giu,
+    'borra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:descart[aáe]|descartad|descartar|descart[aá]l[oa])(?!\p{L})/giu,
+    'borra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:vol[aá]|purg[aáe]|limpi[aáe])(?!\p{L})/giu,
+    'borra'
+  );
+
+  // ── C. Verbos de Agregar Miembros (agregar, añadir, meter, poner, sumar, incorporar, anexar)
+  s = s.replace(
+    /(?<!\p{L})(?:agreg[aáe]|agrg|agrga|agre|agregad|agregar|agreg[aá]le[s]?|agrégale[s]?|agreg[aá]me|agrrename)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:añad[eí]|añada|añadid|añadir|añad[eí]le[s]?|añádele[s]?)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:met[eé]|meta|meted|meter|met[eé]le[s]?|métele[s]?)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:pon|pon[eé]|ponga|poned|poner|pon[eé]le[s]?|pónle[s]?)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:sum[aáe]|sumad|sumar|sum[aá]le[s]?|súmale[s]?)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:incorpor[aáe]|incorporad|incorporar|incorpor[aá]le[s]?)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:anex[aáe]|anexad|anexar|adicion[aáe]|adicionar)(?!\p{L})/giu,
+    'agrega'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:inclu[yí]|incluya?|incluid|incluir)(?!\p{L})/giu,
+    'agrega'
+  );
+
+  // ── D. Verbos de Renombrar / Modificar (renombrar, cambiar, modificar, actualizar, editar)
+  s = s.replace(
+    /(?<!\p{L})(?:renombr[aáe]|renomvrar|renomra|rnombre|renombrad|renombrar|renombr[aá]l[oa])(?!\p{L})/giu,
+    'renombra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:cambi[aáe]|cambiad|cambiar|cambi[aá]le[s]?|cámbiale[s]?|cambi[aá]l[oa])(?!\p{L})/giu,
+    'renombra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa])(?!\p{L})/giu,
+    'renombra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:actualiz[aá]|actualice|actualizad|actualizar|actualiz[aá]l[oa])(?!\p{L})/giu,
+    'renombra'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:edit[aáe]|editad|editar|edit[aá]l[oa])(?!\p{L})/giu,
+    'renombra'
+  );
+
+  // ── E. Verbos de Relación / Conexión (conectar, relacionar, asociar, vincular, unir, enlazar)
+  s = s.replace(
+    /(?<!\p{L})(?:conect[aáe]|conectad|conectar|conect[aá]l[oa]s?|conéctal[oa]s?|conect[aá]le)(?!\p{L})/giu,
+    'conecta'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:relacion[aáe]|relacionad|relacionar|relacion[aá]l[oa]s?|relaciónal[oa]s?)(?!\p{L})/giu,
+    'conecta'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:asoci[aáe]|asociad|asociar|asoci[aá]l[oa]s?)(?!\p{L})/giu,
+    'conecta'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:vincul[aáe]|vinculad|vincular|vincul[aá]l[oa]s?)(?!\p{L})/giu,
+    'conecta'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:un[eí]|unid|unir|unan|un[eí]l[oa]s?)(?!\p{L})/giu,
+    'conecta'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:enlaz[aá]|enlace|enlazad|enlazar|enlaz[aá]l[oa]s?)(?!\p{L})/giu,
+    'conecta'
+  );
+
+  // ── F. Clasificadores y contenedores del metamodelo UML (NUNCA clases de negocio)
   s = s.replace(/(?<!\p{L})(?:calse|clse|claze|calses|clses)(?!\p{L})/giu, 'clase');
   s = s.replace(/(?<!\p{L})(?:tavla|tavlas)(?!\p{L})/giu, 'tabla');
 
-  // Miembros y propiedades
-  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propedad|propedades)(?!\p{L})/giu, 'atributos');
-  s = s.replace(/(?<!\p{L})(?:mtodo|mtodos|metodo|método|metodos|métodos)(?!\p{L})/giu, 'metodos');
+  // ── G. Miembros y propiedades del metamodelo UML
+  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedades|campos)(?!\p{L})/giu, 'atributos');
+  s = s.replace(/(?<!\p{L})(?:mtodo|mtodos|metodo|método|metodos|métodos|funciones|operaciones)(?!\p{L})/giu, 'metodos');
+  s = s.replace(/(?<!\p{L})(?:relacion|relación|relaciones|asociacion|asociación|asociaciones)(?!\p{L})/giu, 'asociacion');
 
-  // Atributos y campos típicos
+  // ── G2. Typos fonéticos en nombres comunes de atributos (NO afecta nombres de clases)
   s = s.replace(/(?<!\p{L})(?:nbre|nombr|nomvre|nobmre)(?!\p{L})/giu, 'nombre');
   s = s.replace(/(?<!\p{L})(?:feha|fcha)(?!\p{L})/giu, 'fecha');
-  s = s.replace(/(?<!\p{L})(?:nimero|nro|n[uú]m)(?!\p{L})/giu, 'numero');
-  s = s.replace(/(?<!\p{L})(?:improte)(?!\p{L})/giu, 'importe');
+  s = s.replace(/(?<!\p{L})(?:nimero|nro)(?!\p{L})/giu, 'numero');
   s = s.replace(/(?<!\p{L})(?:totl)(?!\p{L})/giu, 'total');
-  s = s.replace(/(?<!\p{L})(?:prcio|prec)(?!\p{L})/giu, 'precio');
-  s = s.replace(/(?<!\p{L})(?:sldo|sueld)(?!\p{L})/giu, 'sueldo');
-  s = s.replace(/(?<!\p{L})(?:cdigo|cod)(?!\p{L})/giu, 'codigo');
-  s = s.replace(/(?<!\p{L})(?:descrip|descr)(?!\p{L})/giu, 'descripcion');
+  s = s.replace(/(?<!\p{L})(?:improte)(?!\p{L})/giu, 'importe');
+  s = s.replace(/(?<!\p{L})(?:cdigo)(?!\p{L})/giu, 'codigo');
 
-  // Entidades comunes
-  s = s.replace(/(?<!\p{L})(?:usario|usuaio)(?!\p{L})/giu, 'Usuario');
-  s = s.replace(/(?<!\p{L})(?:poducto|prodcuto)(?!\p{L})/giu, 'Producto');
-  s = s.replace(/(?<!\p{L})(?:clente)(?!\p{L})/giu, 'Cliente');
-  s = s.replace(/(?<!\p{L})(?:emplado|empeado)(?!\p{L})/giu, 'Empleado');
-  s = s.replace(/(?<!\p{L})(?:fctura|fatura|factra)(?!\p{L})/giu, 'Factura');
-  s = s.replace(/(?<!\p{L})(?:estudinate|estudinte)(?!\p{L})/giu, 'Estudiante');
-  s = s.replace(/(?<!\p{L})(?:aluno|alunmo)(?!\p{L})/giu, 'Alumno');
-
-  // Conectores y preposiciones
+  // ── H. Conectores gramaticales y preposiciones
   s = s.replace(/(?<!\p{L})(?:cn|c\/)(?!\p{L})/giu, 'con');
   s = s.replace(/(?<!\p{L})(?:llamda|llamd[ao])(?!\p{L})/giu, 'llamada');
   s = s.replace(/(?<!\p{L})(?:d|del)\s+tipo(?!\p{L})/giu, 'de tipo');
@@ -94,15 +228,15 @@ export function sanitizeUmlType(rawType: string, attrName: string): string {
   if (t === 'date' || t === 'datetime' || t === 'timestamp') return rawType.trim();
   if (t === 'void') return 'void';
 
-  // Aliases en lenguaje natural -> tipo canónico
-  if (/^(?:str|texto|text|cadena|varchar|char|palabra|letras|alfanumerico|alfanumérico)$/.test(t)) return 'string';
+  // Aliases canónicos en lenguaje natural -> tipo primitivo
+  if (/^(?:str|texto|text|cadena|varchar|char|alfanumerico|alfanumérico)$/.test(t)) return 'string';
   if (/^(?:entero|numero|número|num|count|long|short|byte|numero\s+raro|cantidad|entero\s+largo)$/.test(t)) return 'int';
-  if (/^(?:real|monto|precio|dinero|porcentaje|importe|saldo|costo|tasa|valor\s+monetario)$/.test(t)) return 'float';
-  if (/^(?:fecha|hora|time|fechahora|dia|año|mes)$/.test(t)) return 'date';
-  if (/^(?:booleano|logico|lógico|flag|binario|verdaderofalso|si\s*no)$/.test(t)) return 'boolean';
-  if (/^(?:vacio|vacío|nada|ninguno)$/.test(t)) return 'void';
+  if (/^(?:real|float|double|decimal|fraccionario)$/.test(t)) return 'float';
+  if (/^(?:fecha|date|datetime|timestamp|hora|time|fechahora)$/.test(t)) return 'date';
+  if (/^(?:booleano|bool|logico|lógico|flag|binario|verdaderofalso|si\s*no)$/.test(t)) return 'boolean';
+  if (/^(?:vacio|vacío|void|nada|ninguno)$/.test(t)) return 'void';
 
-  // Si no es un tipo primitivo conocido de UML (ej: banana, color, fruta):
+  // Si no es un tipo primitivo conocido de UML (ej: banana, color):
   // inferir según la semántica del nombre del atributo
   return inferAttributeType(attrName);
 }

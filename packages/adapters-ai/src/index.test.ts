@@ -243,7 +243,7 @@ describe('FakeLlm', () => {
 
       const value = result.value as { kind: string; deltas?: any[] };
       expect(value.kind).toBe('batch');
-      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Factura' });
+      expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Fctura' });
       expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'numero', type: 'string' });
       expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'total', type: 'string' });
     });

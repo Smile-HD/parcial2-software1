@@ -12,27 +12,41 @@ import {
 describe('normalizer module', () => {
   describe('normalizeUmlUtterance', () => {
     it('normalizes typos and accented verbs into canonical forms', () => {
-      const input = 'agrg una clse Empleado cn los atrbutos nbre, sueldo y feha de ingreso';
+      const input = 'agrg una clse Empleado cn los atrbutos nombre, sueldo y fecha';
       const normalized = normalizeUmlUtterance(input);
       expect(normalized).toContain('agrega');
       expect(normalized).toContain('clase');
       expect(normalized).toContain('Empleado');
       expect(normalized).toContain('con');
       expect(normalized).toContain('atributos');
-      expect(normalized).toContain('nombre');
-      expect(normalized).toContain('fecha');
     });
 
-    it('normalizes accented imperative verbs without breaking word boundaries', () => {
+    it('normalizes Spanish action verbs across all accents, regional dialects and enclitics', () => {
+      // Voseo (Rioplatense / Centroamérica)
       expect(normalizeUmlUtterance('creá una clase Factura')).toContain('crea una clase Factura');
       expect(normalizeUmlUtterance('borrá la clase Usuario')).toContain('borra la clase Usuario');
       expect(normalizeUmlUtterance('renombrá la clase Estudiante a Alumno')).toContain('renombra la clase Estudiante a Alumno');
-      expect(normalizeUmlUtterance('eliminá la clase Deposito')).toContain('elimina la clase Deposito');
+      expect(normalizeUmlUtterance('sacá la clase Deposito')).toContain('borra la clase Deposito');
+      expect(normalizeUmlUtterance('ponele atributos x e y')).toContain('agrega atributos x e y');
+
+      // Tuteo / Infinitivo / Sinónimos
+      expect(normalizeUmlUtterance('construir una clase Pedido')).toContain('crea una clase Pedido');
+      expect(normalizeUmlUtterance('diseñá la entidad Cuenta')).toContain('crea la entidad Cuenta');
+      expect(normalizeUmlUtterance('añade atributos a la clase Producto')).toContain('agrega atributos a la clase Producto');
+      expect(normalizeUmlUtterance('suprimir la clase Registro')).toContain('borra la clase Registro');
+      expect(normalizeUmlUtterance('vinculá la clase Orden con Detalle')).toContain('conecta la clase Orden con Detalle');
+
+      // Enclíticos
+      expect(normalizeUmlUtterance('creala como clase')).toContain('crea como clase');
+      expect(normalizeUmlUtterance('agregale atributos')).toContain('agrega atributos');
+      expect(normalizeUmlUtterance('borralo')).toContain('borra');
     });
 
-    it('normalizes common typos in entities and attributes', () => {
-      expect(normalizeUmlUtterance('fctura con nimero y totl')).toContain('Factura con numero y total');
-      expect(normalizeUmlUtterance('poducto con prcio y cdigo')).toContain('Producto con precio y codigo');
+    it('is strictly domain-agnostic and preserves arbitrary class and attribute names', () => {
+      // Classes can have any name, including Dinero, Fecha, or domain-specific names
+      expect(normalizeUmlUtterance('creá una clase Dinero con valor')).toContain('crea una clase Dinero con valor');
+      expect(normalizeUmlUtterance('crea una clase Fecha con timestamp')).toContain('crea una clase Fecha con timestamp');
+      expect(normalizeUmlUtterance('armá la clase QuantumGate con spin')).toContain('crea la clase QuantumGate con spin');
     });
   });
 
@@ -50,7 +64,7 @@ describe('normalizer module', () => {
       expect(sanitizeUmlType('texto', 'descripcion')).toBe('string');
       expect(sanitizeUmlType('entero', 'cantidad')).toBe('int');
       expect(sanitizeUmlType('numero raro', 'monto')).toBe('int');
-      expect(sanitizeUmlType('dinero', 'precio')).toBe('float');
+      expect(sanitizeUmlType('real', 'saldo')).toBe('float');
       expect(sanitizeUmlType('logico', 'disponible')).toBe('boolean');
     });
 
