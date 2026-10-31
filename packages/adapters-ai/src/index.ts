@@ -519,13 +519,50 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 8. asociación entre dos clases (simple)
+    // 7b. asociación reflexiva: "conecta Empleado consigo misma" / "asocia Empleado de forma reflexiva"
+    const reflexiveAssoc = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:consigo\s+misma|consigo\s+mismo)/i.exec(utterance);
+    if (reflexiveAssoc) {
+      const classId = classIdByName(currentIr, reflexiveAssoc[1]!);
+      if (classId === null) return refused(`Unknown class "${reflexiveAssoc[1]}"`);
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'create',
+        ...deltaBase(currentIr),
+        associationId: crypto.randomUUID(),
+        sourceClassId: classId,
+        targetClassId: classId,
+        sourceMultiplicity: '1',
+        targetMultiplicity: '0..*',
+        directed: false,
+        aggregation: 'none',
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 8. asociación entre dos clases (simple o con cardinalidad)
     const association = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
       const targetClassId = classIdByName(currentIr, association[2]!);
       if (sourceClassId === null) return refused(`Unknown class "${association[1]}"`);
       if (targetClassId === null) return refused(`Unknown class "${association[2]}"`);
+
+      let sourceMultiplicity = '1';
+      let targetMultiplicity = '1';
+      if (/\b(?:1\s+a\s+[nN\*]|uno\s+a\s+muchos|1\s*:\s*[nN\*])\b/i.test(utterance)) {
+        sourceMultiplicity = '1';
+        targetMultiplicity = '0..*';
+      } else if (/\b(?:[nN\*]\s+a\s+1|muchos\s+a\s+uno|[nN\*]\s*:\s*1)\b/i.test(utterance)) {
+        sourceMultiplicity = '0..*';
+        targetMultiplicity = '1';
+      } else if (/\b(?:[nN\*]\s+a\s+[nNmM\*]|muchos\s+a\s+muchos|[nN\*]\s*:\s*[nNmM\*])\b/i.test(utterance)) {
+        sourceMultiplicity = '0..*';
+        targetMultiplicity = '0..*';
+      } else if (/\b(?:1\s+a\s+1|uno\s+a\s+uno|1\s*:\s*1)\b/i.test(utterance)) {
+        sourceMultiplicity = '1';
+        targetMultiplicity = '1';
+      }
+
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -533,8 +570,8 @@ export class FakeLlm implements LlmPort {
         associationId: crypto.randomUUID(),
         sourceClassId,
         targetClassId,
-        sourceMultiplicity: '1',
-        targetMultiplicity: '1',
+        sourceMultiplicity,
+        targetMultiplicity,
         directed: false,
         aggregation: 'none',
       };
@@ -954,6 +991,15 @@ export class OpenAiLlm implements LlmPort {
       '- Example: "Order is composed of OrderLine" → whole=Order. If Order is sourceClassId, set aggregationEnd="source". If Order is targetClassId, set aggregationEnd="target".',
       '- Example: "OrderLine is part of Order" → whole=Order. Set aggregationEnd to the end where Order resides.',
       '- Default is "source" if omitted (backward compat).',
+      '',
+      'MULTIPLICITY & CARDINALITY GUIDANCE (UML 2.5.1):',
+      '- "1 a 1" / "1:1" / "uno a uno" → sourceMultiplicity="1", targetMultiplicity="1".',
+      '- "1 a N" / "1:N" / "uno a muchos" / "Order has many Items" → sourceMultiplicity="1", targetMultiplicity="0..*" (or "1..*" if required).',
+      '- "N a 1" / "N:1" / "muchos a uno" → sourceMultiplicity="0..*", targetMultiplicity="1".',
+      '- "N a M" / "N:M" / "muchos a muchos" → sourceMultiplicity="0..*", targetMultiplicity="0..*".',
+      '- "0..1" / "cero o uno" / "opcional" → multiplicity="0..1".',
+      '- "1..*" / "uno o más" / "al menos uno" → multiplicity="1..*".',
+      '- REFLEXIVE ASSOCIATION: When an association is reflexive (e.g. "Employee supervises Employee", "conecta Empleado consigo misma"), set both sourceClassId and targetClassId to the SAME existing class uuid. Never invent or hallucinate an extra class.',
       '',
       'FLEXIBLE INTENT & TYPE DEFAULTS:',
       '- If the user names attributes without specifying types (e.g. "crea un diagrama hola con atributos pepe y año", "crea clase Usuario con atributos nombre, email", "add attribute nickname to User"), default type to "string". Do NOT refuse or fail due to omitted attribute types.',

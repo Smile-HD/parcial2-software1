@@ -603,6 +603,42 @@ describe('FakeLlm aggregation/composition + association names/roles (unit 10.5)'
       expect(delta.aggregationEnd).toBe('target');
     }
   });
+
+  it('interprets association with multiplicity 1 to N (uno a muchos)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('conecta Customer con Order uno a muchos', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { sourceMultiplicity?: string; targetMultiplicity?: string };
+      expect(delta.sourceMultiplicity).toBe('1');
+      expect(delta.targetMultiplicity).toBe('0..*');
+    }
+  });
+
+  it('interprets association with multiplicity N to 1 (muchos a uno)', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('conecta Order con Customer N a 1', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { sourceMultiplicity?: string; targetMultiplicity?: string };
+      expect(delta.sourceMultiplicity).toBe('0..*');
+      expect(delta.targetMultiplicity).toBe('1');
+    }
+  });
+
+  it('interprets reflexive association on same class', async () => {
+    const llm = new FakeLlm();
+    const diagram = makeDiagramWithOrderLines();
+    const result = await llm.interpret('conecta Customer consigo misma', {}, diagram);
+    expect(result.kind).toBe('delta');
+    if (result.kind === 'delta') {
+      const delta = result.value as { sourceClassId?: string; targetClassId?: string };
+      expect(delta.sourceClassId).toBe(diagram.classes[2]!.id);
+      expect(delta.targetClassId).toBe(diagram.classes[2]!.id);
+    }
+  });
 });
 
 describe('FakeLlm generalization commands (unit 11.5)', () => {

@@ -52,6 +52,24 @@ describe('normalizer module', () => {
       expect(normalizeUmlUtterance('suprimi la clase Item')).toContain('borra la clase Item');
     });
 
+    it('normalizes multiplicity and cardinality phrasings in Spanish into canonical tokens', () => {
+      expect(normalizeUmlUtterance('conecta Factura con Detalle uno a muchos')).toContain('1 a N');
+      expect(normalizeUmlUtterance('asocia Detalle con Factura muchos a uno')).toContain('N a 1');
+      expect(normalizeUmlUtterance('relacion muchos a muchos entre Estudiante y Curso')).toContain('N a M');
+      expect(normalizeUmlUtterance('conecta Usuario con Perfil uno a uno')).toContain('1 a 1');
+      expect(normalizeUmlUtterance('cardinalidad de cero o uno')).toContain('0..1');
+      expect(normalizeUmlUtterance('cardinalidad de uno o más')).toContain('1..*');
+      expect(normalizeUmlUtterance('cardinalidad de cero a muchos')).toContain('0..*');
+    });
+
+    it('normalizes specialized relationship phrasings (composition, inheritance, realization, dependency, reflexive)', () => {
+      expect(normalizeUmlUtterance('Pedido está compuesto por Detalle')).toContain('Pedido compone Detalle');
+      expect(normalizeUmlUtterance('Empleado hereda de Persona')).toContain('Empleado inherits from Persona');
+      expect(normalizeUmlUtterance('Factura cumple el contrato de Imprimible')).toContain('Factura implementa Imprimible');
+      expect(normalizeUmlUtterance('Servicio hace uso de Repositorio')).toContain('Servicio depende de Repositorio');
+      expect(normalizeUmlUtterance('conecta Empleado de forma reflexiva')).toContain('conecta Empleado consigo misma');
+    });
+
     it('is strictly domain-agnostic and preserves arbitrary class and attribute names', () => {
       // Classes can have any name, including Dinero, Fecha, or domain-specific names
       expect(normalizeUmlUtterance('creá una clase Dinero con valor')).toContain('crea una clase Dinero con valor');

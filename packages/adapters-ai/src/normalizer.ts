@@ -195,6 +195,79 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:llamda|llamd[ao])(?!\p{L})/giu, 'llamada');
   s = s.replace(/(?<!\p{L})(?:d|del)\s+tipo(?!\p{L})/giu, 'de tipo');
 
+  // ── I. Fraseos de Relaciones Especiales (Composición, Agregación, Herencia, Realización, Dependencia, Reflexiva)
+  // Composición (fuerte): "compone", "compuesto por", "es parte de"
+  s = s.replace(
+    /(?<!\p{L})(?:est[aá]\s+compuest[ao]\s+(?:por|de)|compuest[ao]\s+por|es\s+composici[oó]n\s+de|contiene\s+fuertemente|contiene\s+exclusivamente)(?!\p{L})/giu,
+    'compone'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:es\s+parte\s+de|forma\s+parte\s+de|pertenece\s+a)(?!\p{L})/giu,
+    'es parte de'
+  );
+  // Agregación (débil): "agregación entre", "agrega"
+  s = s.replace(
+    /(?<!\p{L})(?:est[aá]\s+agregad[ao]\s+a|es\s+agregaci[oó]n\s+de)(?!\p{L})/giu,
+    'agregación entre'
+  );
+  // Herencia / Generalización: estandarizar a "inherits from" (reconocido directamente por el intérprete)
+  s = s.replace(
+    /(?<!\p{L})(?:hereda\s+de|es\s+un\s+tipo\s+de|es\s+subtipo\s+de|es\s+una\s+subclase\s+de|subclase\s+de|es\s+hija\s+de|clase\s+hija\s+de|extiende\s+(?:de|a))(?!\p{L})/giu,
+    'inherits from'
+  );
+  // Realización: estandarizar a "implementa" (reconocido directamente)
+  s = s.replace(
+    /(?<!\p{L})(?:cumple\s+el\s+contrato\s+de|es\s+realizaci[oó]n\s+de|es\s+implementaci[oó]n\s+de)(?!\p{L})/giu,
+    'implementa'
+  );
+  // Dependencia: estandarizar a "depende de"
+  s = s.replace(
+    /(?<!\p{L})(?:hace\s+uso\s+de|tiene\s+dependencia\s+de|tiene\s+dependencia\s+con)(?!\p{L})/giu,
+    'depende de'
+  );
+  // Reflexiva: estandarizar a "consigo misma"
+  s = s.replace(
+    /(?<!\p{L})(?:a\s+s[ií]\s+mism[ao]|de\s+forma\s+reflexiva|relaci[oó]n\s+reflexiva)(?!\p{L})/giu,
+    'consigo misma'
+  );
+
+  // ── J. Multiplicidades y Cardinalidades (Estandarización léxica en español)
+  // 1 a N / Uno a muchos
+  s = s.replace(
+    /(?<!\p{L})(?:uno\s+a\s+muchos|uno\s+a\s+varios|1\s+a\s+muchos|1\s+a\s+varios|1\s*:\s*[nN\*]|1\s+a\s+[nN\*]|de\s+uno\s+a\s+muchos|de\s+uno\s+a\s+varios)(?!\p{L})/giu,
+    '1 a N'
+  );
+  // N a 1 / Muchos a uno
+  s = s.replace(
+    /(?<!\p{L})(?:muchos\s+a\s+uno|varios\s+a\s+uno|[nN\*]\s*:\s*1|[nN\*]\s+a\s+1|muchos\s+para\s+un[oa]|varios\s+para\s+un[oa]|de\s+muchos\s+a\s+uno)(?!\p{L})/giu,
+    'N a 1'
+  );
+  // N a M / Muchos a muchos
+  s = s.replace(
+    /(?<!\p{L})(?:muchos\s+a\s+muchos|varios\s+a\s+varios|[nN\*]\s*:\s*[nNmM\*]|[nN\*]\s+a\s+[nNmM\*]|de\s+muchos\s+a\s+muchos)(?!\p{L})/giu,
+    'N a M'
+  );
+  // 1 a 1 / Uno a uno
+  s = s.replace(
+    /(?<!\p{L})(?:uno\s+a\s+uno|1\s*:\s*1|1\s+a\s+1|un[íi]voca|biun[íi]voca|uno\s+solo\s+a\s+uno\s+solo)(?!\p{L})/giu,
+    '1 a 1'
+  );
+  // 0..1 / Cero o uno
+  s = s.replace(
+    /(?<!\p{L})(?:cero\s+o\s+uno|cero\s+a\s+uno|0\s+o\s+1|0\s+a\s+1|a\s+lo\s+sumo\s+uno|como\s+m[aá]ximo\s+uno)(?!\p{L})/giu,
+    '0..1'
+  );
+  // 1..* / Uno o más
+  s = s.replace(
+    /(?<!\p{L})(?:uno\s+o\s+m[aá]s|1\s+o\s+m[aá]s|al\s+menos\s+uno|como\s+m[íi]nimo\s+uno)(?!\p{L})/giu,
+    '1..*'
+  );
+  // 0..* / Cero o más
+  s = s.replace(
+    /(?<!\p{L})(?:cero\s+o\s+m[aá]s|cero\s+a\s+muchos|cualquier\s+cantidad)(?!\p{L})/giu,
+    '0..*'
+  );
+
   return s;
 }
 
