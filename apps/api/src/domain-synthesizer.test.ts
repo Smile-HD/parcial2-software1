@@ -732,6 +732,123 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(rec.targetMultiplicity).toBe('0..*');
     }
   });
+
+  it('extracts explicit multiplicities from Spanish utterances and overrides * <-> *', () => {
+    const model: SemanticDomainModel = {
+      classes: [
+        { name: 'Cliente', attributes: [{ name: 'dni', type: 'string' }, { name: 'nombre', type: 'string' }] },
+        { name: 'Turno', attributes: [{ name: 'hora', type: 'date' }, { name: 'fecha', type: 'date' }] },
+      ],
+      associations: [
+        {
+          source: 'Cliente',
+          target: 'Turno',
+          aggregation: 'none',
+          sourceMultiplicity: '*',
+          targetMultiplicity: '*',
+        },
+      ],
+    };
+
+    const prompt = 'crea una clase Cliente con dni y nombre, crea una clase Turno con hora y fecha, y asocia Cliente con Turno donde un cliente tiene muchos turnos y cada turno pertenece a un solo cliente';
+    const delta = expandSemanticDomainToDelta(model, emptyDiagram.id, emptyDiagram, prompt);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const assoc = applied.value.associations[0];
+      expect(assoc.sourceMultiplicity).toBe('1');
+      expect(assoc.targetMultiplicity).toBe('0..*');
+    }
+  });
+
+  it('prunes unrequested hallucinated classes when user asked for specific classes', () => {
+    const existingCanvas: Diagram = {
+      ...emptyDiagram,
+      classes: [
+        {
+          id: crypto.randomUUID(),
+          name: 'Libro',
+          isAbstract: false,
+          attributes: [{ id: crypto.randomUUID(), name: 'titulo', type: 'string', visibility: '+', isStatic: false, isDerived: false }],
+          methods: [],
+          position: { x: 100, y: 100 },
+        },
+      ],
+    };
+
+    const modelWithHallucinatedCliente: SemanticDomainModel = {
+      classes: [
+        { name: 'ReservaDeLibro', attributes: [{ name: 'codigo', type: 'string' }, { name: 'fecha', type: 'date' }] },
+        { name: 'Cliente', attributes: [{ name: 'nombre', type: 'string' }, { name: 'email', type: 'string' }] },
+      ],
+      associations: [
+        {
+          source: 'ReservaDeLibro',
+          target: 'Libro',
+          aggregation: 'none',
+          sourceMultiplicity: '*',
+          targetMultiplicity: '*',
+        },
+      ],
+    };
+
+    const prompt = 'agrega al modelo una clase ReservaDeLibro con atributos codigo y fecha y una asociacion entre ReservaDeLibro y Libro donde un libro tiene muchas reservas';
+    const delta = expandSemanticDomainToDelta(modelWithHallucinatedCliente, existingCanvas.id, existingCanvas, prompt);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(existingCanvas, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      // Cliente no debe ser creada en el diagrama
+      const classNames = applied.value.classes.map((c) => c.name);
+      expect(classNames).toContain('ReservaDeLibro');
+      expect(classNames).toContain('Libro');
+      expect(classNames).not.toContain('Cliente');
+
+      // La asociación debe respetar la cardinalidad de la frase ("un libro tiene muchas reservas")
+      const assoc = applied.value.associations[0];
+      expect(assoc.sourceMultiplicity).toBe('0..*');
+      expect(assoc.targetMultiplicity).toBe('1');
+    }
+  });
+
+  it('remaps few-shot contaminated class names back to explicitly requested names', () => {
+    const modelWithFacturaInsteadOfPedido: SemanticDomainModel = {
+      classes: [
+        { name: 'Factura', attributes: [{ name: 'codigo', type: 'string' }, { name: 'total', type: 'float' }] },
+        { name: 'DetallePedido', attributes: [{ name: 'cantidad', type: 'int' }, { name: 'subtotal', type: 'float' }] },
+      ],
+      associations: [
+        {
+          source: 'Factura',
+          target: 'DetallePedido',
+          aggregation: 'composite',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '1..*',
+        },
+      ],
+    };
+
+    const prompt = 'crea una clase Pedido con codigo y total, y una clase DetallePedido con cantidad y subtotal, y conectalos con una asociacion donde un Pedido tiene uno o muchos DetallePedido';
+    const delta = expandSemanticDomainToDelta(modelWithFacturaInsteadOfPedido, emptyDiagram.id, emptyDiagram, prompt);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(emptyDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const classNames = applied.value.classes.map((c) => c.name);
+      expect(classNames).toContain('Pedido');
+      expect(classNames).toContain('DetallePedido');
+      expect(classNames).not.toContain('Factura');
+
+      const assoc = applied.value.associations[0];
+      expect(assoc.aggregation).toBe('composite');
+      expect(assoc.sourceMultiplicity).toBe('1');
+      expect(assoc.targetMultiplicity).toBe('1..*');
+    }
+  });
 });
 
 

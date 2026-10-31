@@ -203,6 +203,129 @@ export function generateDefaultAttributesForClass(className: string): Array<{ na
  * Evalúa si una relación de composición es semánticamente válida según principios OOAD.
  * En UML, la composición exige dependencia existencial estricta (el ciclo de vida de la parte depende del todo).
  */
+export function classExactOrPluralMatches(a: string, b: string): boolean {
+  const w = a.toLowerCase().trim();
+  const c = b.toLowerCase().trim();
+  if (!w || !c) return false;
+  if (w === c) return true;
+  if (w.endsWith('s') && w.slice(0, -1) === c) return true;
+  if (c.endsWith('s') && c.slice(0, -1) === w) return true;
+  if (w.endsWith('es') && w.slice(0, -2) === c) return true;
+  if (c.endsWith('es') && c.slice(0, -2) === w) return true;
+  return false;
+}
+
+export function classWordMatches(word: string, className: string): boolean {
+  const w = word.toLowerCase().trim();
+  const c = className.toLowerCase().trim();
+  if (!w || !c) return false;
+  if (w === c) return true;
+  if (w.endsWith('s') && w.slice(0, -1) === c) return true;
+  if (c.endsWith('s') && c.slice(0, -1) === w) return true;
+  if (w.endsWith('es') && w.slice(0, -2) === c) return true;
+  if (c.endsWith('es') && c.slice(0, -2) === w) return true;
+  const cleanW = w.replace(/es$|s$/, '');
+  const cleanC = c.replace(/es$|s$/, '');
+  if (cleanW.length >= 4 && cleanC.includes(cleanW)) return true;
+  if (cleanC.length >= 4 && cleanW.includes(cleanC)) return true;
+  return false;
+}
+
+/**
+ * Extrae restricciones explícitas de multiplicidad especificadas en lenguaje natural en el mensaje del usuario.
+ * Respeta directivas como "un cliente tiene muchos turnos", "cada turno pertenece a un solo cliente", "uno o muchos", "1 a muchos".
+ */
+export function extractExplicitMultiplicities(
+  text: string,
+  sourceName: string,
+  targetName: string
+): { sourceMultiplicity?: string; targetMultiplicity?: string } | null {
+  if (!text || !sourceName || !targetName) return null;
+  const lower = text.toLowerCase();
+
+  let multForSource: string | undefined;
+  let multForTarget: string | undefined;
+
+  // 1. Patrón: "[X] tiene (muchos|muchas|varios|varias|uno o muchos|uno o mas|1 o mas|1 o muchos|0..*|1..*) [Y]"
+  const hasManyRegex = /(?:un|una|cada|el|la)?\s*([a-záéíóúñ]+)\s+(?:tiene|posee|contiene|incluye|guarda)\s+(uno\s+o\s+muchos|uno\s+o\s+m[aá]s|una\s+o\s+muchas|una\s+o\s+m[aá]s|1\s+o\s+muchos|1\s+o\s+m[aá]s|muchos|muchas|varios|varias|0\.\.\*|1\.\.\*)\s+([a-záéíóúñ]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = hasManyRegex.exec(lower)) !== null) {
+    const subj = match[1]!;
+    const quantifier = match[2]!;
+    const obj = match[3]!;
+    const targetIsOneOrMany = /uno\s+o|1\s+o|1\.\.\*/i.test(quantifier);
+    const targetMult = targetIsOneOrMany ? '1..*' : '0..*';
+
+    if (classWordMatches(subj, sourceName) && classWordMatches(obj, targetName)) {
+      multForSource = multForSource ?? '1';
+      multForTarget = targetMult;
+    } else if (classWordMatches(subj, targetName) && classWordMatches(obj, sourceName)) {
+      multForTarget = multForTarget ?? '1';
+      multForSource = targetMult;
+    }
+  }
+
+  // 2. Patrón: "(cada|un|una) [Y] pertenece a (un solo|una sola|un unico|una unica|solo un|solo una|un|uno|1) [X]"
+  const belongsToOneRegex = /(?:cada|un|una)?\s*([a-záéíóúñ]+)\s+(?:pertenece\s+a|corresponde\s+a|est[aá]\s+asociad[ao]\s+a)\s+(?:un\s+[uú]nico|una\s+[uú]nica|un\s+solo|una\s+sola|solo\s+un[ao]?|un[ao]?|1)\s+([a-záéíóúñ]+)/gi;
+  while ((match = belongsToOneRegex.exec(lower)) !== null) {
+    const item = match[1]!;
+    const owner = match[2]!;
+
+    if (classWordMatches(owner, sourceName) && classWordMatches(item, targetName)) {
+      multForSource = '1';
+    } else if (classWordMatches(owner, targetName) && classWordMatches(item, sourceName)) {
+      multForTarget = '1';
+    }
+  }
+
+  // 3. Patrón: "(cada|un|una) [Y] tiene (un solo|una sola|un unico|una unica|solo un|solo una|un|uno|1) [X]"
+  const hasOneRegex = /(?:cada|un|una)?\s*([a-záéíóúñ]+)\s+(?:tiene|posee)\s+(?:un\s+[uú]nico|una\s+[uú]nica|un\s+solo|una\s+sola|solo\s+un[ao]?|un[ao]?|1)\s+([a-záéíóúñ]+)/gi;
+  while ((match = hasOneRegex.exec(lower)) !== null) {
+    const item = match[1]!;
+    const other = match[2]!;
+
+    if (classWordMatches(other, sourceName) && classWordMatches(item, targetName)) {
+      multForSource = '1';
+    } else if (classWordMatches(other, targetName) && classWordMatches(item, sourceName)) {
+      multForTarget = '1';
+    }
+  }
+
+  // 4. Frases directas de cardinalidad: "1 a muchos", "1:N", "uno a muchos", "muchos a muchos", "N:M", "1 a 1", "1:1"
+  if (!multForSource && !multForTarget) {
+    if (/\b(?:muchos\s+a\s+muchos|n\s*:\s*m|m\s*:\s*n|\*\s*a\s*\*)\b/i.test(lower)) {
+      multForSource = '0..*';
+      multForTarget = '0..*';
+    } else if (/\b(?:1\s*:\s*1|uno\s+a\s+uno|1\s+a\s+1)\b/i.test(lower)) {
+      multForSource = '1';
+      multForTarget = '1';
+    } else if (/\b(?:1\s*:\s*n|1\s+a\s+muchos|uno\s+a\s+muchos|1\s+a\s+n)\b/i.test(lower)) {
+      multForSource = '1';
+      multForTarget = '0..*';
+    }
+  }
+
+  if (multForSource || multForTarget) {
+    return {
+      sourceMultiplicity: multForSource,
+      targetMultiplicity: multForTarget,
+    };
+  }
+  return null;
+}
+
+export function extractExplicitRequestedClasses(text?: string): string[] {
+  if (!text) return [];
+  const matches = Array.from(
+    text.matchAll(/\b(?:clase|calse|clse|class|tabla)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/gi)
+  ).map((m) => cleanClassName(m[1]));
+  return Array.from(new Set(matches.filter(Boolean)));
+}
+
+/**
+ * Evalúa si una relación de composición es semánticamente válida según principios OOAD.
+ * En UML, la composición exige dependencia existencial estricta (el ciclo de vida de la parte depende del todo).
+ */
 export function isHeuristicComposition(sourceName?: string, targetName?: string, hasAssocClass?: boolean): boolean {
   if (!targetName) return false;
   const s = (sourceName || '').toLowerCase().trim();
@@ -211,8 +334,8 @@ export function isHeuristicComposition(sourceName?: string, targetName?: string,
 
   if (hasAssocClass) return true;
 
-  // Palabras clave que denotan inequívocamente entidades dependientes o partes subordinadas
-  const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|reserva|turno|registro)/i;
+  // Palabras clave que denotan inequívocamente entidades dependientes o partes subordinadas del todo
+  const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte)/i;
   if (childPattern.test(t)) return true;
 
   // Si el destino es un prefijo o sufijo compuesto del origen (ej. Pedido -> PedidoItem)
@@ -228,7 +351,8 @@ export function isHeuristicComposition(sourceName?: string, targetName?: string,
 export function expandSemanticDomainToDelta(
   model: SemanticDomainModel,
   diagramId: string,
-  currentDiagram?: any
+  currentDiagram?: any,
+  originText?: string
 ): BatchDelta | null {
   const hasClasses = Array.isArray(model.classes) && model.classes.length > 0;
   const hasAssociations = Array.isArray(model.associations) && model.associations.length > 0;
@@ -245,6 +369,44 @@ export function expandSemanticDomainToDelta(
 
   if (!hasClasses && !hasAssociations && !hasGeneralizations && !hasRealizations && !hasDependencies && !hasNary && !hasDeletions) {
     return null;
+  }
+
+  // 0. Si el usuario solicitó clases específicas de forma explícita, podar clases alucinadas y normalizar nombres contaminados
+  if (originText && model.classes && model.classes.length > 0) {
+    const explicitClasses = extractExplicitRequestedClasses(originText);
+    if (explicitClasses.length > 0) {
+      const lowerOrigin = originText.toLowerCase();
+
+      // Si el modelo devolvió la misma cantidad de clases pero con nombres alterados por pocos disparos (ej. Pedido -> Factura)
+      if (model.classes.length === explicitClasses.length) {
+        for (let i = 0; i < model.classes.length; i++) {
+          const c = model.classes[i]!;
+          const match = explicitClasses.find((ec) => classExactOrPluralMatches(c.name, ec));
+          if (!match) {
+            const unassigned = explicitClasses.find((ec) => !model.classes!.some((mc) => classExactOrPluralMatches(mc.name, ec)));
+            if (unassigned) {
+              const oldName = c.name;
+              c.name = unassigned;
+              if (model.associations) {
+                for (const a of model.associations) {
+                  if (a.source === oldName) a.source = unassigned;
+                  if (a.target === oldName) a.target = unassigned;
+                }
+              }
+            }
+          }
+        }
+      } else if (model.classes.length > explicitClasses.length) {
+        // Filtrar clases fantasmas no solicitadas (ej. Cliente cuando sólo se pidió ReservaDeLibro)
+        model.classes = model.classes.filter((c) => {
+          const cName = cleanClassName(c.name).toLowerCase();
+          if (explicitClasses.some((ec) => classWordMatches(cName, ec))) return true;
+          if (lowerOrigin.includes(cName)) return true;
+          if (currentDiagram?.classes?.some((dc: any) => dc.name.toLowerCase() === cName)) return true;
+          return false;
+        });
+      }
+    }
   }
 
   const timestamp = new Date().toISOString();
@@ -780,8 +942,22 @@ export function expandSemanticDomainToDelta(
 
       if (existingAssoc) {
         // Verificar si la relación propuesta realmente introduce cambios respecto a la del lienzo
-        const newSourceMult = assoc.sourceMultiplicity ? cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1') : undefined;
-        const newTargetMult = assoc.targetMultiplicity ? cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*') : undefined;
+        let newSourceMult = assoc.sourceMultiplicity ? cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1') : undefined;
+        let newTargetMult = assoc.targetMultiplicity ? cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*') : undefined;
+
+        if (originText) {
+          const explicit = extractExplicitMultiplicities(originText, sourceName, targetName);
+          if (explicit) {
+            if (explicit.sourceMultiplicity) newSourceMult = explicit.sourceMultiplicity;
+            if (explicit.targetMultiplicity) newTargetMult = explicit.targetMultiplicity;
+          }
+        }
+
+        if (targetAggregation === 'composite' && newSourceMult) {
+          if (newSourceMult === '*' || newSourceMult === '0..*' || newSourceMult === '1..*') {
+            newSourceMult = '1';
+          }
+        }
 
         const aggregationChanged = targetAggregation !== (existingAssoc.aggregation ?? 'none');
         const multChanged = (newSourceMult !== undefined && newSourceMult !== existingAssoc.sourceMultiplicity) ||
@@ -818,6 +994,24 @@ export function expandSemanticDomainToDelta(
       }
 
       // Si no existía previamente, crear la asociación
+      let finalSrcMult = cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1');
+      let finalTgtMult = cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*');
+
+      if (originText) {
+        const explicit = extractExplicitMultiplicities(originText, sourceName, targetName);
+        if (explicit) {
+          if (explicit.sourceMultiplicity) finalSrcMult = explicit.sourceMultiplicity;
+          if (explicit.targetMultiplicity) finalTgtMult = explicit.targetMultiplicity;
+        }
+      }
+
+      // Invariante UML 2.5.1: si la relación es Composición, el extremo contenedor/todo (source) NUNCA puede ser *
+      if (targetAggregation === 'composite') {
+        if (finalSrcMult === '*' || finalSrcMult === '0..*' || finalSrcMult === '1..*') {
+          finalSrcMult = '1';
+        }
+      }
+
       const assocDelta: any = {
         id: crypto.randomUUID(),
         diagramId,
@@ -827,8 +1021,8 @@ export function expandSemanticDomainToDelta(
         associationId: crypto.randomUUID(),
         sourceClassId: sourceId,
         targetClassId: targetId,
-        sourceMultiplicity: cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1'),
-        targetMultiplicity: cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*'),
+        sourceMultiplicity: finalSrcMult,
+        targetMultiplicity: finalTgtMult,
         directed: assoc.directed ?? false,
         aggregation: targetAggregation,
         aggregationEnd: targetEnd,
@@ -1301,15 +1495,24 @@ export async function synthesizeDomainModel(
     ? `\nExisting relationships already in the canvas: ${existingAssocsList.join(', ')}. CRITICAL: DO NOT duplicate or create redundant relationships between classes that already have an association! Only link new entities to existing ones without repeating existing links.`
     : '';
 
-  const domainMatch = matchCanonicalDomain(text);
+  const isSpecificClassCreation = /\b(?:clase|calse|clse|class|tabla)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ]/i.test(text);
+  const domainMatch = !isSpecificClassCreation ? matchCanonicalDomain(text) : null;
   const isEn = !/(?:es|spanish|español)/i.test(process.env.DEFAULT_LANGUAGE || '') &&
     !/(?:veterinaria|tienda|cl[ií]nica|hospital|hotel|banco|facultad|universidad|gimnasio|restaurante|aerol[ií]nea|sistema|pedido|comercio)/i.test(text);
   const groundingHint = domainMatch ? `\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
+
+  const requestedClassMatches = Array.from(
+    text.matchAll(/\b(?:clase|calse|clse|class|tabla)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/gi)
+  ).map((m) => cleanClassName(m[1])).filter(Boolean);
+  const specificClassesHint = requestedClassMatches.length > 0
+    ? `\nCRITICAL SPECIFIC CLASSES: The user explicitly requested to create these EXACT class name(s): ${requestedClassMatches.join(', ')}. You MUST name the classes EXACTLY with these requested names. DO NOT substitute them with other domain names (e.g. NEVER substitute Pedido with Factura).`
+    : '';
 
   const systemPrompt = [
     'You are a senior UML software architect and domain-driven design expert.',
     'Design a concise, realistic, and cohesive domain model tailored specifically to the user request.',
     groundingHint,
+    specificClassesHint,
     'CRITICAL LANGUAGE RULE: If the prompt or context is in Spanish, name all classes, attributes, and roles in Spanish. If in English, name them in English.',
     'CRITICAL ENTITIES RULE: If candidate classes or entities are requested or implied, you MUST include ALL of them in the "classes" array. For EVERY SINGLE CLASS, you MUST provide 2 to 4 realistic domain attributes with clean types (string, int, float, boolean, date). NEVER leave attributes empty.',
     'CRITICAL RELATIONSHIP TYPES RULES:',
@@ -1325,16 +1528,15 @@ export async function synthesizeDomainModel(
     assocHint,
     'CRITICAL EXTENSION RULE: When extending an existing diagram, do NOT re-declare existing classes in "classes". Include ONLY the new classes being created. In "associations", you CAN and SHOULD reference existing classes by name to connect them to the new classes.',
     'CRITICAL MULTIPLICITY RULE: "sourceMultiplicity" applies to "source", and "targetMultiplicity" applies to "target". E.g. If "1 Libro has many Reservas", then: if source="Libro" and target="Reserva", sourceMultiplicity="1", targetMultiplicity="1..*". If source="Reserva" and target="Libro", sourceMultiplicity="1..*", targetMultiplicity="1". Never invert cardinalities.',
-    'Output ONLY a valid raw JSON object matching the requested domain (DO NOT copy example class or attribute names like Producto, Factura, codigo, nombre, precio unless they belong to the user requested domain):',
+    'CRITICAL ANTI-HALLUCINATION RULE: ONLY output the classes explicitly requested by the user. NEVER invent or include extra entities (such as Cliente, Factura, Usuario, etc.) that were not asked for by the user. If the user asks to create 1 class, output EXACTLY 1 class. If the user asks to create 2 classes, output EXACTLY 2 classes.',
+    'Output ONLY a valid raw JSON object matching the requested domain (DO NOT copy example class or attribute names like CatalogItem, Order, OrderItem unless they belong to the user requested domain):',
     '{',
     '  "classes": [',
-    '    {"name": "Factura", "attributes": ["numero:string", "total:float", "fecha:date"]},',
-    '    {"name": "DetalleFactura", "attributes": ["cantidad:int", "subtotal:float"]},',
-    '    {"name": "Producto", "attributes": ["codigo:string", "nombre:string", "precio:float"]}',
+    '    {"name": "Order", "attributes": ["orderNumber:string", "totalAmount:float"]},',
+    '    {"name": "OrderItem", "attributes": ["quantity:int", "unitPrice:float"]}',
     '  ],',
     '  "associations": [',
-    '    {"source": "Factura", "target": "DetalleFactura", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1..*"},',
-    '    {"source": "DetalleFactura", "target": "Producto", "aggregation": "none", "sourceMultiplicity": "0..*", "targetMultiplicity": "1"}',
+    '    {"source": "Order", "target": "OrderItem", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1..*"}',
     '  ],',
     '  "generalizations": []',
     '}',
@@ -1358,7 +1560,7 @@ export async function synthesizeDomainModel(
       return null;
     }
 
-    const expanded = expandSemanticDomainToDelta(parsed, diagramId, currentDiagram);
+    const expanded = expandSemanticDomainToDelta(parsed, diagramId, currentDiagram, text);
     if (expanded && expanded.deltas.length >= 1) {
       return expanded;
     }

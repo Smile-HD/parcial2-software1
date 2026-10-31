@@ -27,16 +27,16 @@ export function estimateClassDimensions(cls: Class): NodeSize {
     12
   );
 
-  // Ancho estimado: min 320px, max 460px
-  const width = Math.max(320, Math.min(460, 240 + maxTextLen * 8));
+  // Ancho estimado: min 340px, max 480px con margen para badges y botones inline
+  const width = Math.max(340, Math.min(480, 260 + maxTextLen * 9));
 
   // Alto estimado con encabezado, compartimentos y formularios inline (+ / add):
-  // Header (~50px) + atributos (~28px c/u + 85px formulario) + métodos (~28px c/u + 85px formulario)
+  // Header (~55px) + atributos (~32px c/u + 95px formulario) + métodos (~32px c/u + 95px formulario)
   const height = Math.max(
-    250,
-    90 +
-    (attrCount * 28 + (attrCount > 0 ? 85 : 75)) +
-    (methodCount * 28 + (methodCount > 0 ? 85 : 75))
+    280,
+    110 +
+    (attrCount * 32 + (attrCount > 0 ? 95 : 80)) +
+    (methodCount * 32 + (methodCount > 0 ? 95 : 80))
   );
 
   return { width, height };
@@ -368,10 +368,10 @@ export function computeAutoLayout(
   });
 
   // 8. Post-garantía absoluta iterativa contra solapamientos tras grid snap
-  const MIN_MARGIN_X = 100;
-  const MIN_MARGIN_Y = 80;
+  const MIN_MARGIN_X = 140;
+  const MIN_MARGIN_Y = 120;
 
-  for (let pass = 0; pass < 35; pass++) {
+  for (let pass = 0; pass < 50; pass++) {
     let hadCollision = false;
 
     for (let i = 0; i < allNodeIds.length; i++) {
@@ -402,19 +402,15 @@ export function computeAutoLayout(
         if (overlapX > 0 && overlapY > 0) {
           hadCollision = true;
           if (overlapX <= overlapY) {
-            const shift = Math.ceil((overlapX + 20) / 20) * 20;
-            if (dx >= 0) {
-              posB.x += shift;
-            } else {
-              posA.x += shift;
-            }
+            const halfShift = Math.ceil((overlapX + 20) / 40) * 20;
+            const sign = dx >= 0 ? 1 : -1;
+            posA.x -= halfShift * sign;
+            posB.x += halfShift * sign;
           } else {
-            const shift = Math.ceil((overlapY + 20) / 20) * 20;
-            if (dy >= 0) {
-              posB.y += shift;
-            } else {
-              posA.y += shift;
-            }
+            const halfShift = Math.ceil((overlapY + 20) / 40) * 20;
+            const sign = dy >= 0 ? 1 : -1;
+            posA.y -= halfShift * sign;
+            posB.y += halfShift * sign;
           }
         }
       }

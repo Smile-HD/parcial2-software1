@@ -811,8 +811,10 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         diagram = loaded.diagram;
       } catch {}
 
-      // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como borrado o edición directa)
-      const isCompoundRequest = /\b(y|e|que|con|ademas|además|tambien|también|and|with|also|implement|asoci|conect|generaliz|hered)\b/i.test(parsed.data.content);
+      // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como creación de clase simple, borrado o edición)
+      const hasMultipleClasses = (parsed.data.content.match(/\b(?:clase|calse|clse|tabla|class)\b/gi) || []).length > 1;
+      const isCompoundRelationship = /\b(asoci|conect|generaliz|hered|implement|relacion|multiplicidad|composi|agregaci)\b/i.test(parsed.data.content);
+      const isCompoundRequest = hasMultipleClasses || isCompoundRelationship;
       if (diagram && !isCompoundRequest) {
         try {
           const outcome = await interpretCommand(parsed.data.content.trim(), new FakeLlm(), diagram, pendingDeltas);

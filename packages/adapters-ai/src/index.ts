@@ -57,6 +57,21 @@ function deltaBase(diagram: Diagram): { id: string; diagramId: string; timestamp
 
 const WHOLE_DESIGN_REQUEST = /\b(generate|genera|generá|dise[ñn]a|dise[ñn]o)\b[\s\S]*\b(design|dise[ñn]o|full|completo|complete|system|sistema|library|biblioteca)\b/i;
 
+// ── normalizador determinista de typos UML en español ───────────────────────────
+
+export function normalizeUmlUtterance(raw: string): string {
+  let s = raw;
+  s = s.replace(/\bagrga\b/gi, 'agrega');
+  s = s.replace(/\b(?:calse|clse)\b/gi, 'clase');
+  s = s.replace(/\b(?:craer|creaer)\b/gi, 'crear');
+  s = s.replace(/\b(?:llamda|llamd[ao])\b/gi, 'llamada');
+  s = s.replace(/\b(?:atriutos?|atribtos?|atibutos?|atribs?)\b/gi, 'atributos');
+  s = s.replace(/\b(?:nomvre|nobmre)\b/gi, 'nombre');
+  s = s.replace(/\b(?:elmina)\b/gi, 'elimina');
+  s = s.replace(/\b(?:brra)\b/gi, 'borra');
+  return s;
+}
+
 // ── FakeLlm ────────────────────────────────────────────────────────────────
 
 /**
@@ -64,7 +79,8 @@ const WHOLE_DESIGN_REQUEST = /\b(generate|genera|generá|dise[ñn]a|dise[ñn]o)\
  * a propósito: las pruebas (7.1/7.2/7.5) y el desarrollo offline se ejecutan sin red.
  */
 export class FakeLlm implements LlmPort {
-  async interpret(utterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
+  async interpret(rawUtterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
+    const utterance = normalizeUmlUtterance(rawUtterance);
     if (WHOLE_DESIGN_REQUEST.test(utterance)) {
       return {
         kind: 'refused',
@@ -154,7 +170,7 @@ export class FakeLlm implements LlmPort {
         position,
       };
 
-      const attrTail = /\b(?:with|con)\s+(?:an?\s+)?(?:attributes?|atributos?)\s+([\s\S]+)$/i.exec(utterance);
+      const attrTail = /\b(?:with|con)\s+(?:an?\s+)?(?:attributes?|atributos?|atriutos?|campos?)\s+([\s\S]+)$/i.exec(utterance);
       if (attrTail) {
         const rawList = attrTail[1]!;
         const items = rawList
@@ -164,28 +180,33 @@ export class FakeLlm implements LlmPort {
 
         const memberDeltas: MemberDelta[] = [];
         for (const item of items) {
-          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)$/i.exec(item);
+          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)$/i.exec(item);
           if (typedMatch) {
+            const rawAttrName = typedMatch[1]!.trim();
+            const attrParts = rawAttrName.split(/\s+/);
+            const camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
             memberDeltas.push({
               kind: 'member',
               op: 'addAttribute',
               ...deltaBase(currentIr),
               classId: create.classId,
               memberId: crypto.randomUUID(),
-              name: typedMatch[1]!,
+              name: camelName,
               type: typedMatch[2]!,
               ...adornments,
             });
           } else {
-            const bareMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(item);
-            if (bareMatch) {
+            const cleanItem = item.replace(/[^A-Za-z_ñÑáéíóúÁÉÍÓÚ\s]/g, '').trim();
+            if (cleanItem.length > 0) {
+              const attrParts = cleanItem.split(/\s+/);
+              const camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
               memberDeltas.push({
                 kind: 'member',
                 op: 'addAttribute',
                 ...deltaBase(currentIr),
                 classId: create.classId,
                 memberId: crypto.randomUUID(),
-                name: bareMatch[1]!,
+                name: camelName,
                 type: 'string', // Tipo estándar por defecto cuando se omite
                 ...adornments,
               });

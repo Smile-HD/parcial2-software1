@@ -4,6 +4,7 @@ import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainMod
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
 import { auditDiagramOOAD } from './diagram-auditor.js';
+import { normalizeUmlUtterance } from '@app/adapters-ai';
 
 export const DEFAULT_LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 2000;
 export const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 180000;
@@ -434,15 +435,16 @@ export async function processUnifiedAmongusTurn(
   onChunk?: (chunk: string) => void,
   peerUsers?: readonly string[]
 ): Promise<UnifiedTurnResult> {
+  const cleanContent = normalizeUmlUtterance(userContent);
   const isEn = language === 'en';
 
-  const normalized = userContent
+  const normalized = cleanContent
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
   // 00a. Guardrail de entrada: descartar ruido léxico, símbolos puros o números sin texto (0 ms, 0 tokens)
-  const rawClean = userContent.trim();
+  const rawClean = cleanContent.trim();
   const letterCount = (rawClean.match(/[\p{L}]/gu) || []).length;
   if (letterCount < 2) {
     return {
@@ -1069,13 +1071,14 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
       ].join('\n');
 
   try {
-    const domainMatch = matchCanonicalDomain(userContent);
+    const isSpecificClassCreation = /\b(?:clase|calse|clse|class|tabla)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ]/i.test(cleanContent);
+    const domainMatch = !isSpecificClassCreation ? matchCanonicalDomain(cleanContent) : null;
     const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: systemPrompt + domainGrounding },
       ...(chatHistory ?? []),
-      { role: 'user', content: userContent },
+      { role: 'user', content: cleanContent },
     ];
 
     const raw = await llm.chat(
@@ -1104,7 +1107,7 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
         )));
 
     if (hasAnyContent) {
-      const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram);
+      const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram, cleanContent);
       if (batchDelta && batchDelta.deltas.length > 0) {
         const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
         const mentionsCode = /c[oó]digo|code\b|aqu[ií]\s+tien|ac[aá]\s+ten|aqu[ií]\s+est[aá]|ac[aá]\s+est[aá]|a\s+continuaci[oó]n/i.test(textWithoutJson);
@@ -1122,8 +1125,8 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
     // sintetizar la propuesta directamente para que el usuario reciba su tarjeta visual en lugar de texto plano
     if (!hasAnyContent && isAction) {
       const isExplicitModelingRequest =
-        /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur)/i.test(
-          userContent
+        /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur|agrga|agreg|clse|calse|craer)/i.test(
+          cleanContent
         );
       if (isExplicitModelingRequest) {
         try {
