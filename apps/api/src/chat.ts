@@ -455,15 +455,27 @@ export async function processUnifiedAmongusTurn(
   // 00b. Detección temprana de borrado de clase inexistente (evita bloqueos o alucinaciones en modelos chicos)
   const deleteClassMatch = /\b(?:delete|remove|elimina|eliminá|eliminar|elmina|borra|borrá|borrar|brra|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|calse|clse|tabla|table|entidad)\s+(?:llamada\s+|llamado\s+|llamda\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(userContent);
   if (deleteClassMatch) {
-    const targetName = deleteClassMatch[1]!;
+    const rawTarget = deleteClassMatch[1]!;
+    const STOP_WORDS = new Set(['que', 'de', 'la', 'el', 'un', 'una', 'los', 'las', 'cualquier', 'cada', 'that', 'which', 'the', 'a', 'an', 'any', 'every']);
     const existingClassNames = ((diagram?.classes as any[]) || []).map((c: any) => c.name);
-    const exists = existingClassNames.some((n: string) => n.toLowerCase() === targetName.toLowerCase());
-    if (!exists && existingClassNames.length > 0) {
-      return {
-        replyContent: isEn
-          ? `The class "${targetName}" does not exist in the current diagram. Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`
-          : `La clase "${targetName}" no existe en el diagrama actual. Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`,
-      };
+
+    if (STOP_WORDS.has(rawTarget.toLowerCase())) {
+      if (/(?:que\s+no\s+existe|that\s+does\s+not\s+exist)/i.test(userContent)) {
+        return {
+          replyContent: isEn
+            ? `No valid class was specified for deletion. If you want to delete a class, specify its name (e.g. 'delete class User'). Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`
+            : `No se especificó ninguna clase válida para eliminar. Si querés borrar una clase, indicá su nombre exacto (ej. "borrá la clase Usuario"). Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`,
+        };
+      }
+    } else {
+      const exists = existingClassNames.some((n: string) => n.toLowerCase() === rawTarget.toLowerCase());
+      if (!exists && existingClassNames.length > 0) {
+        return {
+          replyContent: isEn
+            ? `The class "${rawTarget}" does not exist in the current diagram. Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`
+            : `La clase "${rawTarget}" no existe en el diagrama actual. Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`,
+        };
+      }
     }
   }
 
@@ -1019,6 +1031,8 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
               '   - ROLES EN EL CAMINO DE LA RELACIÓN: Podés incluir "sourceRole", "targetRole" y "name" para rotular el camino de las relaciones.',
               '   - CLASES DE ASOCIACIÓN: Usá una clase de asociación ÚNICAMENTE cuando una relación M:N posea atributos propios del vínculo (ej: Inscripcion entre Estudiante y Curso con fecha/nota). En ese caso, especificá "associationClass": "NombreClase" en la asociación y definila en "classes". Para relaciones sin atributos de enlace (1:1, 1:N o M:N sin atributos), usá asociaciones directas sin clases intermedias. NUNCA nombres clases concatenando nombres existentes (ej: NUNCA "EstudianteCurso").',
               '   - HERENCIA / GENERALIZACIÓN: Usá "generalizations": [{"subclass": "Hijo", "superclass": "Padre"}] para relaciones "es un" (is-a). Las subclases heredan atributos y no los repiten. NUNCA crees una asociación entre una subclase y su superclase.',
+              '   - EXTENDER MODELO EXISTENTE: Si el usuario pide agregar una clase nueva y asociarla a clases ya existentes en el lienzo, poné en "classes" ÚNICAMENTE la clase nueva. NO re-declares las clases existentes en "classes". En "associations" usá los nombres exactos de las clases existentes como source o target.',
+              '   - DIRECCIÓN DE MULTIPLICIDADES: "sourceMultiplicity" corresponde al extremo de "source" y "targetMultiplicity" al extremo de "target". Si "un Libro tiene muchas Reservas", entonces Libro tiene 1 y Reserva tiene 1..* (o 0..*). No inviertas el orden de las multiplicidades.',
               '   - CERO DUPLICADOS: Entre cualquier par de clases debe haber COMO MÁXIMO UNA relación. NUNCA generes dos asociaciones ni asociación + agregación entre el mismo par de clases.',
               '   - CERO CLASES VACÍAS NI HUÉRFANAS: Toda clase debe tener entre 2 y 4 atributos de dominio con tipos y estar conectada al menos con otra clase.',
               '   Formato exacto de salida requerido:',

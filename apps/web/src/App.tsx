@@ -803,6 +803,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             onClearCanvas={handleClearCanvas}
             onAutoLayout={handleAutoLayout}
             canvasClassCount={projectYDocToDiagram(doc).classes?.length || 0}
+            existingClasses={projectYDocToDiagram(doc).classes || []}
             buildingDeltaId={buildingDeltaId}
             activeProposal={activeProposal}
             interpreterPhase={interpreter.phase}

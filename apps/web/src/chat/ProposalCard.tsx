@@ -13,6 +13,7 @@ export interface ProposalCardProps {
   isRejected?: boolean;
   isBuilding?: boolean;
   isSuperseded?: boolean;
+  existingClasses?: Array<{ id: string; name: string }>;
 }
 
 export function ProposalCard({
@@ -24,6 +25,7 @@ export function ProposalCard({
   isRejected = false,
   isBuilding = false,
   isSuperseded = false,
+  existingClasses = [],
 }: ProposalCardProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
@@ -31,7 +33,7 @@ export function ProposalCard({
   const summary = describeDelta(delta, isEn);
 
   // Agrupamiento estructurado cuando es un batchDelta
-  const parsedBatch = delta.kind === 'batch' ? parseBatchDelta(delta, isEn) : null;
+  const parsedBatch = delta.kind === 'batch' ? parseBatchDelta(delta, isEn, existingClasses) : null;
   const items: string[] = delta.kind === 'batch'
     ? delta.deltas.map((d) => describeDelta(d, isEn))
     : [summary];
@@ -226,11 +228,22 @@ interface ParsedProposalBatch {
   others: string[];
 }
 
-function parseBatchDelta(batch: BatchDelta, isEn: boolean): ParsedProposalBatch {
+function parseBatchDelta(
+  batch: BatchDelta,
+  isEn: boolean,
+  existingClasses: Array<{ id: string; name: string }> = []
+): ParsedProposalBatch {
   const classNameMap = new Map<string, string>();
   const classMap = new Map<string, ParsedClass>();
   const relations: string[] = [];
   const others: string[] = [];
+
+  // Pre-poblar nombres de clases existentes en el lienzo
+  for (const c of existingClasses) {
+    if (c.id && c.name) {
+      classNameMap.set(c.id, c.name);
+    }
+  }
 
   // Paso 1: Registrar clases creadas o modificadas
   for (const d of batch.deltas) {
@@ -253,7 +266,12 @@ function parseBatchDelta(batch: BatchDelta, isEn: boolean): ParsedProposalBatch 
   // Paso 2: Atributos agrupados bajo su clase correspondiente y Relaciones al final
   for (const d of batch.deltas) {
     if (d.kind === 'member') {
-      const cls = classMap.get(d.classId);
+      let cls = classMap.get(d.classId);
+      // Si el miembro pertenece a una clase existente en el lienzo, agregarla al classMap
+      if (!cls && classNameMap.has(d.classId)) {
+        cls = { id: d.classId, name: classNameMap.get(d.classId)!, attributes: [], methods: [] };
+        classMap.set(d.classId, cls);
+      }
       if (d.op === 'addAttribute') {
         const attrStr = `${d.name ?? 'attr'}: ${d.type ?? 'string'}`;
         if (cls) {

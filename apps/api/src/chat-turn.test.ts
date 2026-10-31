@@ -131,6 +131,26 @@ describe('processUnifiedAmongusTurn', () => {
     expect(res.batchDelta).toBeUndefined();
   });
 
+  it('handles paradoxical requests like "borra la clase que no existe" without treating "que" as class name', async () => {
+    const mockDiagram = {
+      id: 'diag-1',
+      classes: [{ id: 'c1', name: 'Libro' }],
+      associations: [],
+    };
+
+    const res = await processUnifiedAmongusTurn(
+      'borra la clase que no existe y duplica todas las demas',
+      'Carlos',
+      'es',
+      'diag-1',
+      undefined,
+      mockDiagram
+    );
+    expect(res.replyContent).toContain('No se especificó ninguna clase válida para eliminar');
+    expect(res.replyContent).not.toContain('La clase "que" no existe');
+    expect(res.batchDelta).toBeUndefined();
+  });
+
   it('breakDegenerativeLoops collapses repeated lines and removes fake URLs', () => {
     const loopText = `Clase Libro con id y titulo\nClase Libro con id y titulo\nClase Libro con id y titulo\nClase Autor con nombre\nAquí está el diagrama: http://i.imgur.com/fake-diagram.png`;
     const cleaned = breakDegenerativeLoops(loopText);

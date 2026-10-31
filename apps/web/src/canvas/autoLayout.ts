@@ -368,10 +368,10 @@ export function computeAutoLayout(
   });
 
   // 8. Post-garantía absoluta iterativa contra solapamientos tras grid snap
-  const MIN_MARGIN_X = 80;
-  const MIN_MARGIN_Y = 60;
+  const MIN_MARGIN_X = 100;
+  const MIN_MARGIN_Y = 80;
 
-  for (let pass = 0; pass < 25; pass++) {
+  for (let pass = 0; pass < 35; pass++) {
     let hadCollision = false;
 
     for (let i = 0; i < allNodeIds.length; i++) {

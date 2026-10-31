@@ -396,4 +396,74 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
     expect(cancelMock).toHaveBeenCalled();
     expect(speakMock).toHaveBeenCalled();
   });
+
+  it('resuelve nombres de clases existentes en la propuesta sin mostrar "Destino" literal', async () => {
+    const existingClasses = [
+      { id: 'class-libro-1', name: 'Libro' },
+    ];
+    const proposalDelta = {
+      id: 'batch-1',
+      diagramId: mockDiagramId,
+      timestamp: new Date().toISOString(),
+      kind: 'batch' as const,
+      deltas: [
+        {
+          id: 'd1',
+          diagramId: mockDiagramId,
+          timestamp: new Date().toISOString(),
+          kind: 'class' as const,
+          op: 'create' as const,
+          classId: 'class-reserva-1',
+          name: 'ReservaDeLibro',
+          classKind: 'class' as const,
+          isAbstract: false,
+        },
+        {
+          id: 'd2',
+          diagramId: mockDiagramId,
+          timestamp: new Date().toISOString(),
+          kind: 'member' as const,
+          op: 'addAttribute' as const,
+          classId: 'class-reserva-1',
+          memberId: 'm1',
+          name: 'codigo',
+          type: 'string',
+        },
+        {
+          id: 'd3',
+          diagramId: mockDiagramId,
+          timestamp: new Date().toISOString(),
+          kind: 'association' as const,
+          op: 'create' as const,
+          associationId: 'assoc-1',
+          sourceClassId: 'class-reserva-1',
+          targetClassId: 'class-libro-1',
+          sourceMultiplicity: '1..*',
+          targetMultiplicity: '1',
+          aggregation: 'none' as const,
+        },
+      ],
+    };
+
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+        existingClasses={existingClasses}
+        activeProposal={{
+          deltaId: 'proposal-1',
+          delta: proposalDelta,
+        }}
+      />
+    );
+
+    const card = screen.getByTestId('chat-active-proposal');
+    expect(card).toBeDefined();
+    // Debe mostrar "Libro" como destino de la asociación, NUNCA "Destino"
+    expect(card.textContent).toContain('ReservaDeLibro');
+    expect(card.textContent).toContain('Libro');
+    expect(card.textContent).not.toContain('Destino');
+  });
 });

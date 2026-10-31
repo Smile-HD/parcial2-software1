@@ -41,6 +41,7 @@ export interface ChatPanelProps {
   recording?: boolean;
   onToggleRecord?: () => void;
   isTranscribing?: boolean;
+  existingClasses?: Array<{ id: string; name: string }>;
 }
 
 function renderStreamingContent(text: string, isEn: boolean) {
@@ -226,6 +227,7 @@ export function ChatPanel({
   recording,
   onToggleRecord,
   isTranscribing: propIsTranscribing = false,
+  existingClasses = [],
 }: ChatPanelProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
@@ -1068,6 +1070,7 @@ export function ChatPanel({
                       isApplied={appliedDeltaIds.has(msg.deltaId)}
                       isRejected={rejectedDeltaIds.has(msg.deltaId)}
                       isBuilding={buildingDeltaId === msg.deltaId}
+                      existingClasses={existingClasses}
                       isSuperseded={
                         !appliedDeltaIds.has(msg.deltaId) &&
                         !rejectedDeltaIds.has(msg.deltaId) &&
@@ -1105,6 +1108,7 @@ export function ChatPanel({
                   isApplied={appliedDeltaIds.has(activeProposal.deltaId)}
                   isRejected={rejectedDeltaIds.has(activeProposal.deltaId)}
                   isBuilding={buildingDeltaId === activeProposal.deltaId}
+                  existingClasses={existingClasses}
                 />
               </div>
             </div>
@@ -1297,7 +1301,7 @@ export function ChatPanel({
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="5" y="5" width="14" height="14" rx="2" />
                   </svg>
-                  <span className="sr-only">Stop</span>
+                  <span className="sr-only">{isEn ? 'Stop' : 'Detener'}</span>
                 </>
               ) : (
                 <>
@@ -1306,7 +1310,7 @@ export function ChatPanel({
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                     <line x1="12" y1="19" x2="12" y2="22" />
                   </svg>
-                  <span className="sr-only">Record</span>
+                  <span className="sr-only">{isEn ? 'Record' : 'Grabar'}</span>
                 </>
               )}
             </button>
@@ -1325,7 +1329,7 @@ export function ChatPanel({
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
-            <span className="sr-only">Send</span>
+            <span className="sr-only">{isEn ? 'Send' : 'Enviar'}</span>
           </button>
         </div>
       </form>
