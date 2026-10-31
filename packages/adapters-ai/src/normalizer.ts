@@ -174,12 +174,12 @@ export function normalizeUmlUtterance(raw: string): string {
   );
 
   // ── F. Clasificadores y contenedores del metamodelo UML (NUNCA clases de negocio)
-  s = s.replace(/(?<!\p{L})(?:calse|clse|claze|calses|clses)(?!\p{L})/giu, 'clase');
+  s = s.replace(/(?<!\p{L})(?:calse|clse|claze|calses|clses|clas|clss)(?!\p{L})/giu, 'clase');
   s = s.replace(/(?<!\p{L})(?:tavla|tavlas)(?!\p{L})/giu, 'tabla');
 
   // ── G. Miembros y propiedades del metamodelo UML
-  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedades|campos)(?!\p{L})/giu, 'atributos');
-  s = s.replace(/(?<!\p{L})(?:mtodo|mtodos|metodo|método|metodos|métodos|funciones|operaciones)(?!\p{L})/giu, 'metodos');
+  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedades|campos|attibutes?|attributs?|attribs?|attrs?|props|properties|fields)(?!\p{L})/giu, 'atributos');
+  s = s.replace(/(?<!\p{L})(?:mtodo|mtodos|metodo|método|metodos|métodos|funciones|operaciones|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
   s = s.replace(/(?<!\p{L})(?:relacion|relación|relaciones|asociacion|asociación|asociaciones)(?!\p{L})/giu, 'asociacion');
 
   // ── G2. Typos fonéticos en nombres comunes de atributos (NO afecta nombres de clases)
@@ -196,7 +196,7 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:d|del)\s+tipo(?!\p{L})/giu, 'de tipo');
 
   // ── I. Fraseos de Relaciones Especiales (Composición, Agregación, Herencia, Realización, Dependencia, Reflexiva)
-  // Composición (fuerte): "compone", "compuesto por", "es parte de"
+  // Composición (fuerte): "compone", "compuesto por"
   s = s.replace(
     /(?<!\p{L})(?:est[aá]\s+compuest[ao]\s+(?:por|de)|compuest[ao]\s+por|es\s+composici[oó]n\s+de|contiene\s+fuertemente|contiene\s+exclusivamente)(?!\p{L})/giu,
     'compone'
@@ -212,7 +212,7 @@ export function normalizeUmlUtterance(raw: string): string {
   );
   // Herencia / Generalización: estandarizar a "inherits from" (reconocido directamente por el intérprete)
   s = s.replace(
-    /(?<!\p{L})(?:hereda\s+de|es\s+un\s+tipo\s+de|es\s+subtipo\s+de|es\s+una\s+subclase\s+de|subclase\s+de|es\s+hija\s+de|clase\s+hija\s+de|extiende\s+(?:de|a))(?!\p{L})/giu,
+    /(?<!\p{L})(?:hereda\s+de|es\s+un\s+tipo\s+de|es\s+subtipo\s+de|es\s+una\s+subclase\s+de|subclase\s+de|es\s+hija\s+de|clase\s+hija\s+de|extiende\s+(?:de|a)|(?:is\s+)?(?:a\s+)?subclass\s+of|(?:is\s+)?a\s+kind\s+of|extends|is\s+child\s+of)(?!\p{L})/giu,
     'inherits from'
   );
   // Realización: estandarizar a "implementa" (reconocido directamente)
@@ -225,46 +225,50 @@ export function normalizeUmlUtterance(raw: string): string {
     /(?<!\p{L})(?:hace\s+uso\s+de|tiene\s+dependencia\s+de|tiene\s+dependencia\s+con)(?!\p{L})/giu,
     'depende de'
   );
-  // Reflexiva: estandarizar a "consigo misma"
+  // Reflexiva: estandarizar a "consigo misma" (ES) o "to itself" (EN)
   s = s.replace(
     /(?<!\p{L})(?:a\s+s[ií]\s+mism[ao]|de\s+forma\s+reflexiva|relaci[oó]n\s+reflexiva)(?!\p{L})/giu,
     'consigo misma'
   );
-
-  // ── J. Multiplicidades y Cardinalidades (Estandarización léxica en español)
-  // 1 a N / Uno a muchos
   s = s.replace(
-    /(?<!\p{L})(?:uno\s+a\s+muchos|uno\s+a\s+varios|1\s+a\s+muchos|1\s+a\s+varios|1\s*:\s*[nN\*]|1\s+a\s+[nN\*]|de\s+uno\s+a\s+muchos|de\s+uno\s+a\s+varios)(?!\p{L})/giu,
+    /(?<!\p{L})(?:reflexively|reflexive\s+association|self-referencing)(?!\p{L})/giu,
+    'to itself'
+  );
+
+  // ── J. Multiplicidades y Cardinalidades (Estandarización léxica en español e inglés)
+  // 1 a N / Uno a muchos / One to many
+  s = s.replace(
+    /(?<!\p{L})(?:uno\s+a\s+muchos|uno\s+a\s+varios|1\s+a\s+muchos|1\s+a\s+varios|1\s*:\s*[nN\*]|1\s+a\s+[nN\*]|de\s+uno\s+a\s+muchos|de\s+uno\s+a\s+varios|one\s+to\s+many|1\s+to\s+many|one-to-many|1-to-many|has\s+many|contains\s+many|one\s+to\s+several|1\s+to\s+[nN\*])(?!\p{L})/giu,
     '1 a N'
   );
-  // N a 1 / Muchos a uno
+  // N a 1 / Muchos a uno / Many to one
   s = s.replace(
-    /(?<!\p{L})(?:muchos\s+a\s+uno|varios\s+a\s+uno|[nN\*]\s*:\s*1|[nN\*]\s+a\s+1|muchos\s+para\s+un[oa]|varios\s+para\s+un[oa]|de\s+muchos\s+a\s+uno)(?!\p{L})/giu,
+    /(?<!\p{L})(?:muchos\s+a\s+uno|varios\s+a\s+uno|[nN\*]\s*:\s*1|[nN\*]\s+a\s+1|muchos\s+para\s+un[oa]|varios\s+para\s+un[oa]|de\s+muchos\s+a\s+uno|many\s+to\s+one|many-to-one|many\s+to\s+1|[nN\*]\s+to\s+1|belongs\s+to\s+one|several\s+to\s+one)(?!\p{L})/giu,
     'N a 1'
   );
-  // N a M / Muchos a muchos
+  // N a M / Muchos a muchos / Many to many
   s = s.replace(
-    /(?<!\p{L})(?:muchos\s+a\s+muchos|varios\s+a\s+varios|[nN\*]\s*:\s*[nNmM\*]|[nN\*]\s+a\s+[nNmM\*]|de\s+muchos\s+a\s+muchos)(?!\p{L})/giu,
+    /(?<!\p{L})(?:muchos\s+a\s+muchos|varios\s+a\s+varios|[nN\*]\s*:\s*[nNmM\*]|[nN\*]\s+a\s+[nNmM\*]|de\s+muchos\s+a\s+muchos|many\s+to\s+many|many-to-many|[nN\*]\s+to\s+[nNmM\*]|several\s+to\s+several)(?!\p{L})/giu,
     'N a M'
   );
-  // 1 a 1 / Uno a uno
+  // 1 a 1 / Uno a uno / One to one
   s = s.replace(
-    /(?<!\p{L})(?:uno\s+a\s+uno|1\s*:\s*1|1\s+a\s+1|un[íi]voca|biun[íi]voca|uno\s+solo\s+a\s+uno\s+solo)(?!\p{L})/giu,
+    /(?<!\p{L})(?:uno\s+a\s+uno|1\s*:\s*1|1\s+a\s+1|un[íi]voca|biun[íi]voca|uno\s+solo\s+a\s+uno\s+solo|one\s+to\s+one|one-to-one|1\s+to\s+1|1-to-1|bijective)(?!\p{L})/giu,
     '1 a 1'
   );
-  // 0..1 / Cero o uno
+  // 0..1 / Cero o uno / Zero or one
   s = s.replace(
-    /(?<!\p{L})(?:cero\s+o\s+uno|cero\s+a\s+uno|0\s+o\s+1|0\s+a\s+1|a\s+lo\s+sumo\s+uno|como\s+m[aá]ximo\s+uno)(?!\p{L})/giu,
+    /(?<!\p{L})(?:cero\s+o\s+uno|cero\s+a\s+uno|0\s+o\s+1|0\s+a\s+1|a\s+lo\s+sumo\s+uno|como\s+m[aá]ximo\s+uno|zero\s+or\s+one|0\s+or\s+1|at\s+most\s+one|optional)(?!\p{L})/giu,
     '0..1'
   );
-  // 1..* / Uno o más
+  // 1..* / Uno o más / One or more
   s = s.replace(
-    /(?<!\p{L})(?:uno\s+o\s+m[aá]s|1\s+o\s+m[aá]s|al\s+menos\s+uno|como\s+m[íi]nimo\s+uno)(?!\p{L})/giu,
+    /(?<!\p{L})(?:uno\s+o\s+m[aá]s|1\s+o\s+m[aá]s|al\s+menos\s+uno|como\s+m[íi]nimo\s+uno|one\s+or\s+more|1\s+or\s+more|at\s+least\s+one)(?!\p{L})/giu,
     '1..*'
   );
-  // 0..* / Cero o más
+  // 0..* / Cero o más / Zero or more
   s = s.replace(
-    /(?<!\p{L})(?:cero\s+o\s+m[aá]s|cero\s+a\s+muchos|cualquier\s+cantidad)(?!\p{L})/giu,
+    /(?<!\p{L})(?:cero\s+o\s+m[aá]s|cero\s+a\s+muchos|cualquier\s+cantidad|zero\s+or\s+more|any\s+number\s+of)(?!\p{L})/giu,
     '0..*'
   );
 

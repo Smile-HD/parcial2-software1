@@ -519,8 +519,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 7b. asociación reflexiva: "conecta Empleado consigo misma" / "asocia Empleado de forma reflexiva"
-    const reflexiveAssoc = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:consigo\s+misma|consigo\s+mismo)/i.exec(utterance);
+    // 7b. asociación reflexiva: "conecta Empleado consigo misma" / "asocia Empleado de forma reflexiva" / "connect Node to itself"
+    const reflexiveAssoc = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:consigo\s+misma|consigo\s+mismo|to\s+itself|reflexively|reflexive)/i.exec(utterance);
     if (reflexiveAssoc) {
       const classId = classIdByName(currentIr, reflexiveAssoc[1]!);
       if (classId === null) return refused(`Unknown class "${reflexiveAssoc[1]}"`);
@@ -540,7 +540,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 8. asociación entre dos clases (simple o con cardinalidad)
-    const association = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const association = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
       const targetClassId = classIdByName(currentIr, association[2]!);
@@ -549,16 +549,16 @@ export class FakeLlm implements LlmPort {
 
       let sourceMultiplicity = '1';
       let targetMultiplicity = '1';
-      if (/\b(?:1\s+a\s+[nN\*]|uno\s+a\s+muchos|1\s*:\s*[nN\*])\b/i.test(utterance)) {
+      if (/\b(?:1\s+(?:a|to)\s+[nN\*]|(?:uno|one)\s+(?:a|to)\s+(?:muchos|many)|1\s*:\s*[nN\*])\b/i.test(utterance)) {
         sourceMultiplicity = '1';
         targetMultiplicity = '0..*';
-      } else if (/\b(?:[nN\*]\s+a\s+1|muchos\s+a\s+uno|[nN\*]\s*:\s*1)\b/i.test(utterance)) {
+      } else if (/\b(?:[nN\*]\s+(?:a|to)\s+1|(?:muchos|many)\s+(?:a|to)\s+(?:uno|one)|[nN\*]\s*:\s*1)\b/i.test(utterance)) {
         sourceMultiplicity = '0..*';
         targetMultiplicity = '1';
-      } else if (/\b(?:[nN\*]\s+a\s+[nNmM\*]|muchos\s+a\s+muchos|[nN\*]\s*:\s*[nNmM\*])\b/i.test(utterance)) {
+      } else if (/\b(?:[nN\*]\s+(?:a|to)\s+[nNmM\*]|(?:muchos|many)\s+(?:a|to)\s+(?:muchos|many)|[nN\*]\s*:\s*[nNmM\*])\b/i.test(utterance)) {
         sourceMultiplicity = '0..*';
         targetMultiplicity = '0..*';
-      } else if (/\b(?:1\s+a\s+1|uno\s+a\s+uno|1\s*:\s*1)\b/i.test(utterance)) {
+      } else if (/\b(?:1\s+(?:a|to)\s+1|(?:uno|one)\s+(?:a|to)\s+(?:uno|one)|1\s*:\s*1)\b/i.test(utterance)) {
         sourceMultiplicity = '1';
         targetMultiplicity = '1';
       }
@@ -601,8 +601,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 9b. fraseo inverso de composición: "X is part of Y" o "X belongs to Y" — Y es el todo, X es la parte
-    const partOf = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:part\s+of|belongs\s+to)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    // 9b. fraseo inverso de composición: "X is part of Y", "X belongs to Y", "X es parte de Y" — Y es el todo, X es la parte
+    const partOf = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:part\s+of|belongs\s+to|es\s+parte\s+de|pertenece\s+a)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (partOf) {
       const partClassId = classIdByName(currentIr, partOf[1]!); // parte
       const wholeClassId = classIdByName(currentIr, partOf[2]!); // todo/contenedor
@@ -626,7 +626,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 10. agregación compartida: "aggregation between X and Y" o "X has a Y" (compartida)
-    const sharedAgg = /\b(?:aggregation|shared)\b[\s\S]*?\b(?:between\s+)?([A-Za-z_]\w*)\s+(?:and|with|y)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const sharedAgg = /\b(?:aggregation|shared|agregaci[oó]n)\b[\s\S]*?\b(?:between|entre\s+)?([A-Za-z_]\w*)\s+(?:and|with|y|e)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (sharedAgg) {
       const sourceClassId = classIdByName(currentIr, sharedAgg[1]!);
       const targetClassId = classIdByName(currentIr, sharedAgg[2]!);

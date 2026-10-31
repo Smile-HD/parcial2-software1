@@ -70,6 +70,14 @@ describe('normalizer module', () => {
       expect(normalizeUmlUtterance('conecta Empleado de forma reflexiva')).toContain('conecta Empleado consigo misma');
     });
 
+    it('normalizes English phrasings for multiplicities, relationships, and classifiers', () => {
+      expect(normalizeUmlUtterance('connect Customer with Order one to many')).toContain('1 a N');
+      expect(normalizeUmlUtterance('link Order to Customer many to one')).toContain('N a 1');
+      expect(normalizeUmlUtterance('associate User with Profile one to one')).toContain('1 a 1');
+      expect(normalizeUmlUtterance('Car is a subclass of Vehicle')).toContain('Car inherits from Vehicle');
+      expect(normalizeUmlUtterance('connect Node reflexively')).toContain('connect Node to itself');
+    });
+
     it('is strictly domain-agnostic and preserves arbitrary class and attribute names', () => {
       // Classes can have any name, including Dinero, Fecha, or domain-specific names
       expect(normalizeUmlUtterance('creá una clase Dinero con valor')).toContain('crea una clase Dinero con valor');
