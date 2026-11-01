@@ -786,22 +786,19 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     // Si es canal directo, menciona a Amongus, es un comando slash (/), contiene intención de modelado, consulta técnica o el usuario está solo en la sala, generamos respuesta del asistente
     const isSlashCommand = parsed.data.content.trim().startsWith('/');
     const hasModelingIntent =
-      /\b(?:cre[aá]|agreg[aá]|a[ñn]ad[eé]|dise[ñn][aá]|model[aá]|constru[yí]|arm[aá]|borr[aá]|elimin[aá]|quit[aá]|conect[aá]|vincul[aá]|relacion[aá]|add|create|make|build|delete|remove|connect)\b/i.test(
+      /(?:^|[\s,;.:¡!¿?])(?:cre[aá]|agreg[aá]|a[ñn]ad[eé]|dise[ñn][aá]|model[aá]|constru[yí]|arm[aá]|borr[aá]|elimin[aá]|quit[aá]|renombr[aá]|modific[aá]|cambi[aá]|conect[aá]|vincul[aá]|relacion[aá]|add|create|make|build|delete|remove|connect|rename|update)(?:$|[\s,;.:¡!¿?])/iu.test(
         parsed.data.content
       );
     const hasUmlQuestionIntent =
       /\b(?:qu[eé]\s+(?:es|diferencia|significa)|c[oó]mo\s+(?:se|funciona)|explic[aá]|diferencia\s+entre|agregaci[oó]n|composici[oó]n|asociaci[oó]n|herencia|polimorfismo|cardinalidad|multiplicidad|patr[oó]n|uml|diagrama|cu[aá]nt[ao]s?\s+(?:personas|usuarios|conectados))\b/i.test(
         parsed.data.content
       );
-    const isAloneInRoom = !parsed.data.peerUsers || parsed.data.peerUsers.length <= 1;
-
     const shouldBotParticipate =
       parsed.data.channelType === 'direct_bot' ||
       parsed.data.content.includes('@Amongus') ||
       isSlashCommand ||
       hasModelingIntent ||
-      hasUmlQuestionIntent ||
-      isAloneInRoom;
+      hasUmlQuestionIntent;
 
     if (shouldBotParticipate) {
       const isEn = parsed.data.language === 'en';

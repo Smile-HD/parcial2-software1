@@ -154,6 +154,9 @@ export class RetryRepairingLlmPort implements LlmPort {
       temperature?: number;
       maxTokens?: number;
       onChunk?: (chunk: string) => void;
+      stop?: string[];
+      repeatPenalty?: number;
+      repeatLastN?: number;
     }
   ): Promise<string> {
     if ('chat' in this.inner && typeof (this.inner as any).chat === 'function') {

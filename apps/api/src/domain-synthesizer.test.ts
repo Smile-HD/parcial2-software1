@@ -909,6 +909,221 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(assoc.targetMultiplicity).toBe('0..*');
     }
   });
+
+  it('synthesizes class, attribute, and method renames and updates symbol table in-flight', () => {
+    const classId = crypto.randomUUID();
+    const attrId = crypto.randomUUID();
+    const methodId = crypto.randomUUID();
+    const existingDiagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Existing Canvas',
+      classes: [
+        {
+          id: classId,
+          name: 'Estudiante',
+          position: { x: 100, y: 100 },
+          classKind: 'class',
+          isAbstract: false,
+          attributes: [
+            { id: attrId, name: 'nombreViejo', type: 'string', visibility: '+' },
+          ],
+          methods: [
+            { id: methodId, name: 'metodoViejo', returnType: 'void', parameters: [], visibility: '+' },
+          ],
+        },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const model: SemanticDomainModel = {
+      renames: {
+        classes: [{ from: 'Estudiante', to: 'Alumno' }],
+        attributes: [{ class: 'Estudiante', from: 'nombreViejo', to: 'nombreCompleto' }],
+        methods: [{ class: 'Estudiante', from: 'metodoViejo', to: 'calcularPromedio' }],
+      },
+    };
+
+    const delta = expandSemanticDomainToDelta(model, existingDiagram.id, existingDiagram);
+    expect(delta).not.toBeNull();
+    expect(delta!.deltas).toHaveLength(3);
+
+    const renameClassDelta = delta!.deltas.find((d: any) => d.kind === 'class' && d.op === 'rename');
+    expect(renameClassDelta).toBeDefined();
+    expect(renameClassDelta.newName).toBe('Alumno');
+
+    const editAttrDelta = delta!.deltas.find((d: any) => d.kind === 'member' && d.op === 'editAttribute');
+    expect(editAttrDelta).toBeDefined();
+    expect(editAttrDelta.name).toBe('nombreCompleto');
+
+    const editMethodDelta = delta!.deltas.find((d: any) => d.kind === 'member' && d.op === 'editMethod');
+    expect(editMethodDelta).toBeDefined();
+    expect(editMethodDelta.name).toBe('calcularPromedio');
+
+    const applied = applyDelta(existingDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(applied.value.classes[0]!.name).toBe('Alumno');
+      expect(applied.value.classes[0]!.attributes[0]!.name).toBe('nombreCompleto');
+      expect(applied.value.classes[0]!.methods[0]!.name).toBe('calcularPromedio');
+    }
+  });
+
+  it('synthesizes class updates (classKind, isAbstract) and reposition', () => {
+    const classId = crypto.randomUUID();
+    const existingDiagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Existing Canvas',
+      classes: [
+        {
+          id: classId,
+          name: 'Vehiculo',
+          position: { x: 100, y: 100 },
+          classKind: 'class',
+          isAbstract: false,
+          attributes: [],
+          methods: [],
+        },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const model: SemanticDomainModel = {
+      updates: {
+        classes: [{ name: 'Vehiculo', isAbstract: true }],
+        positions: [{ class: 'Vehiculo', x: 450, y: 300 }],
+      },
+    };
+
+    const delta = expandSemanticDomainToDelta(model, existingDiagram.id, existingDiagram);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(existingDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(applied.value.classes[0]!.isAbstract).toBe(true);
+      expect(applied.value.classes[0]!.position).toEqual({ x: 450, y: 300 });
+    }
+  });
+
+  it('synthesizes relationship updates and extended deletions', () => {
+    const autoId = crypto.randomUUID();
+    const vehiculoId = crypto.randomUUID();
+    const motorId = crypto.randomUUID();
+    const assocId = crypto.randomUUID();
+    const genId = crypto.randomUUID();
+
+    const existingDiagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Existing Canvas',
+      classes: [
+        { id: autoId, name: 'Auto', position: { x: 50, y: 50 }, classKind: 'class', isAbstract: false, attributes: [], methods: [] },
+        { id: vehiculoId, name: 'Vehiculo', position: { x: 250, y: 50 }, classKind: 'class', isAbstract: true, attributes: [], methods: [] },
+        { id: motorId, name: 'Motor', position: { x: 50, y: 250 }, classKind: 'class', isAbstract: false, attributes: [], methods: [] },
+      ],
+      associations: [
+        {
+          id: assocId,
+          sourceClassId: autoId,
+          targetClassId: motorId,
+          sourceMultiplicity: '1',
+          targetMultiplicity: '1',
+          directed: false,
+          aggregation: 'composite',
+          aggregationEnd: 'source',
+        },
+      ],
+      generalizations: [
+        {
+          id: genId,
+          subClassId: autoId,
+          superClassId: vehiculoId,
+        },
+      ],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const model: SemanticDomainModel = {
+      updates: {
+        generalizations: [{ subclass: 'Auto', superclass: 'Vehiculo', name: 'hereda_de' }],
+      },
+      deletions: {
+        associations: [{ source: 'Auto', target: 'Motor' }],
+      },
+    };
+
+    const delta = expandSemanticDomainToDelta(model, existingDiagram.id, existingDiagram);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(existingDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(applied.value.associations).toHaveLength(0);
+      expect(applied.value.generalizations[0]!.name).toBe('hereda_de');
+    }
+  });
+
+  it('performs composite refactoring: create new class + rename existing class + delete class in a single batch', () => {
+    const estId = crypto.randomUUID();
+    const usrId = crypto.randomUUID();
+    const existingDiagram: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Existing Canvas',
+      classes: [
+        { id: estId, name: 'Estudiante', position: { x: 100, y: 100 }, classKind: 'class', isAbstract: false, attributes: [], methods: [] },
+        { id: usrId, name: 'Usuario', position: { x: 300, y: 100 }, classKind: 'class', isAbstract: false, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+      naryAssociations: [],
+    };
+
+    const model: SemanticDomainModel = {
+      classes: [
+        {
+          name: 'Factura',
+          attributes: [
+            { name: 'numero', type: 'string' },
+            { name: 'total', type: 'float' },
+            { name: 'fecha', type: 'date' },
+          ],
+        },
+      ],
+      renames: {
+        classes: [{ from: 'Estudiante', to: 'Alumno' }],
+      },
+      deletions: {
+        classes: ['Usuario'],
+      },
+    };
+
+    const delta = expandSemanticDomainToDelta(model, existingDiagram.id, existingDiagram);
+    expect(delta).not.toBeNull();
+
+    const applied = applyDelta(existingDiagram, delta!);
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      const classNames = applied.value.classes.map(c => c.name);
+      expect(classNames).toContain('Alumno');
+      expect(classNames).toContain('Factura');
+      expect(classNames).not.toContain('Estudiante');
+      expect(classNames).not.toContain('Usuario');
+
+      const factura = applied.value.classes.find(c => c.name === 'Factura');
+      expect(factura!.attributes).toHaveLength(3);
+    }
+  });
 });
 
 

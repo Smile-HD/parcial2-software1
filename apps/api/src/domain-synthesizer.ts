@@ -66,11 +66,103 @@ export interface SemanticNaryAssociation {
   }>;
 }
 
+export interface SemanticRenames {
+  classes?: Array<{ from: string; to: string }>;
+  attributes?: Array<{ class: string; from: string; to: string }>;
+  methods?: Array<{ class: string; from: string; to: string }>;
+}
+
+export interface SemanticClassUpdate {
+  name: string;
+  classKind?: 'class' | 'interface';
+  isAbstract?: boolean;
+}
+
+export interface SemanticAttributeUpdate {
+  class: string;
+  name: string;
+  newName?: string;
+  type?: string;
+  visibility?: '+' | '-' | '#' | '~';
+  isStatic?: boolean;
+  isDerived?: boolean;
+  multiplicity?: string;
+}
+
+export interface SemanticMethodUpdate {
+  class: string;
+  name: string;
+  newName?: string;
+  returnType?: string;
+  parameters?: Array<{ name: string; type: string }>;
+  visibility?: '+' | '-' | '#' | '~';
+  isStatic?: boolean;
+}
+
+export interface SemanticAssociationUpdate {
+  source: string;
+  target: string;
+  name?: string;
+  sourceMultiplicity?: string;
+  targetMultiplicity?: string;
+  aggregation?: 'none' | 'shared' | 'composite';
+  aggregationEnd?: 'source' | 'target';
+  sourceRole?: string;
+  targetRole?: string;
+  associationClass?: string;
+}
+
+export interface SemanticGeneralizationUpdate {
+  subclass: string;
+  superclass: string;
+  name: string;
+}
+
+export interface SemanticRealizationUpdate {
+  clientClass: string;
+  supplierInterface: string;
+  name: string;
+}
+
+export interface SemanticDependencyUpdate {
+  client: string;
+  supplier: string;
+  name: string;
+}
+
+export interface SemanticNaryAssociationUpdate {
+  name?: string;
+  naryAssociationId?: string;
+  memberEnds?: Array<{ class: string; multiplicity?: string; role?: string }>;
+}
+
+export interface SemanticReposition {
+  class: string;
+  x: number;
+  y: number;
+}
+
+export interface SemanticUpdates {
+  classes?: SemanticClassUpdate[];
+  attributes?: SemanticAttributeUpdate[];
+  methods?: SemanticMethodUpdate[];
+  associations?: SemanticAssociationUpdate[];
+  generalizations?: SemanticGeneralizationUpdate[];
+  realizations?: SemanticRealizationUpdate[];
+  dependencies?: SemanticDependencyUpdate[];
+  naryAssociations?: SemanticNaryAssociationUpdate[];
+  positions?: SemanticReposition[];
+}
+
 export interface SemanticDeletions {
   classes?: string[];
   attributes?: Array<{ class: string; attribute: string }>;
   methods?: Array<{ class: string; method: string }>;
   associations?: Array<{ source: string; target: string }>;
+  generalizations?: Array<{ subclass: string; superclass: string }>;
+  realizations?: Array<{ clientClass: string; supplierInterface: string }>;
+  dependencies?: Array<{ client: string; supplier: string }>;
+  naryAssociations?: string[];
 }
 
 export interface SemanticDomainModel {
@@ -81,11 +173,13 @@ export interface SemanticDomainModel {
   realizations?: SemanticRealization[];
   dependencies?: SemanticDependency[];
   naryAssociations?: SemanticNaryAssociation[];
+  renames?: SemanticRenames;
+  updates?: SemanticUpdates;
   deletions?: SemanticDeletions;
 }
 
 export function isDomainModelRequest(text: string): boolean {
-  return /(crea|crear|dise[ñn]|model|arma|armar|implement|aplica|agrega|inserta|pone|pon\b|hace|haz|constru|reserva|base de datos|sistema|diagrama|quiero un|necesito un|hazme|haceme|hacer|make|build|generate|design|model|add|apply)\b/i.test(text);
+  return /(?:crea|crear|dise[ñn]|model|arma|armar|implement|aplica|agrega|inserta|pone|pon\b|hace|haz|constru|reserva|base de datos|sistema|diagrama|quiero un|necesito un|hazme|haceme|hacer|renombr|modific|cambi|borr|elimin|quit|make|build|generate|design|model|add|apply|rename|update|delete|remove)/i.test(text);
 }
 
 export function cleanMultiplicity(val: unknown, fallback: string = '1'): string {
@@ -363,14 +457,34 @@ export function expandSemanticDomainToDelta(
   const hasRealizations = Array.isArray(model.realizations) && model.realizations.length > 0;
   const hasDependencies = Array.isArray(model.dependencies) && model.dependencies.length > 0;
   const hasNary = Array.isArray(model.naryAssociations) && model.naryAssociations.length > 0;
+  const hasRenames = !!model.renames && (
+    (Array.isArray(model.renames.classes) && model.renames.classes.length > 0) ||
+    (Array.isArray(model.renames.attributes) && model.renames.attributes.length > 0) ||
+    (Array.isArray(model.renames.methods) && model.renames.methods.length > 0)
+  );
+  const hasUpdates = !!model.updates && (
+    (Array.isArray(model.updates.classes) && model.updates.classes.length > 0) ||
+    (Array.isArray(model.updates.attributes) && model.updates.attributes.length > 0) ||
+    (Array.isArray(model.updates.methods) && model.updates.methods.length > 0) ||
+    (Array.isArray(model.updates.associations) && model.updates.associations.length > 0) ||
+    (Array.isArray(model.updates.generalizations) && model.updates.generalizations.length > 0) ||
+    (Array.isArray(model.updates.realizations) && model.updates.realizations.length > 0) ||
+    (Array.isArray(model.updates.dependencies) && model.updates.dependencies.length > 0) ||
+    (Array.isArray(model.updates.naryAssociations) && model.updates.naryAssociations.length > 0) ||
+    (Array.isArray(model.updates.positions) && model.updates.positions.length > 0)
+  );
   const hasDeletions = !!model.deletions && (
     (Array.isArray(model.deletions.classes) && model.deletions.classes.length > 0) ||
     (Array.isArray(model.deletions.attributes) && model.deletions.attributes.length > 0) ||
     (Array.isArray(model.deletions.methods) && model.deletions.methods.length > 0) ||
-    (Array.isArray(model.deletions.associations) && model.deletions.associations.length > 0)
+    (Array.isArray(model.deletions.associations) && model.deletions.associations.length > 0) ||
+    (Array.isArray(model.deletions.generalizations) && model.deletions.generalizations.length > 0) ||
+    (Array.isArray(model.deletions.realizations) && model.deletions.realizations.length > 0) ||
+    (Array.isArray(model.deletions.dependencies) && model.deletions.dependencies.length > 0) ||
+    (Array.isArray(model.deletions.naryAssociations) && model.deletions.naryAssociations.length > 0)
   );
 
-  if (!hasClasses && !hasAssociations && !hasGeneralizations && !hasRealizations && !hasDependencies && !hasNary && !hasDeletions) {
+  if (!hasClasses && !hasAssociations && !hasGeneralizations && !hasRealizations && !hasDependencies && !hasNary && !hasRenames && !hasUpdates && !hasDeletions) {
     return null;
   }
 
@@ -445,6 +559,371 @@ export function expandSemanticDomainToDelta(
     if (classIdMap.has(lower + 'es')) return classIdMap.get(lower + 'es');
     return undefined;
   };
+
+  // Clave canónica de pares para asegurar unicidad absoluta de aristas entre dos clases
+  const getPairKey = (idA: string, idB: string): string => [idA, idB].sort().join('::');
+  const seenConnectedPairs = new Set<string>();
+
+  // Pre-cargar relaciones existentes para no crear aristas redundantes
+  if (currentDiagram?.generalizations && Array.isArray(currentDiagram.generalizations)) {
+    for (const g of currentDiagram.generalizations) {
+      if (g.subClassId && g.superClassId) {
+        seenConnectedPairs.add(getPairKey(g.subClassId, g.superClassId));
+      }
+    }
+  }
+  if (currentDiagram?.realizations && Array.isArray(currentDiagram.realizations)) {
+    for (const r of currentDiagram.realizations) {
+      if (r.clientClassId && r.supplierInterfaceId) {
+        seenConnectedPairs.add(getPairKey(r.clientClassId, r.supplierInterfaceId));
+      }
+    }
+  }
+  if (currentDiagram?.dependencies && Array.isArray(currentDiagram.dependencies)) {
+    for (const d of currentDiagram.dependencies) {
+      if (d.clientClassId && d.supplierClassId) {
+        seenConnectedPairs.add(getPairKey(d.clientClassId, d.supplierClassId));
+      }
+    }
+  }
+
+  // 0a. Renombrados de Clases, Atributos y Métodos
+  if (model.renames) {
+    if (Array.isArray(model.renames.classes)) {
+      for (const r of model.renames.classes) {
+        const classId = resolveClassId(r.from);
+        if (classId) {
+          const cleanTo = cleanClassName(r.to);
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'class',
+            op: 'rename',
+            classId,
+            newName: cleanTo,
+          });
+          // Actualizar mapas de símbolos en caliente
+          const toLower = cleanTo.toLowerCase();
+          const toCanon = toCanonicalKey(cleanTo);
+          classIdMap.set(toCanon, classId);
+          classIdMap.set(toLower, classId);
+          for (const ec of existingClassesMap.values()) {
+            if (ec.id === classId) {
+              ec.name = cleanTo;
+              existingClassesMap.set(toCanon, ec);
+              existingClassesMap.set(toLower, ec);
+            }
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.renames.attributes)) {
+      for (const r of model.renames.attributes) {
+        const classId = resolveClassId(r.class);
+        if (classId) {
+          const ec = Array.from(existingClassesMap.values()).find((c) => c.id === classId);
+          if (ec && Array.isArray(ec.attributes)) {
+            const fromLower = r.from.trim().toLowerCase();
+            const attr = ec.attributes.find((a: any) => a.name && a.name.trim().toLowerCase() === fromLower);
+            if (attr) {
+              const cleanTo = r.to.trim().replace(/^[-+*#~]\s*/, '').replace(/\s+/g, '');
+              deltas.push({
+                id: crypto.randomUUID(),
+                diagramId,
+                timestamp,
+                kind: 'member',
+                op: 'editAttribute',
+                classId,
+                memberId: attr.id,
+                name: cleanTo,
+                type: attr.type,
+                visibility: attr.visibility,
+                isStatic: attr.isStatic,
+                isDerived: attr.isDerived,
+              });
+              attr.name = cleanTo;
+            }
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.renames.methods)) {
+      for (const r of model.renames.methods) {
+        const classId = resolveClassId(r.class);
+        if (classId) {
+          const ec = Array.from(existingClassesMap.values()).find((c) => c.id === classId);
+          if (ec && Array.isArray(ec.methods)) {
+            const fromLower = r.from.trim().toLowerCase();
+            const meth = ec.methods.find((m: any) => m.name && m.name.trim().toLowerCase() === fromLower);
+            if (meth) {
+              const cleanTo = r.to.trim().replace(/\s+/g, '');
+              deltas.push({
+                id: crypto.randomUUID(),
+                diagramId,
+                timestamp,
+                kind: 'member',
+                op: 'editMethod',
+                classId,
+                memberId: meth.id,
+                name: cleanTo,
+                returnType: meth.returnType,
+                parameters: meth.parameters,
+                visibility: meth.visibility,
+                isStatic: meth.isStatic,
+              });
+              meth.name = cleanTo;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 0b. Actualizaciones explícitas (updates de clases, miembros, relaciones y posiciones)
+  if (model.updates) {
+    if (Array.isArray(model.updates.classes)) {
+      for (const u of model.updates.classes) {
+        const classId = resolveClassId(u.name);
+        if (classId) {
+          const ec = Array.from(existingClassesMap.values()).find((c) => c.id === classId);
+          const targetKind = u.classKind ?? ec?.classKind ?? 'class';
+          const targetAbstract = u.isAbstract !== undefined ? u.isAbstract : (ec?.isAbstract ?? false);
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'class',
+            op: 'update',
+            classId,
+            classKind: targetKind,
+            isAbstract: targetAbstract,
+          });
+          if (ec) {
+            ec.classKind = targetKind;
+            ec.isAbstract = targetAbstract;
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.positions)) {
+      for (const p of model.updates.positions) {
+        const classId = resolveClassId(p.class);
+        if (classId) {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'class',
+            op: 'reposition',
+            classId,
+            newPosition: { x: p.x, y: p.y },
+          });
+          const ec = Array.from(existingClassesMap.values()).find((c) => c.id === classId);
+          if (ec) {
+            ec.position = { x: p.x, y: p.y };
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.attributes)) {
+      for (const u of model.updates.attributes) {
+        const classId = resolveClassId(u.class);
+        if (classId) {
+          const ec = Array.from(existingClassesMap.values()).find((c) => c.id === classId);
+          if (ec && Array.isArray(ec.attributes)) {
+            const attr = ec.attributes.find((a: any) => a.name && a.name.trim().toLowerCase() === u.name.trim().toLowerCase());
+            if (attr) {
+              const cleanType = u.type ? (['int', 'float', 'string', 'boolean', 'date'].includes(u.type.toLowerCase()) ? u.type.toLowerCase() : (u.type === 'number' ? 'float' : 'string')) : attr.type;
+              deltas.push({
+                id: crypto.randomUUID(),
+                diagramId,
+                timestamp,
+                kind: 'member',
+                op: 'editAttribute',
+                classId,
+                memberId: attr.id,
+                name: u.newName ? u.newName.trim() : attr.name,
+                type: cleanType,
+                visibility: u.visibility ?? attr.visibility,
+                isStatic: u.isStatic !== undefined ? u.isStatic : attr.isStatic,
+                isDerived: u.isDerived !== undefined ? u.isDerived : attr.isDerived,
+                multiplicity: u.multiplicity ?? attr.multiplicity,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.methods)) {
+      for (const u of model.updates.methods) {
+        const classId = resolveClassId(u.class);
+        if (classId) {
+          const ec = Array.from(existingClassesMap.values()).find((c) => c.id === classId);
+          if (ec && Array.isArray(ec.methods)) {
+            const meth = ec.methods.find((m: any) => m.name && m.name.trim().toLowerCase() === u.name.trim().toLowerCase());
+            if (meth) {
+              deltas.push({
+                id: crypto.randomUUID(),
+                diagramId,
+                timestamp,
+                kind: 'member',
+                op: 'editMethod',
+                classId,
+                memberId: meth.id,
+                name: u.newName ? u.newName.trim() : meth.name,
+                returnType: u.returnType ?? meth.returnType,
+                parameters: u.parameters ?? meth.parameters,
+                visibility: u.visibility ?? meth.visibility,
+                isStatic: u.isStatic !== undefined ? u.isStatic : meth.isStatic,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.associations)) {
+      for (const u of model.updates.associations) {
+        const sourceId = resolveClassId(u.source);
+        const targetId = resolveClassId(u.target);
+        if (sourceId && targetId) {
+          const isRecursive = sourceId === targetId;
+          const existingAssoc = currentDiagram?.associations?.find((a: any) => {
+            if (isRecursive) return a.sourceClassId === sourceId && a.targetClassId === sourceId;
+            return (
+              (a.sourceClassId === sourceId && a.targetClassId === targetId) ||
+              (a.sourceClassId === targetId && a.targetClassId === sourceId)
+            );
+          });
+          if (existingAssoc) {
+            let assocClassId = u.associationClass ? resolveClassId(u.associationClass) : undefined;
+            const updateDelta: any = {
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'association',
+              op: 'updateMultiplicity',
+              associationId: existingAssoc.id,
+              aggregation: u.aggregation ?? existingAssoc.aggregation ?? 'none',
+              aggregationEnd: u.aggregationEnd ?? existingAssoc.aggregationEnd ?? 'source',
+            };
+            if (u.sourceMultiplicity) updateDelta.newSourceMultiplicity = cleanMultiplicity(u.sourceMultiplicity);
+            if (u.targetMultiplicity) updateDelta.newTargetMultiplicity = cleanMultiplicity(u.targetMultiplicity);
+            if (u.name !== undefined) updateDelta.name = u.name;
+            if (u.sourceRole !== undefined) updateDelta.sourceRole = u.sourceRole;
+            if (u.targetRole !== undefined) updateDelta.targetRole = u.targetRole;
+            if (assocClassId) updateDelta.newAssociationClassId = assocClassId;
+            deltas.push(updateDelta);
+            const pair = isRecursive ? `${sourceId}::${sourceId}` : getPairKey(sourceId, targetId);
+            seenConnectedPairs.add(pair);
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.generalizations) && currentDiagram?.generalizations) {
+      for (const u of model.updates.generalizations) {
+        const subId = resolveClassId(u.subclass);
+        const superId = resolveClassId(u.superclass);
+        if (subId && superId) {
+          const gen = currentDiagram.generalizations.find((g: any) => g.subClassId === subId && g.superClassId === superId);
+          if (gen && u.name !== undefined) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'generalization',
+              op: 'update',
+              generalizationId: gen.id,
+              name: u.name,
+            });
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.realizations) && currentDiagram?.realizations) {
+      for (const u of model.updates.realizations) {
+        const client = resolveClassId(u.clientClass);
+        const supplier = resolveClassId(u.supplierInterface);
+        if (client && supplier) {
+          const r = currentDiagram.realizations.find((rel: any) => rel.clientClassId === client && rel.supplierInterfaceId === supplier);
+          if (r && u.name !== undefined) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'realization',
+              op: 'update',
+              realizationId: r.id,
+              name: u.name,
+            });
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.dependencies) && currentDiagram?.dependencies) {
+      for (const u of model.updates.dependencies) {
+        const client = resolveClassId(u.client);
+        const supplier = resolveClassId(u.supplier);
+        if (client && supplier) {
+          const d = currentDiagram.dependencies.find((dep: any) => dep.clientClassId === client && dep.supplierClassId === supplier);
+          if (d && u.name !== undefined) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'dependency',
+              op: 'update',
+              dependencyId: d.id,
+              name: u.name,
+            });
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(model.updates.naryAssociations) && currentDiagram?.naryAssociations) {
+      for (const u of model.updates.naryAssociations) {
+        const nary = currentDiagram.naryAssociations.find((n: any) => (u.naryAssociationId && n.id === u.naryAssociationId) || (u.name && n.name === u.name));
+        if (nary) {
+          const updateDelta: any = {
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'naryAssociation',
+            op: 'update',
+            naryAssociationId: nary.id,
+          };
+          if (u.name !== undefined) updateDelta.name = u.name;
+          if (Array.isArray(u.memberEnds)) {
+            const mappedEnds: any[] = [];
+            for (const me of u.memberEnds) {
+              const cid = resolveClassId(me.class);
+              if (cid) {
+                mappedEnds.push({
+                  classId: cid,
+                  multiplicity: cleanMultiplicity(me.multiplicity, '1'),
+                  role: me.role,
+                });
+              }
+            }
+            if (mappedEnds.length >= 3) {
+              updateDelta.memberEnds = mappedEnds;
+            }
+          }
+          deltas.push(updateDelta);
+        }
+      }
+    }
+  }
 
   // 1. Crear clases nuevas o modificar existentes
   const cols = 2;
@@ -724,32 +1203,6 @@ export function expandSemanticDomainToDelta(
     });
   }
 
-  // Clave canónica de pares para asegurar unicidad absoluta de aristas entre dos clases
-  const getPairKey = (idA: string, idB: string): string => [idA, idB].sort().join('::');
-  const seenConnectedPairs = new Set<string>();
-
-  // Pre-cargar generalizaciones, realizaciones y dependencias existentes para no crear asociaciones redundantes
-  if (currentDiagram?.generalizations && Array.isArray(currentDiagram.generalizations)) {
-    for (const g of currentDiagram.generalizations) {
-      if (g.subClassId && g.superClassId) {
-        seenConnectedPairs.add(getPairKey(g.subClassId, g.superClassId));
-      }
-    }
-  }
-  if (currentDiagram?.realizations && Array.isArray(currentDiagram.realizations)) {
-    for (const r of currentDiagram.realizations) {
-      if (r.clientClassId && r.supplierInterfaceId) {
-        seenConnectedPairs.add(getPairKey(r.clientClassId, r.supplierInterfaceId));
-      }
-    }
-  }
-  if (currentDiagram?.dependencies && Array.isArray(currentDiagram.dependencies)) {
-    for (const d of currentDiagram.dependencies) {
-      if (d.clientClassId && d.supplierClassId) {
-        seenConnectedPairs.add(getPairKey(d.clientClassId, d.supplierClassId));
-      }
-    }
-  }
 
   // 2. Procesar primero las GENERALIZACIONES (herencia OOAD: "is-a")
   // La herencia es la relación estructural más fuerte en OOAD: tiene precedencia absoluta sobre asociaciones
@@ -1115,20 +1568,108 @@ export function expandSemanticDomainToDelta(
     });
   }
 
-  // 7. Eliminaciones puntuales (clases, atributos, métodos, relaciones)
+  // 8. Eliminaciones puntuales (relaciones, miembros, clases)
   if (model.deletions) {
-    // Borrado de clases
-    if (Array.isArray(model.deletions.classes)) {
-      model.deletions.classes.forEach((cname) => {
-        const cid = classIdMap.get(cname.toLowerCase().trim());
-        if (cid) {
+    // Borrado de asociaciones
+    if (Array.isArray(model.deletions.associations) && currentDiagram?.associations) {
+      model.deletions.associations.forEach((item) => {
+        const srcId = resolveClassId(item.source);
+        const tgtId = resolveClassId(item.target);
+        if (srcId && tgtId) {
+          const assoc = currentDiagram.associations.find(
+            (a: any) =>
+              (a.sourceClassId === srcId && a.targetClassId === tgtId) ||
+              (a.sourceClassId === tgtId && a.targetClassId === srcId)
+          );
+          if (assoc) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'association',
+              op: 'delete',
+              associationId: assoc.id,
+            });
+          }
+        }
+      });
+    }
+
+    // Borrado de generalizaciones
+    if (Array.isArray(model.deletions.generalizations) && currentDiagram?.generalizations) {
+      model.deletions.generalizations.forEach((item) => {
+        const subId = resolveClassId(item.subclass);
+        const superId = resolveClassId(item.superclass);
+        if (subId && superId) {
+          const gen = currentDiagram.generalizations.find((g: any) => g.subClassId === subId && g.superClassId === superId);
+          if (gen) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'generalization',
+              op: 'delete',
+              generalizationId: gen.id,
+            });
+          }
+        }
+      });
+    }
+
+    // Borrado de realizaciones
+    if (Array.isArray(model.deletions.realizations) && currentDiagram?.realizations) {
+      model.deletions.realizations.forEach((item) => {
+        const client = resolveClassId(item.clientClass);
+        const supplier = resolveClassId(item.supplierInterface);
+        if (client && supplier) {
+          const r = currentDiagram.realizations.find((rel: any) => rel.clientClassId === client && rel.supplierInterfaceId === supplier);
+          if (r) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'realization',
+              op: 'delete',
+              realizationId: r.id,
+            });
+          }
+        }
+      });
+    }
+
+    // Borrado de dependencias
+    if (Array.isArray(model.deletions.dependencies) && currentDiagram?.dependencies) {
+      model.deletions.dependencies.forEach((item) => {
+        const client = resolveClassId(item.client);
+        const supplier = resolveClassId(item.supplier);
+        if (client && supplier) {
+          const d = currentDiagram.dependencies.find((dep: any) => dep.clientClassId === client && dep.supplierClassId === supplier);
+          if (d) {
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'dependency',
+              op: 'delete',
+              dependencyId: d.id,
+            });
+          }
+        }
+      });
+    }
+
+    // Borrado de asociaciones N-arias
+    if (Array.isArray(model.deletions.naryAssociations) && currentDiagram?.naryAssociations) {
+      model.deletions.naryAssociations.forEach((item) => {
+        const nary = currentDiagram.naryAssociations.find((n: any) => n.id === item || (n.name && n.name.toLowerCase().trim() === item.toLowerCase().trim()));
+        if (nary) {
           deltas.push({
             id: crypto.randomUUID(),
             diagramId,
             timestamp,
-            kind: 'class',
+            kind: 'naryAssociation',
             op: 'delete',
-            classId: cid,
+            naryAssociationId: nary.id,
           });
         }
       });
@@ -1137,9 +1678,8 @@ export function expandSemanticDomainToDelta(
     // Borrado de atributos
     if (Array.isArray(model.deletions.attributes)) {
       model.deletions.attributes.forEach((item) => {
-        const lower = item.class.toLowerCase().trim();
-        const cid = classIdMap.get(lower);
-        const ec = existingClassesMap.get(lower);
+        const cid = resolveClassId(item.class);
+        const ec = cid ? Array.from(existingClassesMap.values()).find((c) => c.id === cid) : undefined;
         if (cid && ec && Array.isArray(ec.attributes)) {
           const attr = ec.attributes.find((a: any) => a.name && a.name.toLowerCase().trim() === item.attribute.toLowerCase().trim());
           if (attr) {
@@ -1160,9 +1700,8 @@ export function expandSemanticDomainToDelta(
     // Borrado de métodos
     if (Array.isArray(model.deletions.methods)) {
       model.deletions.methods.forEach((item) => {
-        const lower = item.class.toLowerCase().trim();
-        const cid = classIdMap.get(lower);
-        const ec = existingClassesMap.get(lower);
+        const cid = resolveClassId(item.class);
+        const ec = cid ? Array.from(existingClassesMap.values()).find((c) => c.id === cid) : undefined;
         if (cid && ec && Array.isArray(ec.methods)) {
           const m = ec.methods.find((em: any) => em.name && em.name.toLowerCase().trim() === item.method.toLowerCase().trim());
           if (m) {
@@ -1180,27 +1719,19 @@ export function expandSemanticDomainToDelta(
       });
     }
 
-    // Borrado de asociaciones
-    if (Array.isArray(model.deletions.associations) && currentDiagram?.associations) {
-      model.deletions.associations.forEach((item) => {
-        const srcId = classIdMap.get(item.source.toLowerCase().trim());
-        const tgtId = classIdMap.get(item.target.toLowerCase().trim());
-        if (srcId && tgtId) {
-          const assoc = currentDiagram.associations.find(
-            (a: any) =>
-              (a.sourceClassId === srcId && a.targetClassId === tgtId) ||
-              (a.sourceClassId === tgtId && a.targetClassId === srcId)
-          );
-          if (assoc) {
-            deltas.push({
-              id: crypto.randomUUID(),
-              diagramId,
-              timestamp,
-              kind: 'association',
-              op: 'delete',
-              associationId: assoc.id,
-            });
-          }
+    // Borrado de clases (al final para respetar orden de miembros)
+    if (Array.isArray(model.deletions.classes)) {
+      model.deletions.classes.forEach((cname) => {
+        const cid = resolveClassId(cname);
+        if (cid) {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'class',
+            op: 'delete',
+            classId: cid,
+          });
         }
       });
     }
@@ -1395,7 +1926,9 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
         }))
         .filter((n: any) => n.members.length >= 3);
 
-      const deletions = parsed.deletions;
+      const renames = parsed.renames ?? parsed.renombrar;
+      const updates = parsed.updates ?? parsed.modificaciones;
+      const deletions = parsed.deletions ?? parsed.eliminaciones ?? parsed.borrados;
 
       if (
         classes.length > 0 ||
@@ -1404,6 +1937,8 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
         realizations.length > 0 ||
         dependencies.length > 0 ||
         naryAssociations.length > 0 ||
+        renames ||
+        updates ||
         deletions
       ) {
         return {
@@ -1414,6 +1949,8 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
           realizations,
           dependencies,
           naryAssociations,
+          renames,
+          updates,
           deletions,
         };
       }
@@ -1532,6 +2069,10 @@ export async function synthesizeDomainModel(
     'CRITICAL EXTENSION RULE: When extending an existing diagram, do NOT re-declare existing classes in "classes". Include ONLY the new classes being created. In "associations", you CAN and SHOULD reference existing classes by name to connect them to the new classes.',
     'CRITICAL MULTIPLICITY RULE: "sourceMultiplicity" applies to "source", and "targetMultiplicity" applies to "target". E.g. If "1 Libro has many Reservas", then: if source="Libro" and target="Reserva", sourceMultiplicity="1", targetMultiplicity="1..*". If source="Reserva" and target="Libro", sourceMultiplicity="1..*", targetMultiplicity="1". Never invert cardinalities.',
     'CRITICAL ANTI-HALLUCINATION RULE: ONLY output the classes explicitly requested by the user. NEVER invent or include extra entities (such as Cliente, Factura, Usuario, etc.) that were not asked for by the user. If the user asks to create 1 class, output EXACTLY 1 class. If the user asks to create 2 classes, output EXACTLY 2 classes.',
+    'CRITICAL REFACTORING & RENAMING RULE: If the user requests to rename, update, or delete classes, members, or relationships, use:',
+    '  - Renames: "renames": {"classes": [{"from": "OldName", "to": "NewName"}]}. DO NOT put the renamed class into "classes" as a new class!',
+    '  - Updates: "updates": {"classes": [{"name": "ClassName", "isAbstract": true}], "associations": [{"source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]}',
+    '  - Deletions: "deletions": {"classes": ["DeletedClassName"], "associations": [{"source": "A", "target": "B"}]}',
     'Output ONLY a valid raw JSON object matching the requested domain (DO NOT copy example class or attribute names like CatalogItem, Order, OrderItem unless they belong to the user requested domain):',
     '{',
     '  "classes": [',

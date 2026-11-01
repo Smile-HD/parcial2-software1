@@ -143,7 +143,8 @@ export async function listChatMessages(
              FROM chat_messages
              WHERE diagram_id = $1 
                AND channel_type = 'direct_bot'
-               AND (device_id = $2 OR target_user = $3 OR sender_name = $3)
+               AND device_id = $2
+               AND target_user = $3
                AND created_at >= NOW() - INTERVAL '7 days'
              ORDER BY created_at ASC`;
     params = [diagramId, deviceId, userName];
@@ -291,7 +292,11 @@ export function generateAmongusContextualReply(
 }
 
 export function stripEmojis(text: string): string {
-  return text.replace(/\p{Extended_Pictographic}/gu, '').replace(/\s{2,}/g, ' ').trim();
+  return text
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/[^\S\r\n]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function breakDegenerativeLoops(text: string): string {
@@ -434,6 +439,66 @@ export async function generateAmongusReply(
   }
 
   return generateAmongusContextualReply(userContent, senderName, language);
+}
+
+export function isChimeraClassName(name: string, existingClassNames: string[]): boolean {
+  if (!name || existingClassNames.length < 2) return false;
+  const cleanProposed = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (cleanProposed.length < 4) return false;
+
+  const hits = existingClassNames.filter((ec) => {
+    const cleanEc = ec.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return cleanEc.length >= 3 && cleanProposed.includes(cleanEc);
+  });
+  return hits.length >= 2;
+}
+
+export function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = []): string {
+  if (!text) return text;
+  let cleaned = breakDegenerativeLoops(text.trim());
+
+  const lines = cleaned.split('\n');
+  const resultLines: string[] = [];
+  let suggestionCount = 0;
+  let inSuggestionBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const isNewNumberedItem = /^\s*(?:[1-9]\d*[\.\)-]|\*\s*\*\*(?:Clase\s+)?["']?([^"'*]+)["']?\*\*)\s+/i.test(line);
+
+    if (isNewNumberedItem) {
+      const numMatch = line.match(/^\s*([1-9]\d*)[\.\)-]/);
+      if (numMatch && parseInt(numMatch[1]!, 10) > 3) {
+        break; // Corte duro a maximo 3 sugerencias
+      }
+
+      suggestionCount++;
+      if (suggestionCount > 3) {
+        break; // Corte duro
+      }
+
+      // Detector de quimeras en el encabezado
+      const nameMatch = line.match(/\*\*(?:Clase\s+)?["']?([^"'*:]+)["']?\*\*/i) ||
+                        line.match(/^[1-9]\d*[\.\)-]\s+["']?([A-Za-z_][\w]*)/i);
+      if (nameMatch && isChimeraClassName(nameMatch[1]!, existingClassNames)) {
+        suggestionCount--;
+        inSuggestionBlock = false;
+        continue;
+      }
+
+      inSuggestionBlock = true;
+      resultLines.push(line);
+    } else if (inSuggestionBlock || suggestionCount === 0) {
+      const inlineChimera = line.match(/\*\*([A-Za-z_]{6,})\*\*/);
+      if (inlineChimera && isChimeraClassName(inlineChimera[1]!, existingClassNames)) {
+        continue;
+      }
+      resultLines.push(line);
+    }
+  }
+
+  const pruned = resultLines.join('\n').trim();
+  return breakDegenerativeLoops(pruned || cleaned);
 }
 
 export interface UnifiedTurnResult {
@@ -676,7 +741,7 @@ export async function processUnifiedAmongusTurn(
 
   // 0d. Filtro fuera de dominio / preguntas filosóficas o de cultura general
   const isToolQuery =
-    /(?:c[oó]mo\s+(?:se\s+)?export|c[oó]mo\s+(?:se\s+)?guarda|c[oó]mo\s+(?:se\s+)?usa|c[oó]mo\s+funciona\s+(?:la\s+herramienta|el\s+editor|el\s+lienzo|el\s+layout|el\s+audit|el\s+chat|amongus|la\s+voz)|qu[eé]\s+(?:herramientas?|funciones?|capacidades?|comandos?|opciones?)\s+(?:tiene|hay|ofrece|soporta)|para\s+qu[eé]\s+sirve\s+(?:el\s+layout|el\s+audit|el\s+export|spring|xmi|png)|exportaci[oó]n|importaci[oó]n|how\s+to\s+export|how\s+does\s+(?:the\s+tool|the\s+editor|layout|audit|amongus)\s+work|what\s+tools\s+(?:are\s+there|exist))/i.test(
+    /(?:c[oó]mo\s+(?:se\s+)?export|c[oó]mo\s+(?:se\s+)?guarda|c[oó]mo\s+(?:se\s+)?usa|c[oó]mo\s+funciona\s+(?:la\s+herramienta|el\s+editor|el\s+lienzo|el\s+layout|el\s+audit|el\s+chat|amongus|la\s+voz)|qu[eé]\s+(?:herramientas?|funciones?|capacidades?|comandos?|opciones?)\s+(?:tiene|hay|ofrece|soporta)|qu[eé]\s+(?:pod[eé]s|puedes|hac[eé]s)\s+(?:hacer)?|what\s+can\s+you\s+do|para\s+qu[eé]\s+sirve\s+(?:el\s+layout|el\s+audit|el\s+export|spring|xmi|png)|exportaci[oó]n|importaci[oó]n|how\s+to\s+export|how\s+does\s+(?:the\s+tool|the\s+editor|layout|audit|amongus)\s+work|what\s+tools\s+(?:are\s+there|exist))/i.test(
       normalized
     );
 
@@ -827,30 +892,6 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
-function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = []): string {
-  if (!text) return text;
-  let cleaned = text.trim();
-
-  if (existingClassNames.length >= 2) {
-    const blocks = cleaned.split(/\n\s*\n/);
-    const filteredBlocks = blocks.filter((block) => {
-      const match = block.match(/\*\*(?:Clase\s+)?["']?([^"'*]+)["']?\*\*/i);
-      if (!match) return true;
-      const proposed = match[1]!.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const hits = existingClassNames.filter((ec) => {
-        const cleanEc = ec.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return cleanEc.length >= 3 && proposed.includes(cleanEc);
-      });
-      return hits.length < 2;
-    });
-    if (filteredBlocks.length > 0) {
-      cleaned = filteredBlocks.join('\n\n');
-    }
-  }
-
-  return cleaned;
-}
-
   if (trimmedLower === '/layout' || trimmedLower === '/layout canvas') {
     const classCount = diagram?.classes?.length || 0;
     if (classCount === 0) {
@@ -883,45 +924,56 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
 
     const suggestPrompt = isEn
       ? [
-          'You are Amongus, a senior software architecture tutor.',
+          'You are Amongus, a senior software architecture tutor inside an interactive UML collaborative editor.',
           `CURRENT CANVAS CONTEXT (${classCount} classes):\n${diagramContext}`,
           domainGrounding,
-          'CRITICAL ARCHITECTURAL RULES (AVOID OVER-ENGINEERING & COMBINATORIAL BLOAT):',
-          '- PROPOSAL LIMIT (MAX 5 NEW CLASSES): In this suggestion, propose AT MOST 5 new classes (minimum 1 if essential entities are missing, maximum 5). NEVER propose more than 5 classes at once.',
-          '- IF DOMAIN IS ALREADY COVERED: If the existing classes already represent the core domain concepts and no essential entity is truly missing, DO NOT invent superfluous classes or artificial intermediaries! In that case, propose ZERO new classes and focus EXCLUSIVELY on refining existing classes (attributes and methods).',
-          '- PRIORITIZE REFINING EXISTING CLASSES (ATTRIBUTES & METHODS):',
-          '  1. ADD MISSING ATTRIBUTES: Suggest essential missing domain attributes on existing classes (e.g. status, seatNumber, basePrice, dateOfBirth).',
-          '  2. REMOVE OR CLEAN MALFORMED ATTRIBUTES: Suggest removing redundant attributes, duplicate fields, or type-leaked names (e.g. clean "name:string").',
-          '  3. ADD BUSINESS METHODS: Suggest essential business operations to overcome an anemic domain model (e.g. calculateTotal(), bookSeat(), cancel()).',
-          '- STRICT ANTI-CHIMERA RULE: NEVER invent compound class names by concatenating two existing class names (e.g. NEVER "AirportAirline", "FlightPassenger", "PaymentInvoice"). Relationships between existing entities must be direct associations, not artificial intermediate classes.',
-          '- FORMAT: Structure your suggestion with clear, direct sections:',
-          '  1. **New Essential Entities** (only if truly missing, at most 5 classes; omit if none needed)',
-          '  2. **Attributes to Add or Remove in Existing Classes** (key attributes to add or cleanup)',
-          '  3. **Key Business Methods** (operations to give life to entities)',
-          'Provide clear, concise architectural reasoning without code blocks or JSON.',
+          'SUGGESTION OBJECTIVE: Suggest at most 3 concise, high-value improvements to enrich the domain model according to OOAD best practices.',
+          'CRITICAL ATOMIC NOUN RULES:',
+          '- ATOMIC DOMAIN ENTITIES: Every suggested class must be a single, standalone domain noun (e.g. Audit, Complaint, Branch, Shift). Concatenating existing class names into compound words is strictly prohibited.',
+          '- STRICT LIMIT (MAXIMUM 3 SUGGESTIONS): Propose AT MOST 3 suggestions in total. NEVER output a 4th suggestion.',
+          '- IF DOMAIN IS ALREADY COVERED: If core concepts are already modeled, propose 0 new classes and focus on attributes and business methods for existing classes.',
+          '- NUMBERED FORMAT REQUIRED:',
+          '  1. **ClassName**: Concise architectural purpose and key attributes.',
+          '  2. **ClassName**: Concise architectural purpose and key attributes.',
+          '  3. **ClassName**: Concise architectural purpose and key attributes.',
+          'Be direct, pedagogical, and concise without code blocks or JSON.',
         ].filter(Boolean).join('\n')
       : [
-          'Sos Amongus, tutor senior de arquitectura de software.',
+          'Sos Amongus, tutor senior de arquitectura de software en un editor colaborativo UML.',
           `ESTADO ACTUAL DEL LIENZO (${classCount} clases):\n${diagramContext}`,
           domainGrounding,
-          'REGLAS CRÍTICAS DE ARQUITECTURA (EVITAR SOBREINGENIERÍA Y ALUCINACIONES COMBINATORIAS):',
-          '- LÍMITE DE LA PROPUESTA (MÁXIMO 5 CLASES NUEVAS): En esta sugerencia podés proponer como MÁXIMO 5 clases nuevas (mínimo 1 si faltan conceptos clave, máximo 5). NUNCA propongas más de 5 clases en una sola respuesta.',
-          '- SI EL DOMINIO YA ESTÁ CUBIERTO: Si las clases existentes ya representan los conceptos nucleares del dominio y no falta ninguna entidad esencial, ¡NO inventes clases superfluas ni intermediarios artificiosos solo para rellenar! En ese caso, proponé CERO clases nuevas y dedicate EXCLUSIVAMENTE a enriquecer atributos y métodos de las clases existentes.',
-          '- PRIORIZÁ ENRIQUECER Y DEPURAR LAS CLASES EXISTENTES (ATRIBUTOS Y MÉTODOS):',
-          '  1. AUMENTAR ATRIBUTOS FALTANTES: Detectá clases existentes a las que les falten atributos clave del dominio (ej. agregar "estado", "asiento", "precioBase", "fechaEmision") y sugerí incorporarlos.',
-          '  2. QUITAR O SANEAR ATRIBUTOS: Sugerí quitar o limpiar atributos redundantes, duplicados o malformados (ej. corregir "nombre:string" o eliminar campos innecesarios).',
-          '  3. MÉTODOS DE NEGOCIO: Sugerí métodos clave en las entidades principales para superar el modelo de dominio anémico (ej. calcularTotal(), reservar(), emitirBoleto()).',
-          '- REGLA ESTRICTA ANTI-QUIMERAS: NUNCA inventes nombres combinando o fusionando clases existentes (ej: NUNCA "AeropuertoAerolinea", "VueloPasajero", "PagoFactura"). Si dos entidades interactúan, usá una asociación directa simple (1..* o *..*), NUNCA una clase intermedia artificiosa.',
-          '- FORMATO DE SUGERENCIAS:',
-          '  1. **Nuevas Entidades Clave** (sólo si realmente faltan en el negocio, máximo 5 clases; omitir esta sección si el dominio ya está cubierto)',
-          '  2. **Atributos a Aumentar o Quitar en Clases Existentes** (atributos clave a sumar o sanear)',
-          '  3. **Métodos de Negocio Clave** (operaciones de negocio para dotar de comportamiento al modelo)',
-          'Explicá el por qué desde la perspectiva de diseño OOAD limpio, sin bloques de código ni JSON. Sé directo y conciso.',
+          'OBJETIVO DE SUGERENCIA: Sugerí como máximo 3 mejoras concisas y de alto valor para enriquecer el modelo según los principios OOAD.',
+          'REGLAS CRÍTICAS DE NOMBRES ATÓMICOS:',
+          '- ENTIDADES ATÓMICAS DE NEGOCIO: Toda clase propuesta debe ser un único sustantivo atómico del dominio (ej. Auditoria, Reclamo, Sucursal, Turno). Está terminantemente prohibido concatenar o fusionar nombres de clases ya existentes.',
+          '- LÍMITE ESTRICTO (MÁXIMO 3 SUGERENCIAS): Proponé como MÁXIMO 3 sugerencias en total. NUNCA propongas una 4ta sugerencia.',
+          '- SI EL DOMINIO YA ESTÁ CUBIERTO: Si los conceptos nucleares ya están modelados, proponé 0 clases nuevas y concentrate en sugerir atributos y métodos de negocio para las clases existentes.',
+          '- FORMATO NUMERADO OBLIGATORIO:',
+          '  1. **NombreClase**: Propósito arquitectónico conciso y atributos clave.',
+          '  2. **NombreClase**: Propósito arquitectónico conciso y atributos clave.',
+          '  3. **NombreClase**: Propósito arquitectónico conciso y atributos clave.',
+          'Sé directo, pedagógico y conciso, sin bloques de código ni JSON.',
         ].filter(Boolean).join('\n');
 
     let suggestChunks = '';
+    let streamHalted = false;
+
     const wrappedSuggestChunk = (chunk: string) => {
       suggestChunks += chunk;
+      if (streamHalted) return;
+
+      // Válvula de corte en tiempo real en streaming:
+      // Si el acumulador detecta el inicio de un 4to ítem numerado (ej. "\n4.", "\n4 ", "\n4)"), cortamos el stream
+      if (/(?:\n|^)\s*4\s*[\.\)-]/.test(suggestChunks)) {
+        streamHalted = true;
+        return;
+      }
+
+      // Si detectamos bucles repetitivos de 6+ caracteres 3 veces consecutivas, frenamos el stream
+      if (/(.{6,40}?)(?:\s*\1){2,}/i.test(suggestChunks)) {
+        streamHalted = true;
+        return;
+      }
+
       onChunk?.(chunk);
     };
 
@@ -931,7 +983,14 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
           { role: 'system', content: suggestPrompt },
           { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
         ],
-        { timeoutMs: DEFAULT_LLM_TIMEOUT_MS, maxTokens: DEFAULT_LLM_MAX_TOKENS, onChunk: wrappedSuggestChunk }
+        {
+          timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
+          maxTokens: DEFAULT_LLM_MAX_TOKENS,
+          onChunk: wrappedSuggestChunk,
+          stop: ['\n4.', '\n4 ', '4. ', '4.-', '<|im_end|>'],
+          repeatPenalty: 1.15,
+          repeatLastN: 128,
+        } as any
       );
       return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestResult), existingNames).trim() };
     } catch {
@@ -1100,10 +1159,14 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
               '   CATALOG OF SUPPORTED OPERATIONS:',
               '   - Classes: "classes": [{"name": "Animal", "attributes": [{"name": "age", "type": "int"}], "methods": [{"name": "move", "returnType": "void"}]}]',
               '   - Interfaces: "classes": [{"name": "Flyable", "isInterface": true, "methods": [{"name": "fly", "returnType": "void"}]}]',
+              '   - Renames: "renames": {"classes": [{"from": "OldName", "to": "NewName"}], "attributes": [{"class": "ClassName", "from": "oldAttr", "to": "newAttr"}], "methods": [{"class": "ClassName", "from": "oldMethod", "to": "newMethod"}]}',
+              '   - Updates: "updates": {"classes": [{"name": "ClassName", "isAbstract": true}], "associations": [{"source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]}',
               '   - Associations: "associations": [{"source": "Customer", "target": "Order", "aggregation": "none", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]',
               '   - Generalization: "generalizations": [{"subclass": "Dog", "superclass": "Animal"}]',
               '   - Realization: "realizations": [{"clientClass": "Pigeon", "supplierInterface": "Flyable"}]',
-              '   - Deletions: "deletions": {"classes": ["DeletedClass"]}',
+              '   - Deletions: "deletions": {"classes": ["DeletedClass"], "associations": [{"source": "A", "target": "B"}], "attributes": [{"class": "ClassName", "attribute": "attrName"}]}',
+              '   - Composite Refactoring (renaming + creating + deleting in one turn):',
+              '     {"classes": [{"name": "Invoice", "attributes": [{"name": "total", "type": "float"}]}], "renames": {"classes": [{"from": "Student", "to": "Pupil"}]}, "deletions": {"classes": ["OldUser"]}}',
               '   STRICT: NEVER include code blocks, JSON syntax, or dummy placeholders in your conversational replies.',
             ].join('\n')
           : [
@@ -1187,10 +1250,14 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
               '   CATÁLOGO DE OPERACIONES:',
               '   - Clases: "classes": [{"name": "Animal", "attributes": [{"name": "edad", "type": "int"}], "methods": [{"name": "moverse", "returnType": "void"}]}]',
               '   - Interfaces: "classes": [{"name": "Volador", "isInterface": true, "methods": [{"name": "volar", "returnType": "void"}]}]',
+              '   - Renombrados: "renames": {"classes": [{"from": "ViejoNombre", "to": "NuevoNombre"}], "attributes": [{"class": "Clase", "from": "viejoAttr", "to": "nuevoAttr"}], "methods": [{"class": "Clase", "from": "viejoMetodo", "to": "nuevoMetodo"}]}',
+              '   - Modificaciones: "updates": {"classes": [{"name": "Clase", "isAbstract": true}], "associations": [{"source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]}',
               '   - Asociaciones: "associations": [{"source": "Cliente", "target": "Pedido", "aggregation": "none", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]',
               '   - Generalización: "generalizations": [{"subclass": "Perro", "superclass": "Animal"}]',
               '   - Realización: "realizations": [{"clientClass": "Paloma", "supplierInterface": "Volador"}]',
-              '   - Eliminaciones: "deletions": {"classes": ["ClaseABorrar"]}',
+              '   - Eliminaciones: "deletions": {"classes": ["ClaseABorrar"], "associations": [{"source": "A", "target": "B"}], "attributes": [{"class": "Clase", "attribute": "nombreAtributo"}]}',
+              '   - Refactorización compuesta (renombrar + crear + borrar en un solo turno):',
+              '     {"classes": [{"name": "Factura", "attributes": [{"name": "total", "type": "float"}]}], "renames": {"classes": [{"from": "Estudiante", "to": "Alumno"}]}, "deletions": {"classes": ["Usuario"]}}',
             ].join('\n')
           : [
               '4. PREGUNTA TEÓRICA O CONCEPTUAL (ej. ¿qué es agregación?, ¿por qué separar entidades?):',
@@ -1233,11 +1300,31 @@ function pruneSuggestionsToMax3(text: string, existingClassNames: string[] = [])
         (parsedModel.realizations && parsedModel.realizations.length > 0) ||
         (parsedModel.dependencies && parsedModel.dependencies.length > 0) ||
         (parsedModel.naryAssociations && parsedModel.naryAssociations.length > 0) ||
+        (parsedModel.renames && (
+          (parsedModel.renames.classes && parsedModel.renames.classes.length > 0) ||
+          (parsedModel.renames.attributes && parsedModel.renames.attributes.length > 0) ||
+          (parsedModel.renames.methods && parsedModel.renames.methods.length > 0)
+        )) ||
+        (parsedModel.updates && (
+          (parsedModel.updates.classes && parsedModel.updates.classes.length > 0) ||
+          (parsedModel.updates.attributes && parsedModel.updates.attributes.length > 0) ||
+          (parsedModel.updates.methods && parsedModel.updates.methods.length > 0) ||
+          (parsedModel.updates.associations && parsedModel.updates.associations.length > 0) ||
+          (parsedModel.updates.generalizations && parsedModel.updates.generalizations.length > 0) ||
+          (parsedModel.updates.realizations && parsedModel.updates.realizations.length > 0) ||
+          (parsedModel.updates.dependencies && parsedModel.updates.dependencies.length > 0) ||
+          (parsedModel.updates.naryAssociations && parsedModel.updates.naryAssociations.length > 0) ||
+          (parsedModel.updates.positions && parsedModel.updates.positions.length > 0)
+        )) ||
         (parsedModel.deletions && (
           (parsedModel.deletions.classes && parsedModel.deletions.classes.length > 0) ||
           (parsedModel.deletions.attributes && parsedModel.deletions.attributes.length > 0) ||
           (parsedModel.deletions.methods && parsedModel.deletions.methods.length > 0) ||
-          (parsedModel.deletions.associations && parsedModel.deletions.associations.length > 0)
+          (parsedModel.deletions.associations && parsedModel.deletions.associations.length > 0) ||
+          (parsedModel.deletions.generalizations && parsedModel.deletions.generalizations.length > 0) ||
+          (parsedModel.deletions.realizations && parsedModel.deletions.realizations.length > 0) ||
+          (parsedModel.deletions.dependencies && parsedModel.deletions.dependencies.length > 0) ||
+          (parsedModel.deletions.naryAssociations && parsedModel.deletions.naryAssociations.length > 0)
         )));
 
     if (hasAnyContent) {

@@ -831,27 +831,41 @@ export class OpenAiLlm implements LlmPort {
       temperature?: number;
       maxTokens?: number;
       onChunk?: (chunk: string) => void;
+      stop?: string[];
+      repeatPenalty?: number;
+      repeatLastN?: number;
     }
   ): Promise<string> {
     const isStream = typeof options?.onChunk === 'function';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 15000);
     try {
+      const requestBody: Record<string, any> = {
+        model: this.model,
+        messages,
+        temperature: options?.temperature ?? 0.2,
+        max_tokens: options?.maxTokens ?? 2048,
+        frequency_penalty: (options as any)?.frequencyPenalty ?? 0.4,
+        presence_penalty: (options as any)?.presencePenalty ?? 0.2,
+        stream: isStream,
+      };
+      if (options?.stop && options.stop.length > 0) {
+        requestBody.stop = options.stop;
+      }
+      if (options?.repeatPenalty !== undefined || options?.repeatLastN !== undefined) {
+        requestBody.options = {
+          repeat_penalty: options?.repeatPenalty ?? 1.15,
+          repeat_last_n: options?.repeatLastN ?? 128,
+        };
+      }
+
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${this.apiKey}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          temperature: options?.temperature ?? 0.2,
-          max_tokens: options?.maxTokens ?? 2048,
-          frequency_penalty: (options as any)?.frequencyPenalty ?? 0.4,
-          presence_penalty: (options as any)?.presencePenalty ?? 0.2,
-          stream: isStream,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 

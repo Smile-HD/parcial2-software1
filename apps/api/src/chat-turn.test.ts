@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { processUnifiedAmongusTurn, breakDegenerativeLoops } from './chat.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  processUnifiedAmongusTurn,
+  breakDegenerativeLoops,
+  isChimeraClassName,
+  pruneSuggestionsToMax3,
+} from './chat.js';
 
 describe('processUnifiedAmongusTurn', () => {
   it('returns connected presence list and count when asked in Spanish', async () => {
@@ -238,6 +243,134 @@ describe('processUnifiedAmongusTurn', () => {
     expect(res.replyContent).not.toContain('Preparé la propuesta');
     expect(res.replyContent).toContain('No pude interpretar los cambios para generar la propuesta');
     expect(res.batchDelta).toBeUndefined();
+  });
+
+  describe('isChimeraClassName & pruneSuggestionsToMax3', () => {
+    it('detects chimeric compound names made of existing classes', () => {
+      const existing = ['Factura', 'Item', 'Pago', 'Cliente'];
+      expect(isChimeraClassName('FacturaItemCancelada', existing)).toBe(true);
+      expect(isChimeraClassName('PagoFactura', existing)).toBe(true);
+      expect(isChimeraClassName('ClienteFactura', existing)).toBe(true);
+
+      // Standalone atomic domain nouns should not be flagged
+      expect(isChimeraClassName('Auditoria', existing)).toBe(false);
+      expect(isChimeraClassName('Comprobante', existing)).toBe(false);
+      expect(isChimeraClassName('Reclamo', existing)).toBe(false);
+      expect(isChimeraClassName('Factura', existing)).toBe(false); // Exact match is not a combination of 2
+    });
+
+    it('prunes suggestions strictly to at most 3 items and drops items >= 4', () => {
+      const verboseSuggestions = [
+        '1. **Auditoria**: Registra logs de operaciones del sistema.',
+        '2. **Reclamo**: Permite a los clientes asentar quejas.',
+        '3. **Sucursal**: Punto físico donde se realizan las operaciones.',
+        '4. **FacturaItem**: Detalle de items de factura.',
+        '5. **FacturaItemCanceladaEstado**: Entidad de prueba.',
+      ].join('\n');
+
+      const pruned = pruneSuggestionsToMax3(verboseSuggestions, ['Factura', 'Item']);
+      expect(pruned).toContain('1. **Auditoria**');
+      expect(pruned).toContain('2. **Reclamo**');
+      expect(pruned).toContain('3. **Sucursal**');
+      expect(pruned).not.toContain('4. **FacturaItem**');
+      expect(pruned).not.toContain('5. **FacturaItemCanceladaEstado**');
+    });
+
+    it('filters out chimeric classes even within the top 3 items', () => {
+      const chimeraTop3 = [
+        '1. **Auditoria**: Registra logs.',
+        '2. **FacturaItem**: Combinación chimera.',
+        '3. **Sucursal**: Punto de venta.',
+      ].join('\n');
+
+      const pruned = pruneSuggestionsToMax3(chimeraTop3, ['Factura', 'Item']);
+      expect(pruned).toContain('1. **Auditoria**');
+      expect(pruned).not.toContain('FacturaItem');
+      expect(pruned).toContain('3. **Sucursal**');
+    });
+  });
+
+  describe('/suggest streaming valve and options', () => {
+    it('configures stop tokens and repeat penalty on llm.chat call', async () => {
+      let capturedOptions: any = null;
+      const mockLlm = {
+        chat: vi.fn().mockImplementation(async (_messages: any, options: any) => {
+          capturedOptions = options;
+          return '1. **Auditoria**: Registra auditorias.\n2. **Reclamo**: Registra reclamos.\n3. **Turno**: Gestiona turnos.';
+        }),
+      };
+
+      const mockDiagram = {
+        id: 'diag-1',
+        classes: [{ id: 'c1', name: 'Factura' }, { id: 'c2', name: 'Cliente' }],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        '/suggest',
+        'Carlos',
+        'es',
+        'diag-1',
+        mockLlm,
+        mockDiagram
+      );
+
+      expect(mockLlm.chat).toHaveBeenCalledTimes(1);
+      expect(capturedOptions).toBeDefined();
+      expect(capturedOptions.stop).toEqual(['\n4.', '\n4 ', '4. ', '4.-', '<|im_end|>']);
+      expect(capturedOptions.repeatPenalty).toBe(1.15);
+      expect(capturedOptions.repeatLastN).toBe(128);
+      expect(res.replyContent).toContain('1. **Auditoria**');
+    });
+
+    it('streaming valve cuts off emission to client as soon as item 4 starts', async () => {
+      const streamedToClient: string[] = [];
+      const clientOnChunk = (chunk: string) => {
+        streamedToClient.push(chunk);
+      };
+
+      const mockLlm = {
+        chat: vi.fn().mockImplementation(async (_messages: any, options: any) => {
+          // Simulate streaming chunk by chunk
+          options.onChunk('1. **Auditoria**: Registra logs.\n');
+          options.onChunk('2. **Reclamo**: Gestiona quejas.\n');
+          options.onChunk('3. **Sucursal**: Punto físico.\n');
+          options.onChunk('\n4. **FacturaItem**: Slop adicional que debe ser bloqueado.\n');
+          options.onChunk('5. **FacturaItemCancelada**: Slop adicional 2.\n');
+          return '1. **Auditoria**: Registra logs.\n2. **Reclamo**: Gestiona quejas.\n3. **Sucursal**: Punto físico.\n\n4. **FacturaItem**: Slop.';
+        }),
+      };
+
+      const mockDiagram = {
+        id: 'diag-1',
+        classes: [{ id: 'c1', name: 'Factura' }, { id: 'c2', name: 'Cliente' }],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        '/suggest',
+        'Carlos',
+        'es',
+        'diag-1',
+        mockLlm,
+        mockDiagram,
+        undefined,
+        clientOnChunk
+      );
+
+      const clientReceivedText = streamedToClient.join('');
+      // Client must have received items 1, 2, and 3
+      expect(clientReceivedText).toContain('1. **Auditoria**');
+      expect(clientReceivedText).toContain('2. **Reclamo**');
+      expect(clientReceivedText).toContain('3. **Sucursal**');
+
+      // But client MUST NOT have received item 4 or item 5 in real time!
+      expect(clientReceivedText).not.toContain('4. **FacturaItem**');
+      expect(clientReceivedText).not.toContain('5. **FacturaItemCancelada**');
+
+      // Final reply must also be pruned
+      expect(res.replyContent).not.toContain('4. **FacturaItem**');
+    });
   });
 });
 
