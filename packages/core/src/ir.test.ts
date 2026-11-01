@@ -584,4 +584,61 @@ describe('IR Schema — Optional edge labels (unit 13c, unified edge editing)', 
     expect(parsed.realizations[0]!.name).toBe('real');
     expect(parsed.dependencies[0]!.name).toBe('dep');
   });
+
+  it('rejects DiagramSchema with cyclic generalizations (A -> B -> A)', () => {
+    const aId = crypto.randomUUID();
+    const bId = crypto.randomUUID();
+    const res = DiagramSchema.safeParse({
+      id: crypto.randomUUID(),
+      name: 'Cyclic Diagram',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+        { id: bId, name: 'B', position: { x: 100, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [
+        { id: crypto.randomUUID(), subClassId: aId, superClassId: bId },
+        { id: crypto.randomUUID(), subClassId: bId, superClassId: aId },
+      ],
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0]?.message).toMatch(/cycles or self-inheritance/i);
+    }
+  });
+
+  it('rejects DiagramSchema with self-inheritance (A -> A)', () => {
+    const aId = crypto.randomUUID();
+    const res = DiagramSchema.safeParse({
+      id: crypto.randomUUID(),
+      name: 'Self Loop Diagram',
+      classes: [
+        { id: aId, name: 'A', position: { x: 0, y: 0 }, attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [
+        { id: crypto.randomUUID(), subClassId: aId, superClassId: aId },
+      ],
+    });
+    expect(res.success).toBe(false);
+  });
+
+  it('rejects class or attribute names exceeding 100 characters', () => {
+    const longName = 'A'.repeat(101);
+    const clsRes = ClassSchema.safeParse({
+      id: crypto.randomUUID(),
+      name: longName,
+      position: { x: 0, y: 0 },
+      attributes: [],
+      methods: [],
+    });
+    expect(clsRes.success).toBe(false);
+
+    const attrRes = AttributeSchema.safeParse({
+      id: crypto.randomUUID(),
+      name: longName,
+      type: 'string',
+    });
+    expect(attrRes.success).toBe(false);
+  });
 });

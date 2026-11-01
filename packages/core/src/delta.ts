@@ -21,10 +21,10 @@ export const ClassDeltaSchema = DeltaBase.extend({
   op: z.enum(['create', 'rename', 'reposition', 'delete', 'update']),
   classId: z.string().uuid(),
   // Para create: name + position requeridos
-  name: z.string().min(1).optional(),
+  name: z.string().min(1).max(100).optional(),
   position: z.object({ x: z.number(), y: z.number() }).optional(),
   // Para rename: newName requerido
-  newName: z.string().min(1).optional(),
+  newName: z.string().min(1).max(100).optional(),
   // Para reposition: newPosition requerida
   newPosition: z.object({ x: z.number(), y: z.number() }).optional(),
   // Unidad 12: tipo de clasificador + marcado abstracto (en create/update)
@@ -49,11 +49,11 @@ export const MemberDeltaSchema = DeltaBase.extend({
   classId: z.string().uuid(),
   memberId: z.string().uuid(),
   // Para add/edit attribute
-  name: z.string().min(1).optional(),
+  name: z.string().min(1).max(100).optional(),
   type: z.string().min(1).optional(),
   // Para add/edit method
   returnType: z.string().min(1).optional(),
-  parameters: z.array(z.object({ name: z.string().min(1), type: z.string().min(1) })).optional(),
+  parameters: z.array(z.object({ name: z.string().min(1).max(100), type: z.string().min(1) })).optional(),
   // Adornos UML (unidad 9 — opcionales para preservar deltas antiguos)
   visibility: z.enum(['+', '-', '#', '~']).optional(),
   isStatic: z.boolean().optional(),

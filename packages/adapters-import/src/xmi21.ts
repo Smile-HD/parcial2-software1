@@ -893,10 +893,16 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
   }
 
   // Asociaciones
+  const seenAssociations = new Set<string>();
   for (const a of model.associations) {
     const sourceUuid = classIdMap.get(a.source);
     const targetUuid = classIdMap.get(a.target);
     if (!sourceUuid || !targetUuid) continue;
+
+    // Deduplicación de asociaciones idénticas (mismo id de elemento en XMI)
+    if (a.id && seenAssociations.has(a.id)) continue;
+    if (a.id) seenAssociations.add(a.id);
+
     deltas.push({
       kind: 'association',
       id: randomUUID(),
@@ -923,14 +929,34 @@ function xmiToDeltaBatch(model: XmiModel, diagramId: string): BatchDelta {
 
   // Generalizaciones
   const seenGeneralizations = new Set<string>();
+  const genAdj = new Map<string, string[]>();
+
+  function wouldCycle(sub: string, sup: string): boolean {
+    if (sub === sup) return true;
+    const visited = new Set<string>();
+    const stack = [sup];
+    while (stack.length > 0) {
+      const curr = stack.pop()!;
+      if (curr === sub) return true;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      const nexts = genAdj.get(curr) || [];
+      for (const n of nexts) stack.push(n);
+    }
+    return false;
+  }
+
   for (const g of model.generalizations) {
     const subUuid = classIdMap.get(g.subClassId);
     const superUuid = classIdMap.get(g.superClassId);
     // Omitir aristas no resolubles, auto-bucles (sub === super) o duplicados exactos
-    if (!subUuid || !superUuid || subUuid === superUuid) continue;
+    if (!subUuid || !superUuid) continue;
     const key = `${subUuid}->${superUuid}`;
     if (seenGeneralizations.has(key)) continue;
+    if (wouldCycle(subUuid, superUuid)) continue;
     seenGeneralizations.add(key);
+    if (!genAdj.has(subUuid)) genAdj.set(subUuid, []);
+    genAdj.get(subUuid)!.push(superUuid);
 
     deltas.push({
       kind: 'generalization',

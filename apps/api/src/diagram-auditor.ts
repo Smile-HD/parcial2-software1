@@ -5,21 +5,19 @@
  * y calidad de metamodelo UML sobre el estado real del diagrama en memoria.
  *
  * Principio: 100% determinista sobre el grafo, latencia < 5 ms, 0% alucinaciones.
- * Detecta componentes desconectados (mezcla de dominios), atributos malformados/duplicados,
- * modelos anémicos (0 métodos), clases huérfanas y consistencia de multiplicidades.
+ * Detecta componentes desconectados (mezcla de dominios), nombres inválidos (espacios, XML, palabras reservadas),
+ * ciclos de herencia, asociaciones duplicadas, atributos malformados, modelos anémicos y multiplicidades.
  */
 
-export interface AuditReportResult {
-  score: number; // 0 a 100
-  summary: string;
-  sections: {
-    domainCohesion: string[];
-    attributeIntegrity: string[];
-    behaviorCompleteness: string[];
-    relationshipQuality: string[];
-    recommendations: string[];
-  };
-}
+const IDENTIFIER_REGEX = /^[A-Za-z_ñÑáéíóúÁÉÍÓÚ][A-Za-z0-9_ñÑáéíóúÁÉÍÓÚ]*$/;
+const JAVA_RESERVED_WORDS = new Set([
+  'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const',
+  'continue', 'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float',
+  'for', 'goto', 'if', 'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native',
+  'new', 'package', 'private', 'protected', 'public', 'return', 'short', 'static', 'strictfp',
+  'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 'try', 'void',
+  'volatile', 'while', 'record', 'sealed', 'permits', 'var', 'yield'
+]);
 
 export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): string {
   if (!diagram || !Array.isArray(diagram.classes) || diagram.classes.length === 0) {
@@ -41,7 +39,76 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 1. Cohesión de Grafo y Mezcla de Dominios (Connected Components)
+  // 1. Sintaxis de Identificadores y Nomenclatura (Clases)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const namingIssues: string[] = [];
+  let totalInvalidClassNames = 0;
+
+  for (const c of classes) {
+    const rawClassName = String(c.name || '').trim();
+    if (!IDENTIFIER_REGEX.test(rawClassName)) {
+      namingIssues.push(
+        isEn
+          ? `Class "${rawClassName}": Name is not a valid UML identifier (contains spaces, punctuation, or illegal characters).`
+          : `Clase "${rawClassName}": El nombre no es un identificador UML válido (contiene espacios, signos o caracteres ilegales).`
+      );
+      totalInvalidClassNames++;
+    } else if (JAVA_RESERVED_WORDS.has(rawClassName.toLowerCase())) {
+      namingIssues.push(
+        isEn
+          ? `Class "${rawClassName}": Name collisions with a reserved programming language keyword.`
+          : `Clase "${rawClassName}": El nombre colisiona con una palabra reservada del lenguaje.`
+      );
+      totalInvalidClassNames++;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 2. Jerarquías de Herencia y Detección de Ciclos / Auto-herencia
+  // ─────────────────────────────────────────────────────────────────────────────
+  const cycleIssues: string[] = [];
+  const genAdj = new Map<string, string[]>();
+
+  for (const g of generalizations) {
+    const sub = g.subClassId ?? g.sourceClassId;
+    const sup = g.superClassId ?? g.targetClassId;
+    if (sub && sup) {
+      if (sub === sup) {
+        const clsName = classMap.get(sub)?.name || sub;
+        cycleIssues.push(
+          isEn
+            ? `Self-Inheritance Loop: Class "${clsName}" inherits from itself.`
+            : `Auto-herencia: La clase "${clsName}" hereda de sí misma.`
+        );
+      }
+      if (!genAdj.has(sub)) genAdj.set(sub, []);
+      genAdj.get(sub)!.push(sup);
+    }
+  }
+
+  for (const startId of genAdj.keys()) {
+    const visited = new Set<string>();
+    const stack = [...(genAdj.get(startId) || [])];
+    while (stack.length > 0) {
+      const curr = stack.pop()!;
+      if (curr === startId) {
+        const startName = classMap.get(startId)?.name || startId;
+        cycleIssues.push(
+          isEn
+            ? `Inheritance Cycle: Detected cyclic inheritance involving class "${startName}".`
+            : `Ciclo de Herencia: Se detectó un ciclo cerrado de herencia que involucra a la clase "${startName}".`
+        );
+        break;
+      }
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      const nexts = genAdj.get(curr) || [];
+      for (const n of nexts) stack.push(n);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 3. Cohesión de Grafo y Mezcla de Dominios (Connected Components)
   // ─────────────────────────────────────────────────────────────────────────────
   const adj = new Map<string, Set<string>>();
   for (const c of classes) {
@@ -55,21 +122,27 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     }
   }
   for (const g of generalizations) {
-    if (adj.has(g.sourceClassId) && adj.has(g.targetClassId)) {
-      adj.get(g.sourceClassId)!.add(g.targetClassId);
-      adj.get(g.targetClassId)!.add(g.sourceClassId);
+    const sub = g.subClassId ?? g.sourceClassId;
+    const sup = g.superClassId ?? g.targetClassId;
+    if (adj.has(sub) && adj.has(sup)) {
+      adj.get(sub)!.add(sup);
+      adj.get(sup)!.add(sub);
     }
   }
   for (const r of realizations) {
-    if (adj.has(r.sourceClassId) && adj.has(r.targetClassId)) {
-      adj.get(r.sourceClassId)!.add(r.targetClassId);
-      adj.get(r.targetClassId)!.add(r.sourceClassId);
+    const client = r.clientClassId ?? r.sourceClassId;
+    const supplier = r.supplierInterfaceId ?? r.targetClassId;
+    if (adj.has(client) && adj.has(supplier)) {
+      adj.get(client)!.add(supplier);
+      adj.get(supplier)!.add(client);
     }
   }
   for (const d of dependencies) {
-    if (adj.has(d.sourceClassId) && adj.has(d.targetClassId)) {
-      adj.get(d.sourceClassId)!.add(d.targetClassId);
-      adj.get(d.targetClassId)!.add(d.sourceClassId);
+    const client = d.clientClassId ?? d.sourceClassId;
+    const supplier = d.supplierClassId ?? d.targetClassId;
+    if (adj.has(client) && adj.has(supplier)) {
+      adj.get(client)!.add(supplier);
+      adj.get(supplier)!.add(client);
     }
   }
 
@@ -133,7 +206,7 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 2. Integridad de Atributos (Duplicados, Malformados, Tipos Embebidos)
+  // 4. Integridad de Atributos (Duplicados, Malformados, Tipos Embebidos)
   // ─────────────────────────────────────────────────────────────────────────────
   const attrIssues: string[] = [];
   let totalMalformedAttrs = 0;
@@ -148,17 +221,21 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
       const lower = rawName.toLowerCase();
       seenNames.set(lower, (seenNames.get(lower) || 0) + 1);
 
-      // Detectar nombres con tipo incrustado como "nombre:string" o con múltiples dos puntos
       if (rawName.includes(':') || /:(string|int|float|date|boolean|bool)/i.test(rawName)) {
         malformedInClass.push(`"${rawName}" (tipo incrustado en el nombre)`);
         totalMalformedAttrs++;
       } else if (['date', 'string', 'int', 'float', 'boolean'].includes(lower)) {
         malformedInClass.push(`"${rawName}" (nombre huérfano con palabra reservada de tipo)`);
         totalMalformedAttrs++;
+      } else if (!IDENTIFIER_REGEX.test(rawName)) {
+        malformedInClass.push(`"${rawName}" (nombre no es identificador válido)`);
+        totalMalformedAttrs++;
+      } else if (JAVA_RESERVED_WORDS.has(lower)) {
+        malformedInClass.push(`"${rawName}" (palabra reservada de Java)`);
+        totalMalformedAttrs++;
       }
     }
 
-    // Detectar duplicados directos
     for (const [name, count] of seenNames.entries()) {
       if (count > 1) {
         malformedInClass.push(`"${name}" (duplicado ${count} veces)`);
@@ -176,7 +253,7 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 3. Completitud de Comportamiento y Modelo Anémico (0 métodos)
+  // 5. Completitud de Comportamiento y Modelo Anémico (0 métodos)
   // ─────────────────────────────────────────────────────────────────────────────
   const behaviorIssues: string[] = [];
   let totalMethods = 0;
@@ -210,9 +287,12 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 4. Calidad de Relaciones y Multiplicidades
+  // 6. Calidad de Relaciones, Asociaciones Duplicadas y Multiplicidades
   // ─────────────────────────────────────────────────────────────────────────────
   const relIssues: string[] = [];
+  const duplicateAssocIssues: string[] = [];
+  const seenPairs = new Map<string, number>();
+
   for (const a of associations) {
     const src = classMap.get(a.sourceClassId)?.name || a.sourceClassId;
     const tgt = classMap.get(a.targetClassId)?.name || a.targetClassId;
@@ -224,10 +304,21 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
           : `Multiplicidad Ausente: La relación entre "${src}" y "${tgt}" no tiene multiplicidades explícitas asignadas.`
       );
     }
+
+    const pairKey = [a.sourceClassId, a.targetClassId].sort().join(':::');
+    const cnt = (seenPairs.get(pairKey) || 0) + 1;
+    seenPairs.set(pairKey, cnt);
+    if (cnt === 2) {
+      duplicateAssocIssues.push(
+        isEn
+          ? `Duplicate Association: Multiple parallel associations detected between "${src}" and "${tgt}".`
+          : `Asociación Duplicada: Se detectaron múltiples asociaciones paralelas entre "${src}" y "${tgt}".`
+      );
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 5. Responsabilidad y Complejidad (God Classes / Sobrecarga)
+  // 7. Responsabilidad y Complejidad (God Classes / Sobrecarga)
   // ─────────────────────────────────────────────────────────────────────────────
   const complexityIssues: string[] = [];
   for (const c of classes) {
@@ -245,13 +336,16 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
   // Cálculo de Puntuación de Salud Arquitectónica (0 - 100)
   // ─────────────────────────────────────────────────────────────────────────────
   let score = 100;
-  if (totalMalformedAttrs > 0) score -= Math.min(30, totalMalformedAttrs * 4);
+  if (cycleIssues.length > 0) score -= 40;
+  if (totalInvalidClassNames > 0) score -= Math.min(30, totalInvalidClassNames * 10);
+  if (duplicateAssocIssues.length > 0) score -= Math.min(20, duplicateAssocIssues.length * 10);
+  if (totalMalformedAttrs > 0) score -= Math.min(25, totalMalformedAttrs * 4);
   if (components.length > 1) score -= 15;
   if (orphanClasses.length > 0) score -= Math.min(20, orphanClasses.length * 10);
   if (totalMethods === 0) score -= 15;
   if (relIssues.length > 0) score -= Math.min(15, relIssues.length * 5);
   if (complexityIssues.length > 0) score -= 10;
-  score = Math.max(15, score);
+  score = Math.max(10, score);
 
   const healthStatus =
     score >= 85
@@ -271,7 +365,19 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     output.push(`**Analyzed elements**: ${classes.length} classes, ${associations.length} associations, ${generalizations.length} generalizations.`);
     output.push('');
 
-    output.push('#### 1. Structural Cohesion & Domains');
+    if (namingIssues.length > 0) {
+      output.push('#### 1. Identifiers & UML Syntax');
+      for (const iss of namingIssues) output.push(`• ${iss}`);
+      output.push('');
+    }
+
+    if (cycleIssues.length > 0) {
+      output.push('#### 2. Inheritance Hierarchy & Cycles');
+      for (const iss of cycleIssues) output.push(`• ${iss}`);
+      output.push('');
+    }
+
+    output.push('#### 3. Structural Cohesion & Domains');
     if (domainIssues.length === 0) {
       output.push('• All classes are properly connected in a unified cohesive graph.');
     } else {
@@ -279,7 +385,7 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     }
     output.push('');
 
-    output.push('#### 2. Attribute Integrity & Data Quality');
+    output.push('#### 4. Attribute Integrity & Data Quality');
     if (attrIssues.length === 0) {
       output.push('• All attributes have clean names and standard types without duplication.');
     } else {
@@ -288,26 +394,36 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     }
     output.push('');
 
-    output.push('#### 3. Behavior & Encapsulation (OOAD)');
+    output.push('#### 5. Behavior & Encapsulation (OOAD)');
     for (const iss of behaviorIssues) output.push(`• ${iss}`);
     output.push('');
 
-    output.push('#### 4. Relationships & Multiplicities');
-    if (relIssues.length === 0) {
-      output.push('• All associations define explicit multiplicities on both ends.');
+    output.push('#### 6. Relationships & Multiplicities');
+    if (relIssues.length === 0 && duplicateAssocIssues.length === 0) {
+      output.push('• All associations define explicit multiplicities on both ends without duplicates.');
     } else {
+      for (const iss of duplicateAssocIssues) output.push(`• ${iss}`);
       for (const iss of relIssues) output.push(`• ${iss}`);
     }
 
     if (complexityIssues.length > 0) {
       output.push('');
-      output.push('#### 5. Complexity & Single Responsibility');
+      output.push('#### 7. Complexity & Single Responsibility');
       for (const iss of complexityIssues) output.push(`• ${iss}`);
     }
 
     output.push('');
     output.push('#### Recommended Architectural Actions');
     let actionIdx = 1;
+    if (cycleIssues.length > 0) {
+      output.push(`${actionIdx++}. **[Blocker]** Break inheritance cycles to preserve class hierarchy validity.`);
+    }
+    if (totalInvalidClassNames > 0) {
+      output.push(`${actionIdx++}. **[High Priority]** Rename classes to valid identifiers without spaces or XML characters.`);
+    }
+    if (duplicateAssocIssues.length > 0) {
+      output.push(`${actionIdx++}. **[High Priority]** Remove duplicate parallel associations between connected entities.`);
+    }
     if (totalMalformedAttrs > 0) {
       output.push(`${actionIdx++}. **[High Priority]** Clean up type-leaked attributes to prevent compile errors during Spring Boot export.`);
     }
@@ -317,7 +433,7 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     if (totalMethods === 0) {
       output.push(`${actionIdx++}. **[Medium Priority]** Add domain methods (e.g. calculateTotal(), bookTicket()) to overcome anemic classes.`);
     }
-    if (totalMalformedAttrs === 0 && components.length <= 1 && totalMethods > 0) {
+    if (totalMalformedAttrs === 0 && components.length <= 1 && totalMethods > 0 && namingIssues.length === 0 && duplicateAssocIssues.length === 0 && cycleIssues.length === 0) {
       output.push(`1. The diagram demonstrates solid OOAD cohesion and structural integrity.`);
     }
   } else {
@@ -326,7 +442,19 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     output.push(`**Elementos analizados**: ${classes.length} clases, ${associations.length} asociaciones, ${generalizations.length} herencias.`);
     output.push('');
 
-    output.push('#### 1. Cohesión Estructural y Dominios');
+    if (namingIssues.length > 0) {
+      output.push('#### 1. Identificadores y Sintaxis UML');
+      for (const iss of namingIssues) output.push(`• ${iss}`);
+      output.push('');
+    }
+
+    if (cycleIssues.length > 0) {
+      output.push('#### 2. Jerarquías y Ciclos de Herencia');
+      for (const iss of cycleIssues) output.push(`• ${iss}`);
+      output.push('');
+    }
+
+    output.push('#### 3. Cohesión Estructural y Dominios');
     if (domainIssues.length === 0) {
       output.push('• Todas las clases están conectadas coherentemente en un único grafo unificado.');
     } else {
@@ -334,7 +462,7 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     }
     output.push('');
 
-    output.push('#### 2. Integridad de Atributos y Calidad de Datos');
+    output.push('#### 4. Integridad de Atributos y Calidad de Datos');
     if (attrIssues.length === 0) {
       output.push('• Todos los atributos presentan nombres limpios y tipos válidos sin duplicados.');
     } else {
@@ -343,26 +471,36 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     }
     output.push('');
 
-    output.push('#### 3. Comportamiento y Completitud OOAD');
+    output.push('#### 5. Comportamiento y Completitud OOAD');
     for (const iss of behaviorIssues) output.push(`• ${iss}`);
     output.push('');
 
-    output.push('#### 4. Calidad de Relaciones y Multiplicidades');
-    if (relIssues.length === 0) {
-      output.push('• Todas las asociaciones cuentan con multiplicidades explícitas en ambos extremos.');
+    output.push('#### 6. Calidad de Relaciones y Multiplicidades');
+    if (relIssues.length === 0 && duplicateAssocIssues.length === 0) {
+      output.push('• Todas las asociaciones cuentan con multiplicidades explícitas en ambos extremos sin duplicados.');
     } else {
+      for (const iss of duplicateAssocIssues) output.push(`• ${iss}`);
       for (const iss of relIssues) output.push(`• ${iss}`);
     }
 
     if (complexityIssues.length > 0) {
       output.push('');
-      output.push('#### 5. Complejidad y Responsabilidad Única');
+      output.push('#### 7. Complejidad y Responsabilidad Única');
       for (const iss of complexityIssues) output.push(`• ${iss}`);
     }
 
     output.push('');
     output.push('#### Plan de Acción Arquitectónico Recomendado');
     let actionIdx = 1;
+    if (cycleIssues.length > 0) {
+      output.push(`${actionIdx++}. **[Bloqueante]** Eliminar ciclos de herencia para preservar la validez del metamodelo.`);
+    }
+    if (totalInvalidClassNames > 0) {
+      output.push(`${actionIdx++}. **[Prioridad Alta]** Renombrar las clases a identificadores válidos sin espacios ni caracteres especiales.`);
+    }
+    if (duplicateAssocIssues.length > 0) {
+      output.push(`${actionIdx++}. **[Prioridad Alta]** Eliminar asociaciones paralelas redundantes entre las mismas entidades.`);
+    }
     if (totalMalformedAttrs > 0) {
       output.push(`${actionIdx++}. **[Prioridad Alta]** Sanitizar los atributos con tipo incrustado para evitar errores de compilación al exportar a Spring Boot.`);
     }
@@ -372,7 +510,7 @@ export function auditDiagramOOAD(diagram?: any, language: 'es' | 'en' = 'es'): s
     if (totalMethods === 0) {
       output.push(`${actionIdx++}. **[Diseño OOAD]** Superar el modelo anémico dotando a las entidades principales de métodos de negocio (ej. calcularCosto(), reservar()).`);
     }
-    if (totalMalformedAttrs === 0 && components.length <= 1 && totalMethods > 0) {
+    if (totalMalformedAttrs === 0 && components.length <= 1 && totalMethods > 0 && namingIssues.length === 0 && duplicateAssocIssues.length === 0 && cycleIssues.length === 0) {
       output.push(`1. El modelo exhibe solidez estructural y alta cohesión según principios OOAD.`);
     }
   }

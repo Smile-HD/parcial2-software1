@@ -404,6 +404,7 @@ export function findClosestSlashCommand(rawCmd: string): string | null {
   let minDistance = 999;
 
   for (const cmd of KNOWN_SLASH_COMMANDS) {
+    if (cmd === lower) continue;
     const dist = levenshtein(lower, cmd);
     if (dist < minDistance && dist <= 3) {
       minDistance = dist;

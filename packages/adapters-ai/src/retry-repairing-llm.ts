@@ -164,4 +164,11 @@ export class RetryRepairingLlmPort implements LlmPort {
     }
     throw new Error('Inner LLM does not support chat');
   }
+
+  async checkHealth(timeoutMs?: number): Promise<{ ok: boolean; message?: string }> {
+    if ('checkHealth' in this.inner && typeof (this.inner as any).checkHealth === 'function') {
+      return (this.inner as any).checkHealth(timeoutMs);
+    }
+    return { ok: true };
+  }
 }

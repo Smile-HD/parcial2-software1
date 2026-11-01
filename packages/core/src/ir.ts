@@ -37,7 +37,7 @@ export type Visibility = z.infer<typeof VisibilitySchema>;
  */
 export const AttributeSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(100),
   type: z.string().min(1),
   visibility: VisibilitySchema.default('+'),
   isStatic: z.boolean().default(false),
@@ -50,7 +50,7 @@ export type Attribute = z.infer<typeof AttributeSchema>;
  * Parámetro de un método: nombre + tipo.
  */
 export const ParameterSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).max(100),
   type: z.string().min(1),
 });
 export type Parameter = z.infer<typeof ParameterSchema>;
@@ -61,7 +61,7 @@ export type Parameter = z.infer<typeof ParameterSchema>;
  */
 export const MethodSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(100),
   returnType: z.string().min(1),
   parameters: z.array(ParameterSchema),
   visibility: VisibilitySchema.default('+'),
@@ -83,7 +83,7 @@ export type ClassKind = z.infer<typeof ClassKindSchema>;
  */
 export const ClassSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(100),
   position: PositionSchema,
   attributes: z.array(AttributeSchema),
   methods: z.array(MethodSchema),
@@ -194,19 +194,60 @@ export const NaryAssociationSchema = z.object({
 export type NaryAssociation = z.infer<typeof NaryAssociationSchema>;
 
 /**
+ * Detecta si un conjunto de generalizaciones contiene auto-herencia o ciclos transitivos.
+ */
+export function hasGeneralizationCycle(
+  generalizations: readonly { subClassId: string; superClassId: string }[]
+): boolean {
+  for (const g of generalizations) {
+    if (g.subClassId === g.superClassId) return true;
+  }
+  const adj = new Map<string, string[]>();
+  for (const g of generalizations) {
+    if (!adj.has(g.subClassId)) adj.set(g.subClassId, []);
+    adj.get(g.subClassId)!.push(g.superClassId);
+  }
+  for (const startNode of adj.keys()) {
+    const visited = new Set<string>();
+    const stack = [...(adj.get(startNode) || [])];
+    while (stack.length > 0) {
+      const curr = stack.pop()!;
+      if (curr === startNode) return true;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      const nexts = adj.get(curr) || [];
+      for (const next of nexts) {
+        stack.push(next);
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Diagrama: el IR de nivel superior que contiene clases, asociaciones,
  * generalizaciones, realizaciones, dependencias y asociaciones n-arias.
  * `generalizations`, `realizations`, `dependencies` y `naryAssociations`
  * usan valor predeterminado [] para asegurar compatibilidad hacia atrás.
  */
-export const DiagramSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1),
-  classes: z.array(ClassSchema),
-  associations: z.array(AssociationSchema),
-  generalizations: z.array(GeneralizationSchema).default([]),
-  realizations: z.array(RealizationSchema).default([]),
-  dependencies: z.array(DependencySchema).default([]),
-  naryAssociations: z.array(NaryAssociationSchema).default([]),
-});
+export const DiagramSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string().min(1).max(100),
+    classes: z.array(ClassSchema),
+    associations: z.array(AssociationSchema),
+    generalizations: z.array(GeneralizationSchema).default([]),
+    realizations: z.array(RealizationSchema).default([]),
+    dependencies: z.array(DependencySchema).default([]),
+    naryAssociations: z.array(NaryAssociationSchema).default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (hasGeneralizationCycle(data.generalizations)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Inheritance graph contains cycles or self-inheritance',
+        path: ['generalizations'],
+      });
+    }
+  });
 export type Diagram = z.infer<typeof DiagramSchema>;

@@ -355,20 +355,26 @@ export function summarizeDiagramForPrompt(diagram?: any): string {
   }).join('\n');
 
   const generalizations = (diagram.generalizations || []).map((g: any) => {
-    const src = classMap.get(g.sourceClassId) || g.sourceClassId;
-    const tgt = classMap.get(g.targetClassId) || g.targetClassId;
+    const sub = g.subClassId ?? g.sourceClassId;
+    const sup = g.superClassId ?? g.targetClassId;
+    const src = classMap.get(sub) || sub;
+    const tgt = classMap.get(sup) || sup;
     return `- Herencia: "${src}" hereda de "${tgt}"`;
   }).join('\n');
 
   const realizations = (diagram.realizations || []).map((r: any) => {
-    const src = classMap.get(r.sourceClassId) || r.sourceClassId;
-    const tgt = classMap.get(r.targetClassId) || r.targetClassId;
+    const client = r.clientClassId ?? r.sourceClassId;
+    const supplier = r.supplierInterfaceId ?? r.targetClassId;
+    const src = classMap.get(client) || client;
+    const tgt = classMap.get(supplier) || supplier;
     return `- Realizacion: "${src}" implementa "${tgt}"`;
   }).join('\n');
 
   const dependencies = (diagram.dependencies || []).map((d: any) => {
-    const src = classMap.get(d.sourceClassId) || d.sourceClassId;
-    const tgt = classMap.get(d.targetClassId) || d.targetClassId;
+    const client = d.clientClassId ?? d.sourceClassId;
+    const supplier = d.supplierClassId ?? d.targetClassId;
+    const src = classMap.get(client) || client;
+    const tgt = classMap.get(supplier) || supplier;
     return `- Dependencia: "${src}" depende de "${tgt}"`;
   }).join('\n');
 
@@ -908,6 +914,41 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
+  if (trimmedLower === '/clear' || trimmedLower === '/limpiar' || trimmedLower === '/vaciar') {
+    const classCount = diagram?.classes?.length || 0;
+    if (classCount === 0) {
+      return {
+        replyContent: isEn
+          ? 'The canvas is currently empty. There are no classes to clear.'
+          : 'El lienzo está vacío actualmente. No hay clases para eliminar.',
+      };
+    }
+
+    const deltas: import('@app/core').ClassDelta[] = (diagram?.classes || []).map((c: any) => ({
+      kind: 'class',
+      op: 'delete',
+      id: crypto.randomUUID(),
+      diagramId,
+      timestamp: new Date().toISOString(),
+      classId: c.id,
+    }));
+
+    const batchDelta: import('@app/core').BatchDelta = {
+      kind: 'batch',
+      id: crypto.randomUUID(),
+      diagramId,
+      timestamp: new Date().toISOString(),
+      deltas,
+    };
+
+    return {
+      replyContent: isEn
+        ? `I prepared a proposal to clear the canvas (deleting all ${classCount} classes and their relationships). You can review the preview on the canvas and click **Confirm** in the card below to apply.`
+        : `Preparé una propuesta para vaciar el lienzo (eliminando las ${classCount} clases y sus relaciones). Podés revisar la previsualización en el lienzo y hacer clic en **Confirmar** para aplicarla.`,
+      batchDelta,
+    };
+  }
+
   if (trimmedLower === '/suggest') {
     if (!diagram || !diagram.classes || diagram.classes.length === 0) {
       return {
@@ -1034,6 +1075,18 @@ export async function processUnifiedAmongusTurn(
       .slice(-4)
       .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
       .join('\n');
+
+    const hasExplicitSuggestionContext =
+      lastAssistantMsg &&
+      /(?:suger|suggest|propongo|podr[ií]as agregar|entidades faltantes|Missing Entities)/i.test(lastAssistantMsg.content);
+
+    if (isReferencingSuggestion && !hasExplicitSuggestionContext && !cleanedTopic) {
+      return {
+        replyContent: isEn
+          ? 'There is no pending proposal or active suggestion to apply. You can ask for changes in natural language or use /model <topic>.'
+          : 'No hay ninguna propuesta pendiente ni sugerencia activa para aplicar. Podés pedirme cambios en lenguaje natural o usar /model <tema>.',
+      };
+    }
 
     let topic: string;
     if (isReferencingSuggestion) {
@@ -1403,6 +1456,30 @@ export async function processUnifiedAmongusTurn(
         replyContent: isEn
           ? `The local model exceeded the response time limit (${timeoutSec}s). Please ask a more specific question, or use commands like /audit or /model.`
           : `El modelo local de lenguaje excedió el tiempo límite de respuesta (${timeoutSec}s). Probá con una consulta más puntual, o usá comandos directos como /audit o /model.`,
+      };
+    }
+
+    const isConnectionError =
+      err &&
+      (err.message?.includes('fetch failed') ||
+        err.message?.includes('ECONNREFUSED') ||
+        err.message?.includes('LLM unavailable') ||
+        err.message?.includes('Failed to fetch') ||
+        err.code === 'ECONNREFUSED');
+
+    if (isConnectionError) {
+      return {
+        replyContent: isEn
+          ? 'The AI model service is currently unavailable (connection failed or service stopped). Please verify that the local LLM server is running or try again later.'
+          : 'El servidor del modelo de lenguaje no está disponible en este momento (falla de conexión o servicio caído). Por favor verificá que el motor local de IA esté corriendo o probá nuevamente en unos instantes.',
+      };
+    }
+
+    if (isAction) {
+      return {
+        replyContent: isEn
+          ? 'An error occurred while communicating with the AI model. Please try again or rephrase your request.'
+          : 'Ocurrió un error al comunicarse con el modelo de lenguaje. Por favor probá nuevamente o reformulá tu pedido.',
       };
     }
   }

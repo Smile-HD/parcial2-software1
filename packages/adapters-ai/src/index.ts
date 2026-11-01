@@ -73,6 +73,10 @@ const WHOLE_DESIGN_REQUEST = /\b(generate|genera|generá|dise[ñn]a|dise[ñn]o)\
  * a propósito: las pruebas (7.1/7.2/7.5) y el desarrollo offline se ejecutan sin red.
  */
 export class FakeLlm implements LlmPort {
+  async checkHealth(): Promise<{ ok: boolean }> {
+    return { ok: true };
+  }
+
   async interpret(rawUtterance: string, _deltaJsonSchema: object, currentIr: Diagram): Promise<LlmResult> {
     const refused = (reason: string): LlmResult => ({ kind: 'refused', reason });
     const utterance = normalizeUmlUtterance(rawUtterance);
@@ -191,7 +195,8 @@ export class FakeLlm implements LlmPort {
 
     // 1. crear clase / diagrama [+ opcional "con atributos a, b y c" o "con a y b"]
     const createClass = /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
-    if (createClass) {
+    const STOP_CLASS_NAMES = new Set(['de', 'del', 'la', 'el', 'un', 'una', 'los', 'las', 'con', 'para', 'flujo', 'secuencia', 'casos']);
+    if (createClass && !STOP_CLASS_NAMES.has(createClass[1]!.toLowerCase())) {
       const name = createClass[1]!;
       const position = nextPosition(currentIr);
       const create: ClassDelta = {
@@ -204,6 +209,12 @@ export class FakeLlm implements LlmPort {
       };
 
       const afterClass = utterance.slice(createClass.index + createClass[0].length);
+
+      // Si la frase que sigue contiene referencias a relaciones o herencia, derivar al LLM
+      if (/\b(?:hered|es\s+(?:un|una)|subclase|asoci|conect|relacion|para\s+(?:un|una))\b/i.test(afterClass)) {
+        return refused('Complex natural language or relationship expression; deferring to LLM.');
+      }
+
       const attrTail = /\b(?:with|con)\s+(?:(?:an?\s+|los\s+|las\s+)?(?:attributes?|atributos?|atriutos?|atrivutos?|campos?|propiedades?)\s+)?([\s\S]+)$/i.exec(afterClass);
       if (attrTail) {
         const rawList = attrTail[1]!;
@@ -211,6 +222,11 @@ export class FakeLlm implements LlmPort {
           .split(/\s*,\s*|\s+(?:and|y)\s+/i)
           .map((s) => s.trim())
           .filter((s) => s.length > 0);
+
+        const KNOWN_UML_TYPES = new Set([
+          'string', 'str', 'texto', 'int', 'integer', 'entero', 'float', 'double', 'decimal',
+          'date', 'fecha', 'boolean', 'bool', 'booleano', 'void'
+        ]);
 
         const memberDeltas: MemberDelta[] = [];
         for (let item of items) {
@@ -234,10 +250,12 @@ export class FakeLlm implements LlmPort {
               ...adornments,
             });
           } else {
-            const cleanItem = item.replace(/[^A-Za-z_ñÑáéíóúÁÉÍÓÚ\s]/g, '').trim();
-            if (cleanItem.length > 0) {
-              const attrParts = cleanItem.split(/\s+/);
-              const camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+            const tokens = item.trim().split(/\s+/);
+            if (tokens.length >= 2 && KNOWN_UML_TYPES.has(tokens[tokens.length - 1]!.toLowerCase())) {
+              const rawAttrName = tokens.slice(0, -1).join(' ');
+              const rawType = tokens[tokens.length - 1]!;
+              const camelName = rawAttrName.split(/\s+/).map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+              const sanitizedType = sanitizeUmlType(rawType, camelName);
               memberDeltas.push({
                 kind: 'member',
                 op: 'addAttribute',
@@ -245,9 +263,25 @@ export class FakeLlm implements LlmPort {
                 classId: create.classId,
                 memberId: crypto.randomUUID(),
                 name: camelName,
-                type: 'string', // Tipo estándar por defecto cuando se omite
+                type: sanitizedType,
                 ...adornments,
               });
+            } else {
+              const cleanItem = item.replace(/[^A-Za-z_ñÑáéíóúÁÉÍÓÚ\s]/g, '').trim();
+              if (cleanItem.length > 0) {
+                const attrParts = cleanItem.split(/\s+/);
+                const camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+                memberDeltas.push({
+                  kind: 'member',
+                  op: 'addAttribute',
+                  ...deltaBase(currentIr),
+                  classId: create.classId,
+                  memberId: crypto.randomUUID(),
+                  name: camelName,
+                  type: 'string', // Tipo estándar por defecto cuando se omite
+                  ...adornments,
+                });
+              }
             }
           }
         }
@@ -679,8 +713,8 @@ export class FakeLlm implements LlmPort {
     }
 
     // 12. CREACIÓN de generalización: "X is a kind of Y", "X inherits from Y",
-    // "X is a subclass of Y" — X es subClass, Y es superClass.
-    const generalization = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:a\s+kind\s+of|inherits\s+from|a\s+subclass\s+of)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    // "X is a subclass of Y", "X hereda de Y", "X es un Y", "X es una Y"
+    const generalization = /\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:(?:is\s+)?(?:a\s+kind\s+of|inherits\s+from|a\s+subclass\s+of)|hereda\s+de|es\s+(?:un|una|subtipo\s+de))\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
     if (generalization) {
       const subClassId = classIdByName(currentIr, generalization[1]!);
       const superClassId = classIdByName(currentIr, generalization[2]!);
@@ -917,6 +951,23 @@ export class OpenAiLlm implements LlmPort {
         throw new Error('LLM chat response had no message content');
       }
       return content;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async checkHealth(timeoutMs = 2500): Promise<{ ok: boolean; message?: string }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const url = this.baseUrl.endsWith('/v1') ? `${this.baseUrl}/models` : `${this.baseUrl}/models`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        signal: controller.signal,
+      });
+      return { ok: res.ok, message: res.ok ? undefined : `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Connection failed' };
     } finally {
       clearTimeout(timeout);
     }

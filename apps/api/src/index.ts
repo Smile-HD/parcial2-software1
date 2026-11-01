@@ -346,7 +346,41 @@ export function buildApp(options?: AppOptions): FastifyInstance {
   void app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT'] });
 
   // Comprobación de estado (health check)
-  app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/health', async (_request, reply) => {
+    let dbStatus = 'ok';
+    try {
+      await dbPool.query('SELECT 1');
+    } catch {
+      dbStatus = 'unavailable';
+    }
+
+    let llmStatus = 'ok';
+    let llmDetail: string | undefined;
+    if (llm && typeof (llm as any).checkHealth === 'function') {
+      try {
+        const h = await (llm as any).checkHealth(2500);
+        if (!h.ok) {
+          llmStatus = 'unavailable';
+          llmDetail = h.message;
+        }
+      } catch (e: any) {
+        llmStatus = 'unavailable';
+        llmDetail = e?.message;
+      }
+    }
+
+    const isHealthy = dbStatus === 'ok';
+    const overallStatus = !isHealthy ? 'error' : (llmStatus === 'ok' ? 'ok' : 'degraded');
+    const statusCode = !isHealthy ? 503 : 200;
+
+    return reply.status(statusCode).send({
+      status: overallStatus,
+      services: {
+        database: { status: dbStatus },
+        llm: { status: llmStatus, detail: llmDetail },
+      },
+    });
+  });
 
   // POST /diagrams — crea un nuevo diagrama
   app.post<{ Body: z.infer<typeof CreateDiagramBodySchema> }>(
@@ -885,23 +919,30 @@ export function buildApp(options?: AppOptions): FastifyInstance {
             }
           : undefined;
 
-        const unified = await processUnifiedAmongusTurn(
-          parsed.data.content,
-          parsed.data.senderName,
-          parsed.data.language ?? 'es',
-          id,
-          llm,
-          diagram,
-          chatHistory,
-          onChunk,
-          parsed.data.peerUsers
-        );
-        if (unified.batchDelta) {
-          const pending = pendingDeltas.put(id, unified.batchDelta);
-          deltaId = pending.id;
-          delta = pending.delta;
+        try {
+          const unified = await processUnifiedAmongusTurn(
+            parsed.data.content,
+            parsed.data.senderName,
+            parsed.data.language ?? 'es',
+            id,
+            llm,
+            diagram,
+            chatHistory,
+            onChunk,
+            parsed.data.peerUsers
+          );
+          if (unified.batchDelta) {
+            const pending = pendingDeltas.put(id, unified.batchDelta);
+            deltaId = pending.id;
+            delta = pending.delta;
+          }
+          replyContent = unified.replyContent;
+        } catch (turnErr: any) {
+          app.log.error(turnErr, 'Error executing Amongus turn');
+          replyContent = isEn
+            ? 'An error occurred while processing your request. Please try again or rephrase.'
+            : 'Ocurrió un error al procesar tu solicitud. Por favor probá nuevamente o reformulá la consulta.';
         }
-        replyContent = unified.replyContent;
       }
 
       const botMessage = await insertBotReply(

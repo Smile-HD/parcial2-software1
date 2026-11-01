@@ -35,6 +35,7 @@ export {
   type NaryAssociation,
   DiagramSchema,
   type Diagram,
+  hasGeneralizationCycle,
 } from './ir.js';
 
 export {

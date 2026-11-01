@@ -104,4 +104,60 @@ describe('Deterministic OOAD Diagram Auditor', () => {
     expect(report).toContain('Disjoint Subgraphs / Mixed Domains');
     expect(report).toContain('Anemic Domain Model');
   });
+
+  it('detects invalid identifiers in class names (spaces, symbols, reserved words)', () => {
+    const hostileDiagram = {
+      id: 'd-hostile',
+      name: 'Hostile Diagram',
+      classes: [
+        { id: 'c1', name: 'Mi Clase Con Espacios', attributes: [{ id: 'a1', name: 'x', type: 'string' }], methods: [] },
+        { id: 'c2', name: 'class', attributes: [{ id: 'a2', name: 'y', type: 'string' }], methods: [] },
+        { id: 'c3', name: 'A&B <T> "Q"', attributes: [{ id: 'a3', name: 'z', type: 'string' }], methods: [] },
+      ],
+      associations: [],
+      generalizations: [],
+    };
+    const report = auditDiagramOOAD(hostileDiagram, 'es');
+    expect(report).toContain('Identificadores y Sintaxis UML');
+    expect(report).toContain('Mi Clase Con Espacios');
+    expect(report).toContain('class');
+    expect(report).toContain('A&B <T> "Q"');
+  });
+
+  it('detects inheritance cycles and self-inheritance loops', () => {
+    const cyclicDiagram = {
+      id: 'd-cycle',
+      name: 'Cyclic Diagram',
+      classes: [
+        { id: 'c1', name: 'A', attributes: [], methods: [] },
+        { id: 'c2', name: 'B', attributes: [], methods: [] },
+      ],
+      associations: [],
+      generalizations: [
+        { id: 'g1', subClassId: 'c1', superClassId: 'c2' },
+        { id: 'g2', subClassId: 'c2', superClassId: 'c1' },
+      ],
+    };
+    const report = auditDiagramOOAD(cyclicDiagram, 'es');
+    expect(report).toContain('Ciclo de Herencia');
+  });
+
+  it('detects duplicate parallel associations between same entities', () => {
+    const dupDiagram = {
+      id: 'd-dup',
+      name: 'Duplicate Assoc Diagram',
+      classes: [
+        { id: 'c1', name: 'Cliente', attributes: [], methods: [] },
+        { id: 'c2', name: 'Pedido', attributes: [], methods: [] },
+      ],
+      associations: [
+        { id: 'a1', sourceClassId: 'c1', targetClassId: 'c2', sourceMultiplicity: '1', targetMultiplicity: '*' },
+        { id: 'a2', sourceClassId: 'c1', targetClassId: 'c2', sourceMultiplicity: '1', targetMultiplicity: '*' },
+      ],
+      generalizations: [],
+    };
+    const report = auditDiagramOOAD(dupDiagram, 'es');
+    expect(report).toContain('Asociación Duplicada');
+  });
 });
+
