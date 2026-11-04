@@ -323,20 +323,19 @@ describe('processUnifiedAmongusTurn', () => {
       expect(res.replyContent).toContain('1. **Auditoria**');
     });
 
-    it('streaming valve cuts off emission to client as soon as item 4 starts', async () => {
+    it('does not stream chunks in real-time to the client for /suggest', async () => {
       const streamedToClient: string[] = [];
       const clientOnChunk = (chunk: string) => {
         streamedToClient.push(chunk);
       };
 
+      let capturedOptions: any = null;
       const mockLlm = {
         chat: vi.fn().mockImplementation(async (_messages: any, options: any) => {
-          // Simulate streaming chunk by chunk
-          options.onChunk('1. **Auditoria**: Registra logs.\n');
-          options.onChunk('2. **Reclamo**: Gestiona quejas.\n');
-          options.onChunk('3. **Sucursal**: Punto físico.\n');
-          options.onChunk('\n4. **FacturaItem**: Slop adicional que debe ser bloqueado.\n');
-          options.onChunk('5. **FacturaItemCancelada**: Slop adicional 2.\n');
+          capturedOptions = options;
+          if (typeof options?.onChunk === 'function') {
+            options.onChunk('1. **Auditoria**: Registra logs.\n');
+          }
           return '1. **Auditoria**: Registra logs.\n2. **Reclamo**: Gestiona quejas.\n3. **Sucursal**: Punto físico.\n\n4. **FacturaItem**: Slop.';
         }),
       };
@@ -358,18 +357,61 @@ describe('processUnifiedAmongusTurn', () => {
         clientOnChunk
       );
 
-      const clientReceivedText = streamedToClient.join('');
-      // Client must have received items 1, 2, and 3
-      expect(clientReceivedText).toContain('1. **Auditoria**');
-      expect(clientReceivedText).toContain('2. **Reclamo**');
-      expect(clientReceivedText).toContain('3. **Sucursal**');
+      // onChunk must be undefined for /suggest to prevent streaming unpruned text to UI
+      expect(capturedOptions.onChunk).toBeUndefined();
+      expect(streamedToClient).toEqual([]);
 
-      // But client MUST NOT have received item 4 or item 5 in real time!
-      expect(clientReceivedText).not.toContain('4. **FacturaItem**');
-      expect(clientReceivedText).not.toContain('5. **FacturaItemCancelada**');
-
-      // Final reply must also be pruned
+      // Final reply must still be pruned to at most 3 items and no chimeras
+      expect(res.replyContent).toContain('1. **Auditoria**');
+      expect(res.replyContent).toContain('2. **Reclamo**');
+      expect(res.replyContent).toContain('3. **Sucursal**');
       expect(res.replyContent).not.toContain('4. **FacturaItem**');
+    });
+
+    it('applies suggested entities when user sends /apply right after /suggest', async () => {
+      const mockLlm = {
+        chat: vi.fn().mockResolvedValue(JSON.stringify({
+          action: 'modify',
+          classes: [
+            { name: 'Auditoria', attributes: [{ name: 'id', type: 'string' }] },
+            { name: 'Reclamo', attributes: [{ name: 'motivo', type: 'string' }] },
+          ],
+          associations: [
+            { source: 'Factura', target: 'Auditoria' },
+          ],
+        })),
+      };
+
+      const mockDiagram = {
+        id: 'diag-1',
+        classes: [{ id: 'c1', name: 'Factura' }],
+        associations: [],
+      };
+
+      const chatHistory = [
+        { role: 'user' as const, content: '/suggest' },
+        {
+          role: 'assistant' as const,
+          content: '1. **Auditoria**: Registra logs del sistema.\n2. **Reclamo**: Gestiona reclamos de clientes.',
+        },
+      ];
+
+      const res = await processUnifiedAmongusTurn(
+        '/apply',
+        'Carlos',
+        'es',
+        'diag-1',
+        mockLlm,
+        mockDiagram,
+        chatHistory
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      expect(res.replyContent).toContain('Preparé la propuesta en el lienzo');
+      const classNames = (res.batchDelta?.deltas || [])
+        .filter((d: any) => d.kind === 'class' && d.op === 'create')
+        .map((d: any) => d.name);
+      expect(classNames).toContain('Auditoria');
     });
   });
 

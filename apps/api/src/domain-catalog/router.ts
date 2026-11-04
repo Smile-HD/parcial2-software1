@@ -9,6 +9,13 @@ function normalize(text: string): string {
     .trim();
 }
 
+function commonPrefixLength(a: string, b: string): number {
+  let i = 0;
+  const max = Math.min(a.length, b.length);
+  while (i < max && a[i] === b[i]) i++;
+  return i;
+}
+
 function levenshtein(a: string, b: string): number {
   if (Math.abs(a.length - b.length) > 2) return 99;
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -73,8 +80,18 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
     }
   }
 
-  // 2. Coincidencia token a token mediante mapa hash O(1)
+  // 2. Coincidencia token a token mediante mapa hash O(1) con soporte para variantes singulares/raíz
+  const candidateTokens = new Set<string>();
   for (const token of queryTokens) {
+    candidateTokens.add(token);
+    if (token.endsWith('es') && token.length > 4) {
+      candidateTokens.add(token.slice(0, -2));
+    } else if (token.endsWith('s') && token.length > 3) {
+      candidateTokens.add(token.slice(0, -1));
+    }
+  }
+
+  for (const token of candidateTokens) {
     const exactHits = exactTokenMap.get(token);
     if (exactHits) {
       for (const hit of exactHits) {
@@ -89,19 +106,25 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
         }
       }
     } else if (token.length >= 4) {
-      // 2b. Respaldo por prefijo solo si el token no tuvo coincidencia exacta
+      // 2b. Respaldo por prefijo / raíz común (ej. "perfum" -> "perfumeria")
       const pfx = token.slice(0, 4);
       const prefixHits = prefixMap.get(pfx);
       if (prefixHits) {
         for (const hit of prefixHits) {
-          if (hit.originalKeyword.startsWith(token) || token.startsWith(hit.originalKeyword)) {
+          const common = commonPrefixLength(token, hit.originalKeyword);
+          const isPrefixMatch =
+            hit.originalKeyword.startsWith(token) ||
+            token.startsWith(hit.originalKeyword) ||
+            (common >= 5 && common >= Math.min(token.length, hit.originalKeyword.length) - 2);
+
+          if (isPrefixMatch) {
             let entry = scores.get(hit.id);
             if (!entry) {
               entry = { score: 0, matchedKeywords: new Set() };
               scores.set(hit.id, entry);
             }
             if (!entry.matchedKeywords.has(hit.originalKeyword)) {
-              entry.score += hit.weight;
+              entry.score += hit.weight * 0.9;
               entry.matchedKeywords.add(hit.originalKeyword);
             }
           }

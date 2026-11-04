@@ -1002,29 +1002,6 @@ export async function processUnifiedAmongusTurn(
           'Sé directo, pedagógico y conciso, sin bloques de código ni JSON.',
         ].filter(Boolean).join('\n');
 
-    let suggestChunks = '';
-    let streamHalted = false;
-
-    const wrappedSuggestChunk = (chunk: string) => {
-      suggestChunks += chunk;
-      if (streamHalted) return;
-
-      // Válvula de corte en tiempo real en streaming:
-      // Si el acumulador detecta el inicio de un 4to ítem numerado (ej. "\n4.", "\n4 ", "\n4)"), cortamos el stream
-      if (/(?:\n|^)\s*4\s*[\.\)-]/.test(suggestChunks)) {
-        streamHalted = true;
-        return;
-      }
-
-      // Si detectamos bucles repetitivos de 6+ caracteres 3 veces consecutivas, frenamos el stream
-      if (/(.{6,40}?)(?:\s*\1){2,}/i.test(suggestChunks)) {
-        streamHalted = true;
-        return;
-      }
-
-      onChunk?.(chunk);
-    };
-
     try {
       const suggestResult = await llm.chat(
         [
@@ -1034,7 +1011,7 @@ export async function processUnifiedAmongusTurn(
         {
           timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
           maxTokens: 400,
-          onChunk: wrappedSuggestChunk,
+          onChunk: undefined, // No emitir en streaming en tiempo real a la UI: esperar el bloque completo para podar y entregar limpio
           stop: ['\n4.', '\n4 ', '4. ', '4.-', '<|im_end|>'],
           repeatPenalty: 1.15,
           repeatLastN: 128,
@@ -1042,9 +1019,6 @@ export async function processUnifiedAmongusTurn(
       );
       return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestResult), existingNames).trim() };
     } catch {
-      if (suggestChunks.trim().length > 30) {
-        return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestChunks), existingNames).trim() };
-      }
       return {
         replyContent: isEn
           ? 'I suggest reviewing transaction details or intermediate entities for your model.'
@@ -1077,15 +1051,26 @@ export async function processUnifiedAmongusTurn(
       /^(?:en\s+el\s+lienzo|lo\s+sugerido|las\s+clases|las\s+sugerencias|las\s+entidades|lo\s+que\s+sugeriste|lo\s+que\s+me\s+dijiste|sugerencias?|todo|all|the\s+classes|the\s+suggestions?)/i.test(cleanedTopic) ||
       /(sugerid|sugerist|sugerencia|acabas de sugerir|suggest)/i.test(userContent);
 
+    const lastUserMsg = [...(chatHistory || [])].reverse().find((m) => m.role === 'user');
     const lastAssistantMsg = [...(chatHistory || [])].reverse().find((m) => m.role === 'assistant');
     const recentHistory = (chatHistory || [])
       .slice(-4)
       .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
       .join('\n');
 
+    const isPreviousTurnSuggest =
+      lastUserMsg?.content.trim().toLowerCase() === '/suggest' ||
+      lastUserMsg?.content.trim().toLowerCase().startsWith('/suggest ');
+
+    const hasNumberedSuggestions =
+      !!lastAssistantMsg &&
+      /(?:^\s*[1-9]\d*[\.\)-]\s*\*\*|^\s*\*\s*\*\*(?:Clase\s+)?[A-Za-z_ñÑáéíóúÁÉÍÓÚ])/m.test(lastAssistantMsg.content);
+
     const hasExplicitSuggestionContext =
-      lastAssistantMsg &&
-      /(?:suger|suggest|propongo|podr[ií]as agregar|entidades faltantes|Missing Entities)/i.test(lastAssistantMsg.content);
+      isPreviousTurnSuggest ||
+      hasNumberedSuggestions ||
+      (!!lastAssistantMsg &&
+        /(?:suger|suggest|propongo|podr[ií]as agregar|entidades faltantes|Missing Entities)/i.test(lastAssistantMsg.content));
 
     if (isReferencingSuggestion && !hasExplicitSuggestionContext && !cleanedTopic) {
       return {
@@ -1098,7 +1083,15 @@ export async function processUnifiedAmongusTurn(
     let topic: string;
     if (isReferencingSuggestion) {
       if (lastAssistantMsg) {
-        topic = `Implementar y modelar las siguientes clases y entidades sugeridas previamente por el asistente:\n${lastAssistantMsg.content}\n\nContexto reciente:\n${recentHistory}`;
+        const extractedClasses = Array.from(
+          lastAssistantMsg.content.matchAll(/(?:^\s*[1-9]\d*[\.\)-]\s*\*\*|\*\*(?:Clase\s+)?)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\*\*/gm)
+        ).map((m) => m[1]).filter(Boolean);
+
+        if (extractedClasses.length > 0) {
+          topic = `crear clases ${extractedClasses.join(', ')} para complementar el modelo:\n${lastAssistantMsg.content}`;
+        } else {
+          topic = `Implementar y modelar las siguientes clases y entidades sugeridas previamente por el asistente:\n${lastAssistantMsg.content}\n\nContexto reciente:\n${recentHistory}`;
+        }
       } else {
         topic = 'entidades del dominio sugeridas';
       }
@@ -1231,6 +1224,20 @@ export async function processUnifiedAmongusTurn(
             };
           }
         }
+
+        // 3. Rescate agnóstico: si falló el LLM y no hubo match en catálogo, sintetizar de forma determinista
+        try {
+          const synthesized = await synthesizeDomainModel(cleanContent, diagramId, undefined, diagram, true);
+          if (synthesized && synthesized.deltas.length > 0) {
+            const notice = isEn
+              ? 'The model reached the response limit on CPU. I generated the baseline domain architecture for your request:'
+              : 'El modelo alcanzó el límite de tiempo en CPU. Te preparé una arquitectura base para tu solicitud:';
+            return {
+              replyContent: notice,
+              batchDelta: synthesized,
+            };
+          }
+        } catch {}
       }
       throw llmErr;
     }

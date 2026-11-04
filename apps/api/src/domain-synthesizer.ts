@@ -2148,8 +2148,8 @@ export async function synthesizeDomainModel(
   const groundingHint = domainMatch ? `\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
 
   const requestedClassMatches = Array.from(
-    text.matchAll(/\b(?:clase|calse|clse|class|tabla)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/gi)
-  ).map((m) => cleanClassName(m[1])).filter(Boolean);
+    text.matchAll(/\b(?:clases?|calses?|clses?|class(?:es)?|tablas?)\s+(?:llamadas?\s+|llamados?\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*(?:\s*,\s*[A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)*)/gi)
+  ).flatMap((m) => m[1].split(/[\s,]+/)).map(cleanClassName).filter(Boolean);
   const specificClassesHint = requestedClassMatches.length > 0
     ? `\nCRITICAL SPECIFIC CLASSES: The user explicitly requested to create these EXACT class name(s): ${requestedClassMatches.join(', ')}. You MUST name the classes EXACTLY with these requested names. DO NOT substitute them with other domain names (e.g. NEVER substitute Pedido with Factura).`
     : '';
@@ -2230,6 +2230,41 @@ export async function synthesizeDomainModel(
         const fallback = expandSemanticDomainToDelta(canonicalSemantic, diagramId, currentDiagram, text);
         if (fallback && fallback.deltas.length >= 1) {
           return fallback;
+        }
+      }
+      if (requestedClassMatches.length > 0) {
+        const fallbackClasses: SemanticClass[] = requestedClassMatches.slice(0, 5).map((name) => ({
+          name,
+          attributes: [
+            { name: 'id', type: 'string' },
+            { name: 'nombre', type: 'string' },
+            { name: 'estado', type: 'string' },
+          ],
+        }));
+        const existingClassNames = (currentDiagram?.classes || []).map((c: any) => c.name);
+        const anchorName = existingClassNames[0];
+        const fallbackAssocs: SemanticAssociation[] = [];
+        if (anchorName) {
+          fallbackClasses.forEach((fc) => {
+            if (fc.name !== anchorName) {
+              fallbackAssocs.push({
+                source: anchorName,
+                target: fc.name,
+                aggregation: 'none',
+                sourceMultiplicity: '1',
+                targetMultiplicity: '0..*',
+              });
+            }
+          });
+        }
+        const fallbackModel: SemanticDomainModel = {
+          action: 'modify',
+          classes: fallbackClasses,
+          associations: fallbackAssocs,
+        };
+        const expanded = expandSemanticDomainToDelta(fallbackModel, diagramId, currentDiagram, text);
+        if (expanded && expanded.deltas.length >= 1) {
+          return expanded;
         }
       }
       return null;
