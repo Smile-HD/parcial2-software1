@@ -94,13 +94,13 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
       const prefixHits = prefixMap.get(pfx);
       if (prefixHits) {
         for (const hit of prefixHits) {
-          let entry = scores.get(hit.id);
-          if (!entry) {
-            entry = { score: 0, matchedKeywords: new Set() };
-            scores.set(hit.id, entry);
-          }
-          if (!entry.matchedKeywords.has(hit.originalKeyword)) {
-            if (hit.originalKeyword.startsWith(token) || token.startsWith(hit.originalKeyword)) {
+          if (hit.originalKeyword.startsWith(token) || token.startsWith(hit.originalKeyword)) {
+            let entry = scores.get(hit.id);
+            if (!entry) {
+              entry = { score: 0, matchedKeywords: new Set() };
+              scores.set(hit.id, entry);
+            }
+            if (!entry.matchedKeywords.has(hit.originalKeyword)) {
               entry.score += hit.weight;
               entry.matchedKeywords.add(hit.originalKeyword);
             }

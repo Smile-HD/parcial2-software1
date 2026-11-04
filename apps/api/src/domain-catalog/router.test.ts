@@ -15,6 +15,9 @@ describe('Domain Catalog In-Memory Router (RAG Tier 1)', () => {
 
     const resEn = matchCanonicalDomain('build an ecommerce store with cart and checkout');
     expect(resEn?.domain.id).toBe('ecommerce_store');
+
+    const resSingleM = matchCanonicalDomain('creame una base de datos de ecomerce de perfumes');
+    expect(resSingleM?.domain.id).toBe('ecommerce_store');
   });
 
   it('identifica reservas de hotel y hospital', () => {

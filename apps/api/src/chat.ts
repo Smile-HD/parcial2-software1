@@ -1188,16 +1188,9 @@ export async function processUnifiedAmongusTurn(
         }
       );
     } catch (llmErr: any) {
-      const isTimeout =
-        llmErr &&
-        (llmErr.name === 'AbortError' ||
-          llmErr.message?.includes('aborted') ||
-          llmErr.message?.includes('timeout') ||
-          llmErr.code === 'ETIMEDOUT');
-
-      if (isTimeout && isAction) {
-        // Rescate por timeout en CPU:
-        // 1. Intentar reconstruir el JSON parcial acumulado en los chunks generados antes del timeout
+      if (isAction) {
+        // Rescate ante timeout, error de gateway (504/502) o falla de conexión en CPU:
+        // 1. Intentar reconstruir el JSON parcial acumulado en los chunks generados antes del corte
         if (accumulatedChunks.trim().length > 0) {
           const rescuedModel = robustParseDomainJson(accumulatedChunks);
           if (rescuedModel && (rescuedModel.classes?.length || rescuedModel.associations?.length)) {
@@ -1213,7 +1206,7 @@ export async function processUnifiedAmongusTurn(
             const rescuedDelta = expandSemanticDomainToDelta(rescuedModel, diagramId, diagram, cleanContent);
             if (rescuedDelta && rescuedDelta.deltas.length > 0) {
               const notice = isEn
-                ? 'The model reached the timeout limit on CPU, but I rescued the entities generated so far. You can preview them on the canvas and confirm to apply.'
+                ? 'The model reached the response limit on CPU, but I rescued the entities generated so far. You can preview them on the canvas and confirm to apply.'
                 : 'El modelo alcanzó el límite de tiempo en CPU, pero rescaté las entidades que llegó a generar. Podés previsualizarlas en el lienzo y confirmarlas para aplicarlas.';
               return {
                 replyContent: notice,
@@ -1224,12 +1217,13 @@ export async function processUnifiedAmongusTurn(
         }
 
         // 2. Si no llegó a generar clases en el chunk, usar el catálogo canónico como fallback inmediato
-        if (domainMatch) {
-          const semanticCanonical = canonicalToSemantic(domainMatch.domain);
+        const activeDomainMatch = domainMatch || matchCanonicalDomain(cleanContent) || matchCanonicalDomain(userContent);
+        if (activeDomainMatch) {
+          const semanticCanonical = canonicalToSemantic(activeDomainMatch.domain);
           const fallbackDelta = expandSemanticDomainToDelta(semanticCanonical, diagramId, diagram, cleanContent);
           if (fallbackDelta && fallbackDelta.deltas.length > 0) {
             const notice = isEn
-              ? 'The model reached the timeout limit on CPU. To avoid waiting, here is the recommended architecture from our domain catalog:'
+              ? 'The model reached the response time limit on CPU. To avoid waiting, here is the recommended architecture from our domain catalog:'
               : 'El modelo alcanzó el límite de tiempo en CPU. Para no hacerte esperar, te preparé la arquitectura recomendada de nuestro catálogo:';
             return {
               replyContent: notice,
