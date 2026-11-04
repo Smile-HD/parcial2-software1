@@ -372,5 +372,103 @@ describe('processUnifiedAmongusTurn', () => {
       expect(res.replyContent).not.toContain('4. **FacturaItem**');
     });
   });
+
+  describe('5-class ceiling & timeout rescue', () => {
+    it('caps generated proposal to at most 5 classes when LLM returns more than 5 classes', async () => {
+      const tenClassesJson = JSON.stringify({
+        action: 'modify',
+        classes: [
+          { name: 'C1', attributes: [{ name: 'a1', type: 'string' }] },
+          { name: 'C2', attributes: [{ name: 'a2', type: 'string' }] },
+          { name: 'C3', attributes: [{ name: 'a3', type: 'string' }] },
+          { name: 'C4', attributes: [{ name: 'a4', type: 'string' }] },
+          { name: 'C5', attributes: [{ name: 'a5', type: 'string' }] },
+          { name: 'C6', attributes: [{ name: 'a6', type: 'string' }] },
+          { name: 'C7', attributes: [{ name: 'a7', type: 'string' }] },
+          { name: 'C8', attributes: [{ name: 'a8', type: 'string' }] },
+          { name: 'C9', attributes: [{ name: 'a9', type: 'string' }] },
+          { name: 'C10', attributes: [{ name: 'a10', type: 'string' }] },
+        ],
+        associations: [
+          { source: 'C1', target: 'C2' },
+          { source: 'C2', target: 'C3' },
+          { source: 'C3', target: 'C4' },
+          { source: 'C4', target: 'C5' },
+          { source: 'C5', target: 'C6' },
+        ],
+      });
+
+      const mockLlm = {
+        chat: vi.fn().mockResolvedValue(`\`\`\`json\n${tenClassesJson}\n\`\`\``),
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'crea un sistema de gestión escolar',
+        'Carlos',
+        'es',
+        'diag-1',
+        mockLlm as any
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const createdClasses = (res.batchDelta?.deltas || []).filter((d: any) => d.kind === 'class' && d.op === 'create');
+      expect(createdClasses.length).toBeLessThanOrEqual(5);
+    });
+
+    it('rescues partial JSON generated before timeout on CPU', async () => {
+      const partialJson = '{"action": "modify", "classes": [{"name": "Aerolinea", "attributes": [{"name": "nombre", "type": "string"}]}, {"name": "Vuelo", "attributes": [{"name": "codigo", "type": "string"}]}';
+
+      const mockLlm = {
+        chat: vi.fn().mockImplementation(async (_messages: any, options: any) => {
+          options.onChunk(partialJson);
+          const err: any = new Error('The operation was aborted due to timeout');
+          err.name = 'AbortError';
+          throw err;
+        }),
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'diseña un sistema para aerolinea',
+        'Carlos',
+        'es',
+        'diag-1',
+        mockLlm as any
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      expect(res.replyContent).toContain('rescaté las entidades');
+      const classNames = (res.batchDelta?.deltas || [])
+        .filter((d: any) => d.kind === 'class' && d.op === 'create')
+        .map((d: any) => d.name);
+      expect(classNames).toContain('Aerolinea');
+      expect(classNames).toContain('Vuelo');
+    });
+
+    it('falls back to domain catalog when timeout occurs before any chunk is produced', async () => {
+      const mockLlm = {
+        chat: vi.fn().mockImplementation(async () => {
+          const err: any = new Error('Timeout');
+          err.name = 'AbortError';
+          throw err;
+        }),
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'diseña el sistema para un hotel',
+        'Carlos',
+        'es',
+        'diag-1',
+        mockLlm as any
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      expect(res.replyContent).toContain('catálogo');
+      const classNames = (res.batchDelta?.deltas || [])
+        .filter((d: any) => d.kind === 'class' && d.op === 'create')
+        .map((d: any) => d.name);
+      expect(classNames.length).toBeGreaterThanOrEqual(2);
+      expect(classNames.length).toBeLessThanOrEqual(5);
+    });
+  });
 });
 

@@ -180,14 +180,18 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
  * para inyección directa en el prompt del LLM (Targeted Grounding).
  */
 export function formatDomainGroundingPrompt(domain: CanonicalDomainModel, isEn: boolean): string {
-  const classesSummary = domain.classes
+  const topClasses = (domain.classes || []).slice(0, 5);
+  const classNames = new Set(topClasses.map((c) => c.name));
+
+  const classesSummary = topClasses
     .map((c) => {
       const attrs = c.attributes.map((a) => `${a.name}: ${a.type}`).join(', ');
       return `  - ${c.name} (attributes: [${attrs}])`;
     })
     .join('\n');
 
-  const relsSummary = domain.relationships
+  const relsSummary = (domain.relationships || [])
+    .filter((r) => classNames.has(r.source) && classNames.has(r.target))
     .map((r) => {
       const mult = r.sourceMultiplicity && r.targetMultiplicity
         ? ` (${r.sourceMultiplicity}) <-> (${r.targetMultiplicity})`

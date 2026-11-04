@@ -1752,16 +1752,122 @@ export function expandSemanticDomainToDelta(
  * sin recurrir a plantillas fijas cableadas.
  */
 /**
+ * Intenta reparar y balancear corchetes/llaves de un fragmento JSON truncado prematuramente
+ * por límite de tokens o timeout para rescatar todas las clases completas generadas.
+ */
+export function tryRepairTruncatedJson(raw: string): any {
+  const startIdx = raw.indexOf('{');
+  if (startIdx === -1) return null;
+  const jsonSub = raw.slice(startIdx);
+
+  try {
+    return JSON.parse(jsonSub);
+  } catch {}
+
+  for (let i = jsonSub.length; i > 10; i--) {
+    const sub = jsonSub.slice(0, i);
+    let braces = 0;
+    let brackets = 0;
+    let inString = false;
+    let escape = false;
+    for (let j = 0; j < sub.length; j++) {
+      const char = sub[j];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === '{') braces++;
+        else if (char === '}') braces--;
+        else if (char === '[') brackets++;
+        else if (char === ']') brackets--;
+      }
+    }
+    if (inString) continue;
+    if (braces >= 0 && brackets >= 0) {
+      let candidate = sub;
+      for (let b = 0; b < brackets; b++) candidate += ']';
+      for (let b = 0; b < braces; b++) candidate += '}';
+      try {
+        return JSON.parse(candidate);
+      } catch {}
+    }
+  }
+  return null;
+}
+
+/**
+ * Mapea un esquema canónico del catálogo a un SemanticDomainModel acotado a un máximo de 5 clases.
+ */
+export function canonicalToSemantic(canonical: any): SemanticDomainModel {
+  const topClasses = (canonical.classes || []).slice(0, 5);
+  const classNames = new Set(topClasses.map((c: any) => c.name));
+
+  const classes: SemanticClass[] = topClasses.map((c: any) => ({
+    name: c.name,
+    isInterface: c.isInterface,
+    isAbstract: c.isAbstract,
+    attributes: (c.attributes || []).map((a: any) => ({ name: a.name, type: a.type })),
+    methods: c.methods?.map((m: any) => ({ name: m.name, returnType: m.returnType })),
+  }));
+
+  const associations: SemanticAssociation[] = [];
+  const generalizations: SemanticGeneralization[] = [];
+
+  for (const r of canonical.relationships || []) {
+    if (!classNames.has(r.source) || !classNames.has(r.target)) continue;
+    if (r.type === 'generalization') {
+      generalizations.push({ subclass: r.source, superclass: r.target });
+    } else {
+      associations.push({
+        source: r.source,
+        target: r.target,
+        name: r.label,
+        aggregation: r.type === 'composition' ? 'composite' : r.type === 'aggregation' ? 'shared' : 'none',
+        sourceMultiplicity: r.sourceMultiplicity || '1',
+        targetMultiplicity: r.targetMultiplicity || '0..*',
+        associationClass: r.associationClass,
+      });
+    }
+  }
+
+  return {
+    action: 'modify',
+    classes,
+    associations,
+    generalizations,
+  };
+}
+
+/**
  * Parsea el JSON devuelto por el modelo, tolerando markdown y truncamientos parciales.
  */
 export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
   const isDummyName = (str?: string) => !str || /^(NombreClase|ClassName|ClaseA|ClaseB|Origen|Destino|Hijo|Padre)$/i.test(str.trim());
 
-  // 1. Intento de parseo JSON estándar
+  // 1. Intento de parseo JSON estándar o reparación de JSON truncado
   const match = raw.match(/\{[\s\S]*\}/);
+  let parsed: any = null;
   if (match) {
     try {
-      const parsed = JSON.parse(match[0]);
+      parsed = JSON.parse(match[0]);
+    } catch {
+      parsed = tryRepairTruncatedJson(raw);
+    }
+  } else {
+    parsed = tryRepairTruncatedJson(raw);
+  }
+
+  if (parsed) {
+    try {
       const parseAttrs = (rawAttrs: any): any[] => {
         if (!rawAttrs) return [];
         if (Array.isArray(rawAttrs)) {
@@ -2087,13 +2193,47 @@ export async function synthesizeDomainModel(
   ].filter(Boolean).join('\n');
 
   try {
-    const response = await (llm as any).chat(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: text },
-      ],
-      { timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000, temperature: 0.1, maxTokens: 2000 }
-    );
+    let responseText = '';
+    const chunkCollector = (chunk: string) => {
+      responseText += chunk;
+    };
+
+    let response: any;
+    try {
+      response = await (llm as any).chat(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text },
+        ],
+        {
+          timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000,
+          temperature: 0.1,
+          maxTokens: 650,
+          onChunk: chunkCollector,
+        }
+      );
+    } catch (llmErr) {
+      if (responseText.trim().length > 0) {
+        const rescued = robustParseDomainJson(responseText);
+        if (rescued && rescued.classes?.length) {
+          if (rescued.classes.length > 5) {
+            rescued.classes = rescued.classes.slice(0, 5);
+          }
+          const expanded = expandSemanticDomainToDelta(rescued, diagramId, currentDiagram, text);
+          if (expanded && expanded.deltas.length >= 1) {
+            return expanded;
+          }
+        }
+      }
+      if (domainMatch) {
+        const canonicalSemantic = canonicalToSemantic(domainMatch.domain);
+        const fallback = expandSemanticDomainToDelta(canonicalSemantic, diagramId, currentDiagram, text);
+        if (fallback && fallback.deltas.length >= 1) {
+          return fallback;
+        }
+      }
+      return null;
+    }
 
     if (typeof response !== 'string') {
       return null;
@@ -2104,14 +2244,25 @@ export async function synthesizeDomainModel(
       return null;
     }
 
+    if (parsed.classes && parsed.classes.length > 5) {
+      const allowedNames = new Set(parsed.classes.slice(0, 5).map((c: any) => c.name));
+      parsed.classes = parsed.classes.slice(0, 5);
+      if (parsed.associations) {
+        parsed.associations = parsed.associations.filter(
+          (a: any) => allowedNames.has(a.source) || allowedNames.has(a.target)
+        );
+      }
+    }
+
     const expanded = expandSemanticDomainToDelta(parsed, diagramId, currentDiagram, text);
     if (expanded && expanded.deltas.length >= 1) {
       return expanded;
     }
+
+    return null;
   } catch {
     // Si falla la generación del LLM, retorna null en vez de inventar con plantillas
+    return null;
   }
-
-  return null;
 }
 

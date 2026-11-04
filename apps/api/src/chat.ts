@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
-import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel } from './domain-synthesizer.js';
+import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel, canonicalToSemantic } from './domain-synthesizer.js';
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
 import { auditDiagramOOAD } from './diagram-auditor.js';
@@ -841,26 +841,31 @@ export async function processUnifiedAmongusTurn(
   if (trimmedLower === '/context') {
     const classCount = diagram?.classes?.length || 0;
     const historyCount = chatHistory?.length || 0;
-    const baseTokens = 450;
+    // Cálculo real de tokens para el sistema (instrucciones base + catálogo de operaciones OOAD)
+    const systemBaseTokens = isEn ? 780 : 820;
     const canvasTokens = Math.ceil(diagramContext.length / 4);
     const historyTokens = Math.ceil(
-      (chatHistory || []).reduce((acc, m) => acc + (m.content?.length || 0), 0) / 4
+      (chatHistory || []).slice(-4).reduce((acc, m) => acc + (m.content?.length || 0), 0) / 4
     );
-    const totalTokens = baseTokens + canvasTokens + historyTokens;
+    const domainMatch = matchCanonicalDomain(diagramContext);
+    const domainGroundingTokens = domainMatch
+      ? Math.ceil(formatDomainGroundingPrompt(domainMatch.domain, isEn).length / 4)
+      : 0;
+    const totalInputTokens = systemBaseTokens + canvasTokens + historyTokens + domainGroundingTokens;
 
-    let latency = isEn ? 'Optimal (~15-25s on CPU)' : 'Óptima (~15-25s en CPU)';
+    let latency = isEn ? 'Optimal (~8-15s on CPU)' : 'Óptima (~8-15s en CPU)';
     let tip = isEn ? 'Context size is well-balanced.' : 'Tamaño de contexto balanceado.';
-    if (totalTokens >= 2400) {
-      latency = isEn ? 'Heavy (>45s on CPU)' : 'Pesada (>45s en CPU)';
+    if (totalInputTokens >= 2400) {
+      latency = isEn ? 'Heavy (>40s on CPU)' : 'Pesada (>40s en CPU)';
       tip = isEn ? 'Use /reset to clear conversational memory.' : 'Usá /reset para limpiar la memoria conversacional.';
-    } else if (totalTokens >= 1200) {
-      latency = isEn ? 'Moderate (~25-40s on CPU)' : 'Moderada (~25-40s en CPU)';
+    } else if (totalInputTokens >= 1200) {
+      latency = isEn ? 'Moderate (~20-30s on CPU)' : 'Moderada (~20-30s en CPU)';
       tip = isEn ? 'Acceptable speed.' : 'Velocidad aceptable.';
     }
 
     const reply = isEn
-      ? `Context Status: ~${totalTokens} total tokens (Base: ${baseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}). Estimated CPU Latency: ${latency}. Recommendation: ${tip}`
-      : `Estado del Contexto: ~${totalTokens} tokens totales (Base: ${baseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}). Latencia estimada en CPU: ${latency}. Recomendación: ${tip}`;
+      ? `Real Context Status: ~${totalInputTokens} input tokens (System/Rules: ${systemBaseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}${domainGroundingTokens ? `, Domain RAG: ${domainGroundingTokens}` : ''}). Output budget: 650 tokens (max 5 classes). Estimated CPU Latency: ${latency}. Recommendation: ${tip}`
+      : `Estado del Contexto Real: ~${totalInputTokens} tokens de entrada (Sistema/Reglas: ${systemBaseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}${domainGroundingTokens ? `, Catálogo RAG: ${domainGroundingTokens}` : ''}). Tope de salida: 650 tokens (máx. 5 clases). Latencia estimada en CPU: ${latency}. Recomendación: ${tip}`;
 
     return { replyContent: reply };
   }
@@ -970,6 +975,7 @@ export async function processUnifiedAmongusTurn(
           domainGrounding,
           'SUGGESTION OBJECTIVE: Suggest at most 3 concise, high-value improvements to enrich the domain model according to OOAD best practices.',
           'CRITICAL ATOMIC NOUN RULES:',
+          `- EXISTING CLASSES ALREADY ON CANVAS: ${existingNames.join(', ')}. NEVER repeat or suggest classes that already exist on the canvas. Suggest only missing complementary classes.`,
           '- ATOMIC DOMAIN ENTITIES: Every suggested class must be a single, standalone domain noun (e.g. Audit, Complaint, Branch, Shift). Concatenating existing class names into compound words is strictly prohibited.',
           '- STRICT LIMIT (MAXIMUM 3 SUGGESTIONS): Propose AT MOST 3 suggestions in total. NEVER output a 4th suggestion.',
           '- IF DOMAIN IS ALREADY COVERED: If core concepts are already modeled, propose 0 new classes and focus on attributes and business methods for existing classes.',
@@ -985,6 +991,7 @@ export async function processUnifiedAmongusTurn(
           domainGrounding,
           'OBJETIVO DE SUGERENCIA: Sugerí como máximo 3 mejoras concisas y de alto valor para enriquecer el modelo según los principios OOAD.',
           'REGLAS CRÍTICAS DE NOMBRES ATÓMICOS:',
+          `- CLASES YA EXISTENTES EN EL LIENZO: ${existingNames.join(', ')}. NUNCA repitas ni vuelvas a sugerir ninguna clase que ya exista en el lienzo. Sugerí únicamente clases complementarias nuevas.`,
           '- ENTIDADES ATÓMICAS DE NEGOCIO: Toda clase propuesta debe ser un único sustantivo atómico del dominio (ej. Auditoria, Reclamo, Sucursal, Turno). Está terminantemente prohibido concatenar o fusionar nombres de clases ya existentes.',
           '- LÍMITE ESTRICTO (MÁXIMO 3 SUGERENCIAS): Proponé como MÁXIMO 3 sugerencias en total. NUNCA propongas una 4ta sugerencia.',
           '- SI EL DOMINIO YA ESTÁ CUBIERTO: Si los conceptos nucleares ya están modelados, proponé 0 clases nuevas y concentrate en sugerir atributos y métodos de negocio para las clases existentes.',
@@ -1022,11 +1029,11 @@ export async function processUnifiedAmongusTurn(
       const suggestResult = await llm.chat(
         [
           { role: 'system', content: suggestPrompt },
-          { role: 'user', content: 'Sugerir próximas entidades para completar el dominio' },
+          { role: 'user', content: isEn ? 'Suggest next entities to complete the domain' : 'Sugerir próximas entidades para completar el dominio' },
         ],
         {
           timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
-          maxTokens: DEFAULT_LLM_MAX_TOKENS,
+          maxTokens: 400,
           onChunk: wrappedSuggestChunk,
           stop: ['\n4.', '\n4 ', '4. ', '4.-', '<|im_end|>'],
           repeatPenalty: 1.15,
@@ -1188,6 +1195,7 @@ export async function processUnifiedAmongusTurn(
               '   YOUR ENTIRE RESPONSE MUST START IMMEDIATELY WITH THE ```json BLOCK.',
               '   DO NOT WRITE INTRODUCTIONS, DO NOT GREET, DO NOT SAY "HERE IS THE CODE".',
               '   CRITICAL OOAD QUALITY RULES:',
+              '   - STRICT LIMIT (MAXIMUM 5 CLASSES): Generate AT MOST 5 classes in your proposal (ideally 3 to 5 core domain classes). NEVER generate more than 5 classes in a single turn. Focus on the core domain entities.',
               '   - DEFAULT TO PLAIN ASSOCIATION: Most relationships between classes are plain associations ("aggregation": "none"). Use composition ("aggregation": "composite") ONLY when part lifecycle strictly depends on whole (e.g. Invoice -> LineItem). Use aggregation ("aggregation": "shared") only for independent collections. NEVER overuse aggregation for regular references.',
               '   - MODIFYING OR CHANGING RELATIONSHIPS: To change an existing relationship (e.g. change composition to association, or update multiplicities), emit the association between those two classes with the new "aggregation": "none" or updated multiplicities.',
               '   - RECURSIVE ASSOCIATIONS: When a class relates to itself (e.g. Employee supervises Employee), put the same class name in source and target and assign roles ("sourceRole": "supervisor", "targetRole": "subordinate").',
@@ -1277,6 +1285,7 @@ export async function processUnifiedAmongusTurn(
               '   TU RESPUESTA DEBE EMPEZAR INMEDIATAMENTE CON EL BLOQUE ```json.',
               '   ESTÁ ESTRICTAMENTE PROHIBIDO: Escribir introducciones, saludos o frases como "acá tenés el código". Si te piden un modelo o sistema, TODO debe ir estructurado en JSON.',
               '   REGLAS CRÍTICAS DE CALIDAD OOAD:',
+              '   - LÍMITE ESTRICTO DE ALCANCE (MÁXIMO 5 CLASES): Generá como MÁXIMO 5 clases en la propuesta (idealmente entre 3 y 5 clases núcleo del dominio). NUNCA generes más de 5 clases en un solo turno. Enfocate en las entidades esenciales.',
               '   - ASOCIACIÓN SIMPLE POR DEFECTO: La gran mayoría de relaciones son asociaciones simples ("aggregation": "none"). Usá composición ("aggregation": "composite") SOLO cuando el ciclo de vida de la parte depende estrictamente del todo (ej. Factura -> Detalle). Usá agregación ("aggregation": "shared") únicamente para colecciones independientes. NUNCA uses composición para referencias entre entidades pares como Pasajero, Aerolínea, Sucursal o Viaje.',
               '   - MODIFICAR O CAMBIAR RELACIONES EXISTENTES: Si el usuario pide cambiar una relación existente (ej. cambiar composición a asociación simple, o cambiar multiplicidades), emití la asociación entre esas clases con el nuevo "aggregation": "none" o las nuevas multiplicidades.',
               '   - ASOCIACIONES RECURSIVAS: Cuando una clase se relaciona consigo misma (ej. Empleado supervisa a Empleado), poné la misma clase en source y target y asigná roles claros ("sourceRole": "supervisor", "targetRole": "subordinado").',
@@ -1331,20 +1340,96 @@ export async function processUnifiedAmongusTurn(
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: systemPrompt + domainGrounding },
-      ...(chatHistory ?? []),
+      ...(chatHistory ? chatHistory.slice(-4) : []),
       { role: 'user', content: cleanContent },
     ];
 
-    const raw = await llm.chat(
-      messages,
-      { timeoutMs: DEFAULT_LLM_TIMEOUT_MS, maxTokens: DEFAULT_LLM_MAX_TOKENS, onChunk: isAction ? undefined : onChunk }
-    );
+    let accumulatedChunks = '';
+    const turnChunkCollector = (chunk: string) => {
+      accumulatedChunks += chunk;
+      if (!isAction) {
+        onChunk?.(chunk);
+      }
+    };
+
+    let raw: string;
+    try {
+      raw = await llm.chat(
+        messages,
+        {
+          timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
+          maxTokens: isAction ? 650 : DEFAULT_LLM_MAX_TOKENS,
+          onChunk: turnChunkCollector,
+        }
+      );
+    } catch (llmErr: any) {
+      const isTimeout =
+        llmErr &&
+        (llmErr.name === 'AbortError' ||
+          llmErr.message?.includes('aborted') ||
+          llmErr.message?.includes('timeout') ||
+          llmErr.code === 'ETIMEDOUT');
+
+      if (isTimeout && isAction) {
+        // Rescate por timeout en CPU:
+        // 1. Intentar reconstruir el JSON parcial acumulado en los chunks generados antes del timeout
+        if (accumulatedChunks.trim().length > 0) {
+          const rescuedModel = robustParseDomainJson(accumulatedChunks);
+          if (rescuedModel && (rescuedModel.classes?.length || rescuedModel.associations?.length)) {
+            if (rescuedModel.classes && rescuedModel.classes.length > 5) {
+              const allowed = new Set(rescuedModel.classes.slice(0, 5).map((c: any) => c.name));
+              rescuedModel.classes = rescuedModel.classes.slice(0, 5);
+              if (rescuedModel.associations) {
+                rescuedModel.associations = rescuedModel.associations.filter(
+                  (a: any) => allowed.has(a.source) || allowed.has(a.target)
+                );
+              }
+            }
+            const rescuedDelta = expandSemanticDomainToDelta(rescuedModel, diagramId, diagram, cleanContent);
+            if (rescuedDelta && rescuedDelta.deltas.length > 0) {
+              const notice = isEn
+                ? 'The model reached the timeout limit on CPU, but I rescued the entities generated so far. You can preview them on the canvas and confirm to apply.'
+                : 'El modelo alcanzó el límite de tiempo en CPU, pero rescaté las entidades que llegó a generar. Podés previsualizarlas en el lienzo y confirmarlas para aplicarlas.';
+              return {
+                replyContent: notice,
+                batchDelta: rescuedDelta,
+              };
+            }
+          }
+        }
+
+        // 2. Si no llegó a generar clases en el chunk, usar el catálogo canónico como fallback inmediato
+        if (domainMatch) {
+          const semanticCanonical = canonicalToSemantic(domainMatch.domain);
+          const fallbackDelta = expandSemanticDomainToDelta(semanticCanonical, diagramId, diagram, cleanContent);
+          if (fallbackDelta && fallbackDelta.deltas.length > 0) {
+            const notice = isEn
+              ? 'The model reached the timeout limit on CPU. To avoid waiting, here is the recommended architecture from our domain catalog:'
+              : 'El modelo alcanzó el límite de tiempo en CPU. Para no hacerte esperar, te preparé la arquitectura recomendada de nuestro catálogo:';
+            return {
+              replyContent: notice,
+              batchDelta: fallbackDelta,
+            };
+          }
+        }
+      }
+      throw llmErr;
+    }
 
     // 1. Sanitizar prefijo Amongus y colapsar bucles de repetición degenerativos (ej. "de emergencia de emergencia...")
     let clean = breakDegenerativeLoops(stripEmojis(raw).replace(/^Amongus:\s*/i, '').trim());
 
     // 2. Si el modelo devolvió una propuesta de modelado estructurada en JSON
     const parsedModel = robustParseDomainJson(clean);
+    if (parsedModel && parsedModel.classes && parsedModel.classes.length > 5) {
+      const allowedNames = new Set(parsedModel.classes.slice(0, 5).map((c: any) => c.name));
+      parsedModel.classes = parsedModel.classes.slice(0, 5);
+      if (parsedModel.associations) {
+        parsedModel.associations = parsedModel.associations.filter(
+          (a: any) => allowedNames.has(a.source) || allowedNames.has(a.target)
+        );
+      }
+    }
     const hasAnyContent =
       parsedModel &&
       ((parsedModel.classes && parsedModel.classes.length > 0) ||
