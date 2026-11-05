@@ -612,6 +612,41 @@ export async function processUnifiedAmongusTurn(
     }
   }
 
+  // 00c. Detección temprana de mutación de relaciones con clases inexistentes en el diagrama
+  const relationMutationMatch =
+    /(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link).*?(?:entre|between)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?:["']?)\s+(?:y|and)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+      userContent
+    );
+  if (relationMutationMatch) {
+    const rawClassA = relationMutationMatch[1]!;
+    const rawClassB = relationMutationMatch[2]!;
+    const existingClasses = ((diagram?.classes as any[]) || []);
+    const existingClassNames = existingClasses.map((c: any) => c.name);
+
+    if (existingClassNames.length > 0) {
+      const classExists = (target: string) => {
+        const normTarget = target.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        return existingClasses.some((c: any) => {
+          const normC = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+          return normC === normTarget || normC.includes(normTarget) || normTarget.includes(normC);
+        });
+      };
+
+      const missingA = !classExists(rawClassA);
+      const missingB = !classExists(rawClassB);
+
+      if (missingA || missingB) {
+        const missing = missingA && missingB ? `"${rawClassA}" ni "${rawClassB}"` : (missingA ? `"${rawClassA}"` : `"${rawClassB}"`);
+        const missingEn = missingA && missingB ? `"${rawClassA}" nor "${rawClassB}"` : (missingA ? `"${rawClassA}"` : `"${rawClassB}"`);
+        return {
+          replyContent: isEn
+            ? `I could not find the class ${missingEn} in the current diagram. Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`
+            : `No encontré la clase ${missing} en el diagrama actual. Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`,
+        };
+      }
+    }
+  }
+
   // 0a. Detección inmediata de consultas sobre personas/usuarios conectados en la sala
   const isPresenceQuery =
     /cu[aá]nt[ao]s?\s+(?:personas?|usuarios?|compa[ñn]eros?|miembros?|gente|conectad[ao]s?)|qui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:conectad[ao]s?|en\s+la\s+sala|en\s+el\s+diagrama|en\s+la\s+sesi[oó]n|ac[aá]|aqu[ií])|how\s+many\s+(?:users?|people|peers?|members?)|who\s+is\s+(?:connected|online|in\s+the\s+room|in\s+the\s+session)/i.test(

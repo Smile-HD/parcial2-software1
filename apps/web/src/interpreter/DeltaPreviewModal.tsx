@@ -37,6 +37,21 @@ export function describeDelta(
             ? (clsName ? `Delete class "${clsName}"` : 'Delete class')
             : (clsName ? `Eliminar clase "${clsName}"` : 'Eliminar clase');
         }
+        case 'update': {
+          const clsName = getClassName(delta.classId);
+          const targetStr = clsName ? ` "${clsName}"` : '';
+          if (delta.isAbstract !== undefined) {
+            return isEn
+              ? `Make class${targetStr} ${delta.isAbstract ? 'abstract' : 'concrete'}`
+              : `Marcar clase${targetStr} como ${delta.isAbstract ? 'abstracta' : 'concreta'}`;
+          }
+          if (delta.classKind !== undefined) {
+            return isEn
+              ? `Set${targetStr} type to ${delta.classKind}`
+              : `Cambiar tipo de${targetStr} a ${delta.classKind}`;
+          }
+          return isEn ? `Update class${targetStr}` : `Actualizar clase${targetStr}`;
+        }
       }
       break;
     case 'member':
@@ -67,10 +82,26 @@ export function describeDelta(
       switch (delta.op) {
         case 'create':
           return isEn ? 'Add association' : 'Crear asociación';
-        case 'updateMultiplicity':
-          return isEn
-            ? `Update multiplicities to "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`
-            : `Actualizar multiplicidades a "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`;
+        case 'updateMultiplicity': {
+          const parts: string[] = [];
+          if (delta.aggregation) {
+            const aggLabel = delta.aggregation === 'composite'
+              ? (isEn ? 'composition' : 'composición')
+              : delta.aggregation === 'shared'
+              ? (isEn ? 'aggregation' : 'agregación')
+              : (isEn ? 'simple association' : 'asociación simple');
+            parts.push(isEn ? `Change relationship to ${aggLabel}` : `Cambiar relación a ${aggLabel}`);
+          }
+          if (delta.newSourceMultiplicity || delta.newTargetMultiplicity) {
+            parts.push(
+              isEn
+                ? `Update multiplicities to "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`
+                : `Actualizar multiplicidades a "${delta.newSourceMultiplicity ?? '?'}" / "${delta.newTargetMultiplicity ?? '?'}"`
+            );
+          }
+          if (parts.length > 0) return parts.join('; ');
+          return isEn ? 'Update relationship' : 'Actualizar relación';
+        }
         case 'delete':
           return isEn ? 'Delete association' : 'Eliminar asociación';
       }
