@@ -1222,7 +1222,14 @@ export async function processUnifiedAmongusTurn(
 
   try {
     const isSpecificClassCreation = /\b(?:clase|calse|clse|class|tabla)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ]/i.test(cleanContent);
-    const domainMatch = !isSpecificClassCreation ? matchCanonicalDomain(cleanContent) : null;
+    const isDiagramExplanationQuery = /(?:explic|contexto|qu[eé]\s+(?:es|hace|significa|modela|representa)|de\s+qu[eé]\s+trata|describe|explain|what\s+does|meaning\s+of)/i.test(cleanContent) && /(?:diagrama|modelo|lienzo|canvas|actual)/i.test(cleanContent);
+    // El catálogo canónico solo debe intervenir cuando el usuario solicita explícitamente diseñar o modelar un nuevo dominio/sistema completo desde cero.
+    // NUNCA debe inyectarse en operaciones granulares, mutaciones sobre el lienzo existente ni consultas explicativas.
+    const isFullDomainSynthesisRequest =
+      !isSpecificClassCreation &&
+      !isDiagramExplanationQuery &&
+      /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|design|model|build)\s+(?:un|una|el|la|a|an)?\s*(?:sistema|modelo|dominio|plataforma|system|management)\b/i.test(cleanContent);
+    const domainMatch = isFullDomainSynthesisRequest ? matchCanonicalDomain(cleanContent) : null;
     const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

@@ -42,7 +42,7 @@ function levenshtein(a: string, b: string): number {
  * Utiliza un índice invertido O(1) con tolerancia a faltas ortográficas (fuzzy matching)
  * para emparejar consultas en español e inglés con el catálogo de más de 1.500 modelos canónicos.
  */
-export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMatchResult | null {
+export function matchCanonicalDomain(query: string, threshold = 0.45): DomainMatchResult | null {
   if (!query || query.trim().length === 0) {
     return null;
   }
@@ -138,14 +138,18 @@ export function matchCanonicalDomain(query: string, threshold = 0.35): DomainMat
   if (scores.size === 0) {
     for (const token of queryTokens) {
       if (token.length < 5) continue;
-      const maxAllowedDist = token.length >= 7 ? 2 : 1;
+      const maxAllowedDist = token.length >= 8 ? 2 : 1;
 
       for (const [kw, entries] of exactTokenMap.entries()) {
         if (Math.abs(kw.length - token.length) > maxAllowedDist) continue;
 
         const dist = levenshtein(token, kw);
-        if (dist <= maxAllowedDist) {
-          const weight = dist === 1 ? 0.9 : 0.7;
+        const maxLen = Math.max(token.length, kw.length);
+        const similarity = 1 - dist / maxLen;
+
+        // Exige alta similitud (>= 0.75) para evitar falsos positivos
+        if (dist <= maxAllowedDist && similarity >= 0.75) {
+          const weight = dist === 1 ? 1.0 : 0.8;
           for (const hit of entries) {
             let entry = scores.get(hit.id);
             if (!entry) {

@@ -2238,16 +2238,25 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   }
 
   // 2. Mutación de clase a abstracta o interfaz (ES y EN)
-  const isClassMod =
-    /(?:hac|haz|marc|cambi|modific|make|set|turn|convert).*?(?:clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*).*?(?:abstract|interfa)/i.exec(text) ||
-    /(?:clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:sea\s+|to\s+be\s+|as\s+)?(?:abstract|interfa)/i.exec(text);
+  const isClassModIntent =
+    /(?:abstract[ao]?|interfa[cz]|interface)/i.test(normalized) &&
+    /(?:hac|haz|marc|cambi|modific|make|set|turn|convert|defin|sea|to\s+be|as)/i.test(normalized);
 
-  if (isClassMod) {
-    const rawTargetName = isClassMod[1]?.trim();
-    const matchedClass = classes.find((c) => c.name.toLowerCase() === rawTargetName?.toLowerCase());
+  if (isClassModIntent) {
+    const wantsAbstract = /abstract/i.test(normalized);
+    const wantsInterface = /interfa/i.test(normalized);
+
+    // Buscar cuál de las clases del lienzo está nombrada en el texto
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const matchedClass = classes.find((c) => {
+      const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const wordRegex = new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i');
+      if (wordRegex.test(normalized)) return true;
+      if (cleanedTextWithoutSpaces.includes(cNorm)) return true;
+      return false;
+    });
+
     if (matchedClass) {
-      const wantsAbstract = /abstract/i.test(normalized);
-      const wantsInterface = /interfa/i.test(normalized);
       return {
         action: 'modify',
         updates: {
@@ -2339,6 +2348,88 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
           },
         };
       }
+    }
+  }
+
+  // 6. Borrado agnóstico de clases, relaciones o atributos (ES y EN)
+  const isDeleteIntent = /\b(?:delete|remove|elimina|eliminá|eliminar|elmina|borra|borrá|borrar|brra|sacar|sacá|saca|quitar|quitá|quita)\b/i.test(normalized);
+  if (isDeleteIntent) {
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      if (regex.test(normalized)) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
+    });
+
+    const isRelTarget = /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|enlace|link|relationship|association)/i.test(normalized);
+    if (isRelTarget || mentionedClasses.length >= 2) {
+      if (mentionedClasses.length >= 2) {
+        const c1 = mentionedClasses[0]!;
+        const c2 = mentionedClasses[1]!;
+        const matchingAssoc = associations.find(
+          (a) =>
+            (a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
+            (a.sourceClassId === c2.id && a.targetClassId === c1.id)
+        );
+        if (matchingAssoc) {
+          const src = classes.find((c) => c.id === matchingAssoc.sourceClassId);
+          const tgt = classes.find((c) => c.id === matchingAssoc.targetClassId);
+          if (src && tgt) {
+            return {
+              action: 'modify',
+              deletions: {
+                associations: [{ source: src.name, target: tgt.name }],
+              },
+            };
+          }
+        }
+      } else if (associations.length === 1 && isRelTarget) {
+        const singleAssoc = associations[0]!;
+        const src = classes.find((c) => c.id === singleAssoc.sourceClassId);
+        const tgt = classes.find((c) => c.id === singleAssoc.targetClassId);
+        if (src && tgt) {
+          return {
+            action: 'modify',
+            deletions: {
+              associations: [{ source: src.name, target: tgt.name }],
+            },
+          };
+        }
+      }
+    }
+
+    // Borrado agnóstico de atributo
+    const isAttrTarget = /(?:atributo|campo|field|attribute|propiedad|property)/i.test(normalized);
+    if (isAttrTarget) {
+      for (const cls of classes) {
+        if (Array.isArray(cls.attributes)) {
+          for (const attr of cls.attributes) {
+            const aNorm = attr.name.toLowerCase();
+            const attrRegex = new RegExp(`(?:\\b|["'])${aNorm}(?:\\b|["'])`, 'i');
+            if (attrRegex.test(normalized)) {
+              return {
+                action: 'modify',
+                deletions: {
+                  attributes: [{ class: cls.name, attribute: attr.name }],
+                },
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // Borrado agnóstico de clase si coincide con una clase del lienzo
+    if (mentionedClasses.length === 1) {
+      const targetClass = mentionedClasses[0]!;
+      return {
+        action: 'modify',
+        deletions: {
+          classes: [targetClass.name],
+        },
+      };
     }
   }
 

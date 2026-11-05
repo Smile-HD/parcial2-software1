@@ -731,6 +731,71 @@ describe('processUnifiedAmongusTurn', () => {
       expect(renameDelta.op).toBe('rename');
       expect(renameDelta.newName).toBe('Item');
     });
+
+    it('agnostically deletes classes, associations, and attributes without hardcoded domain knowledge', async () => {
+      const mockDiagram = {
+        classes: [
+          { id: 'c1', name: 'Sensor', attributes: [{ id: 'a1', name: 'frecuencia', type: 'float' }] },
+          { id: 'c2', name: 'Actuador', attributes: [{ id: 'a2', name: 'voltaje', type: 'float' }] },
+        ],
+        associations: [
+          {
+            id: 'r1',
+            sourceClassId: 'c1',
+            targetClassId: 'c2',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1..*',
+            aggregation: 'none',
+          },
+        ],
+      };
+
+      // 1. Borrado agnóstico de relación entre dos entidades arbitrarias
+      const resDelAssoc = await processUnifiedAmongusTurn(
+        'elimina la relacion entre Sensor y Actuador',
+        'Zovako',
+        'es',
+        'diag-iot',
+        undefined,
+        mockDiagram
+      );
+      expect(resDelAssoc.batchDelta).toBeDefined();
+      const assocDeleteDelta = resDelAssoc.batchDelta?.deltas.find((d: any) => d.kind === 'association');
+      expect(assocDeleteDelta).toBeDefined();
+      expect(assocDeleteDelta.op).toBe('delete');
+      expect(assocDeleteDelta.associationId).toBe('r1');
+
+      // 2. Borrado agnóstico de atributo
+      const resDelAttr = await processUnifiedAmongusTurn(
+        'elimina el atributo frecuencia de Sensor',
+        'Zovako',
+        'es',
+        'diag-iot',
+        undefined,
+        mockDiagram
+      );
+      expect(resDelAttr.batchDelta).toBeDefined();
+      const attrDeleteDelta = resDelAttr.batchDelta?.deltas.find((d: any) => d.kind === 'member');
+      expect(attrDeleteDelta).toBeDefined();
+      expect(attrDeleteDelta.op).toBe('deleteAttribute');
+      expect(attrDeleteDelta.classId).toBe('c1');
+      expect(attrDeleteDelta.memberId).toBe('a1');
+
+      // 3. Borrado agnóstico de clase
+      const resDelClass = await processUnifiedAmongusTurn(
+        'delete class Actuador',
+        'Zovako',
+        'en',
+        'diag-iot',
+        undefined,
+        mockDiagram
+      );
+      expect(resDelClass.batchDelta).toBeDefined();
+      const classDeleteDelta = resDelClass.batchDelta?.deltas.find((d: any) => d.kind === 'class');
+      expect(classDeleteDelta).toBeDefined();
+      expect(classDeleteDelta.op).toBe('delete');
+      expect(classDeleteDelta.classId).toBe('c2');
+    });
   });
 });
 
