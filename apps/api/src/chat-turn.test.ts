@@ -613,6 +613,124 @@ describe('processUnifiedAmongusTurn', () => {
       expect(res.replyContent).toContain('Estado del Contexto Real');
       expect(res.replyContent).toContain('Entidades del Dominio en el Lienzo (2): Zapato, Material');
     });
+
+    it('handles enclitic "cambiame" and assigns aggregationEnd to whole class Lector', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        version: 1,
+        classes: [
+          { id: 'c_lector', name: 'Lector' },
+          { id: 'c_prestamo', name: 'Prestamo' },
+        ],
+        associations: [
+          {
+            id: 'a_lp',
+            sourceClassId: 'c_lector',
+            targetClassId: 'c_prestamo',
+            aggregation: 'none',
+            aggregationEnd: 'source',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '0..*',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambiame la relacion entre lector y prestamolector a una de agregacion donde la clase todo es el lector',
+        'Carlos',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const assocDelta = res.batchDelta?.deltas.find((d: any) => d.kind === 'association');
+      expect(assocDelta).toBeDefined();
+      expect(assocDelta.op).toBe('updateMultiplicity');
+      expect(assocDelta.associationId).toBe('a_lp');
+      expect(assocDelta.aggregation).toBe('shared');
+      expect(assocDelta.aggregationEnd).toBe('source');
+    });
+
+    it('handles English relationship mutation with whole-class specification', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        version: 1,
+        classes: [
+          { id: 'c_reader', name: 'Reader' },
+          { id: 'c_loan', name: 'Loan' },
+        ],
+        associations: [
+          {
+            id: 'a_rl',
+            sourceClassId: 'c_loan',
+            targetClassId: 'c_reader',
+            aggregation: 'none',
+            aggregationEnd: 'source',
+            sourceMultiplicity: '0..*',
+            targetMultiplicity: '1',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'change relationship between reader and loan to composition where the whole is reader',
+        'John',
+        'en',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const assocDelta = res.batchDelta?.deltas.find((d: any) => d.kind === 'association');
+      expect(assocDelta).toBeDefined();
+      expect(assocDelta.op).toBe('updateMultiplicity');
+      expect(assocDelta.associationId).toBe('a_rl');
+      expect(assocDelta.aggregation).toBe('composite');
+      // En este diagrama, Reader es targetClassId, así que aggregationEnd debe ser 'target'
+      expect(assocDelta.aggregationEnd).toBe('target');
+    });
+
+    it('handles English class modifications and renames', async () => {
+      const mockDiagram = {
+        id: 'diag-store',
+        version: 1,
+        classes: [
+          { id: 'c1', name: 'Product', attributes: [{ name: 'sku', type: 'string' }] },
+        ],
+        associations: [],
+      };
+
+      const resAbstract = await processUnifiedAmongusTurn(
+        'make class Product abstract',
+        'John',
+        'en',
+        'diag-store',
+        undefined,
+        mockDiagram
+      );
+      expect(resAbstract.batchDelta).toBeDefined();
+      const classDelta = resAbstract.batchDelta?.deltas.find((d: any) => d.kind === 'class');
+      expect(classDelta).toBeDefined();
+      expect(classDelta.op).toBe('update');
+      expect(classDelta.isAbstract).toBe(true);
+
+      const resRename = await processUnifiedAmongusTurn(
+        'rename class Product to Item',
+        'John',
+        'en',
+        'diag-store',
+        undefined,
+        mockDiagram
+      );
+      expect(resRename.batchDelta).toBeDefined();
+      const renameDelta = resRename.batchDelta?.deltas.find((d: any) => d.kind === 'class');
+      expect(renameDelta).toBeDefined();
+      expect(renameDelta.op).toBe('rename');
+      expect(renameDelta.newName).toBe('Item');
+    });
   });
 });
 

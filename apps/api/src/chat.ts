@@ -1188,6 +1188,19 @@ export async function processUnifiedAmongusTurn(
   }
 
   if (!llm || typeof llm.chat !== 'function') {
+    const explicitMutation = extractExplicitModelMutations(userContent, diagram);
+    if (explicitMutation) {
+      const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
+      if (mutationDelta && mutationDelta.deltas.length > 0) {
+        const defaultReply = isEn
+          ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
+          : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
+        return {
+          replyContent: defaultReply,
+          batchDelta: mutationDelta,
+        };
+      }
+    }
     return {
       replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers, diagram),
     };

@@ -2124,26 +2124,66 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
   // 1. Mutación de relación (asociación <-> composición <-> agregación)
   const isRelationChange =
-    /(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea).*?(?:relaci[oó]n|asociaci[oó]n|tipo|v[ií]nculo)/i.test(normalized) ||
-    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo)/i.test(normalized) ||
-    /(?:relaci[oó]n\s+entre\s+["']?[A-Za-z_ñÑáéíóúÁÉÍÓÚ].*?\(.*?(?:composici|agregaci|asociaci))/i.test(text);
+    /(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo|v[ií]nculo|relation|relationship|association|link)/i.test(
+      normalized
+    ) ||
+    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo|relationship\s+type|change\s+type)/i.test(
+      normalized
+    ) ||
+    /(?:relaci[oó]n|relationship|association)\s+(?:entre|between)\s+["']?[A-Za-z_ñÑáéíóúÁÉÍÓÚ].*?\(.*?(?:composici|agregaci|asociaci|composite|aggregation|association)/i.test(
+      text
+    ) ||
+    /(?:a|por|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation)/i.test(
+      normalized
+    );
 
   if (isRelationChange) {
     let targetAggregation: 'composite' | 'shared' | 'none' = 'none';
-    if (/(?:composici[oó]n|composite|rombo\s+negro)/i.test(normalized)) {
+    if (/(?:composici[oó]n|composition|composite|compone|rombo\s+negro|black\s+diamond)/i.test(normalized)) {
       targetAggregation = 'composite';
-    } else if (/(?:agregaci[oó]n|shared|rombo\s+blanco)/i.test(normalized)) {
+    } else if (/(?:agregaci[oó]n|aggregation|shared|rombo\s+blanco|white\s+diamond)/i.test(normalized)) {
       targetAggregation = 'shared';
-    } else if (/(?:asociaci[oó]n\s+simple|asociaci[oó]n\b|simple)/i.test(normalized)) {
+    } else if (/(?:asociaci[oó]n\s+simple|asociaci[oó]n\b|simple|plain\s+association)/i.test(normalized)) {
       targetAggregation = 'none';
     }
 
+    // Extracción explícita de la entidad "todo" (contenedor donde va el rombo)
+    const wholeMatch =
+      /(?:(?:donde|que)\s+(?:la\s+clase\s+)?todo\s+(?:sea|es)|el\s+todo\s+es|la\s+clase\s+todo\s+es|todo\s+es|contenedor\s+es|rombo\s+en)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      ) ||
+      /(?:where\s+(?:the\s+)?(?:whole|container|owner)\s+(?:class\s+)?is|whole\s+is|container\s+is|diamond\s+on)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+    const rawWholeName = wholeMatch ? wholeMatch[1]?.toLowerCase() : undefined;
+
     // Buscar qué clases del lienzo están mencionadas en el texto
+    // Tolera: palabras compuestas ("prestamolector"), espacios accidentales ("lecto r" -> "lector")
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
     const mentionedClasses = classes.filter((c) => {
       const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
-      return regex.test(normalized);
+      if (regex.test(normalized)) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
     });
+
+    const resolveAggregationEnd = (sourceCls: { id: string; name: string }, targetCls: { id: string; name: string }, existingAssoc?: any): 'source' | 'target' => {
+      if (rawWholeName) {
+        const sNorm = sourceCls.name.toLowerCase();
+        const tNorm = targetCls.name.toLowerCase();
+        if (sNorm === rawWholeName || sNorm.startsWith(rawWholeName) || rawWholeName.startsWith(sNorm)) return 'source';
+        if (tNorm === rawWholeName || tNorm.startsWith(rawWholeName) || rawWholeName.startsWith(tNorm)) return 'target';
+      }
+      if (existingAssoc) {
+        const sm = existingAssoc.sourceMultiplicity || '';
+        const tm = existingAssoc.targetMultiplicity || '';
+        if (sm === '1' && (tm.includes('*') || tm === '0..*' || tm === '1..*')) return 'source';
+        if (tm === '1' && (sm.includes('*') || sm === '0..*' || sm === '1..*')) return 'target';
+        if (existingAssoc.aggregationEnd) return existingAssoc.aggregationEnd;
+      }
+      return 'source';
+    };
 
     if (mentionedClasses.length >= 2) {
       // Buscar si existe una relación en el lienzo entre el par de clases
@@ -2156,16 +2196,18 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       );
 
       if (matchingAssoc) {
-        const sourceName = matchingAssoc.sourceClassId === c1.id ? c1.name : c2.name;
-        const targetName = matchingAssoc.targetClassId === c2.id ? c2.name : c1.name;
+        const sourceCls = matchingAssoc.sourceClassId === c1.id ? c1 : c2;
+        const targetCls = matchingAssoc.targetClassId === c2.id ? c2 : c1;
+        const calcEnd = resolveAggregationEnd(sourceCls, targetCls, matchingAssoc);
         return {
           action: 'modify',
           updates: {
             associations: [
               {
-                source: sourceName,
-                target: targetName,
+                source: sourceCls.name,
+                target: targetCls.name,
                 aggregation: targetAggregation,
+                aggregationEnd: calcEnd,
               },
             ],
           },
@@ -2177,6 +2219,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       const src = classes.find((c) => c.id === singleAssoc.sourceClassId);
       const tgt = classes.find((c) => c.id === singleAssoc.targetClassId);
       if (src && tgt) {
+        const calcEnd = resolveAggregationEnd(src, tgt, singleAssoc);
         return {
           action: 'modify',
           updates: {
@@ -2185,6 +2228,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
                 source: src.name,
                 target: tgt.name,
                 aggregation: targetAggregation,
+                aggregationEnd: calcEnd,
               },
             ],
           },
@@ -2193,10 +2237,10 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
-  // 2. Mutación de clase a abstracta o interfaz
+  // 2. Mutación de clase a abstracta o interfaz (ES y EN)
   const isClassMod =
-    /(?:hac|haz|marc|cambi|modific|que\s+sea).*?(?:clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*).*?(?:abstract|interfa)/i.exec(text) ||
-    /(?:clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:sea\s+)?(?:abstract|interfa)/i.exec(text);
+    /(?:hac|haz|marc|cambi|modific|make|set|turn|convert).*?(?:clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*).*?(?:abstract|interfa)/i.exec(text) ||
+    /(?:clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:sea\s+|to\s+be\s+|as\s+)?(?:abstract|interfa)/i.exec(text);
 
   if (isClassMod) {
     const rawTargetName = isClassMod[1]?.trim();
@@ -2216,6 +2260,85 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
           ],
         },
       };
+    }
+  }
+
+  // 3. Renombrado de clase (ES y EN)
+  const isClassRename =
+    /(?:rename|renaming|renombr[aáeé]|renombra|renombrar|change\s+name\s+of)\s+(?:la\s+clase\s+|clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text) ||
+    /(?:cambia\s+el\s+nombre\s+de\s+(?:la\s+clase\s+|class\s+)?)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+
+  if (isClassRename) {
+    const fromName = isClassRename[1]?.trim();
+    const toName = isClassRename[2]?.trim();
+    const matchedClass = classes.find((c) => c.name.toLowerCase() === fromName?.toLowerCase());
+    if (matchedClass && toName) {
+      return {
+        action: 'modify',
+        renames: {
+          classes: [
+            {
+              from: matchedClass.name,
+              to: toName,
+            },
+          ],
+        },
+      };
+    }
+  }
+
+  // 4. Renombrado de atributo (ES y EN)
+  const isAttrRename =
+    /(?:rename|renaming|renombr[aáeé]|renombra|renombrar|change\s+attribute\s+name)\s+(?:el\s+atributo\s+|atributo\s+|attribute\s+|field\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:en|in)\s+(?:la\s+clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
+  if (isAttrRename) {
+    const fromAttr = isAttrRename[1]?.trim();
+    const toAttr = isAttrRename[2]?.trim();
+    const targetClassName = isAttrRename[3]?.trim();
+    const targetClass = targetClassName
+      ? classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase())
+      : classes.find((c) => Array.isArray(c.attributes) && c.attributes.some((a: any) => a.name.toLowerCase() === fromAttr?.toLowerCase()));
+    if (targetClass && fromAttr && toAttr) {
+      return {
+        action: 'modify',
+        renames: {
+          attributes: [
+            {
+              className: targetClass.name,
+              from: fromAttr,
+              to: toAttr,
+            },
+          ],
+        },
+      };
+    }
+  }
+
+  // 5. Cambio de tipo de atributo (ES y EN)
+  const isAttrUpdate =
+    /(?:cambi[aáeé]|modific[aáeé]|change|modify|update|set)\s+(?:el\s+tipo\s+del?\s+atributo\s+|tipo\s+de\s+|type\s+of\s+attribute\s+|type\s+of\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]+)(?:\s+(?:en|in)\s+(?:la\s+clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
+  if (isAttrUpdate) {
+    const attrName = isAttrUpdate[1]?.trim();
+    const newType = isAttrUpdate[2]?.trim().toLowerCase();
+    const targetClassName = isAttrUpdate[3]?.trim();
+    const validTypes = ['string', 'int', 'integer', 'float', 'double', 'boolean', 'bool', 'date', 'void'];
+    if (validTypes.includes(newType)) {
+      const targetClass = targetClassName
+        ? classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase())
+        : classes.find((c) => Array.isArray(c.attributes) && c.attributes.some((a: any) => a.name.toLowerCase() === attrName?.toLowerCase()));
+      if (targetClass && attrName) {
+        return {
+          action: 'modify',
+          updates: {
+            attributes: [
+              {
+                className: targetClass.name,
+                name: attrName,
+                type: newType === 'integer' ? 'int' : newType === 'bool' ? 'boolean' : newType,
+              },
+            ],
+          },
+        };
+      }
     }
   }
 

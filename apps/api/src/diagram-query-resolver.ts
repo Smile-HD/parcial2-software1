@@ -38,13 +38,26 @@ export function resolveDiagramFactualQuery(
 
   // Si la instrucción es una acción imperativa de modelado (crear, agregar, modificar, eliminar),
   // NUNCA debe ser tratada como consulta factual de lectura.
+  // Abarca pronombres enclíticos (cambiame, cambiale, modificame, etc.) y sinónimos en inglés.
   const isImperativeAction =
-    /\b(?:cre[aá]|crear|agreg[aá]|agregar|a[ñn]ad[eé]|a[ñn]adir|dise[ñn][aá]|model[aá]|constru[yí]|arm[aá]|incorpor[aá]|insert[aá]|borr[aá]|elimin[aá]|quit[aá]|conect[aá]|vincul[aá]|relacion[aá]|cambi[aá]|modific[aá]|renombr[aá]|add|create|make|build|insert|delete|remove|connect|link|change|modify)\b/i.test(
+    /(?:^|\s)(?:cre[aáeé]|crear|agreg[aáeé]|agregar|a[ñn]ad[eé]|a[ñn]adir|dise[ñn][aáeé]|model[aáeé]|constru[yí]|arm[aáeé]|incorpor[aáeé]|insert[aáeé]|borr[aáeé]|elimin[aáeé]|quit[aáeé]|conect[aáeé]|vincul[aáeé]|relacion[aáeé]|cambi[aáeé]|modific[aáeé]|renombr[aáeé]|actualiz[aáeé]|edit[aáeé]|pon(?:e|ga|ed)?|hac[eé]|haz)(?:me|le|les|lo|la|los|las|nos)?\b/i.test(
       rawNorm
-    ) &&
-    !/^(?:c[oó]mo\s+(?:se\s+)?|qu[eé]\s+|how\s+to|what\s+is|can\s+you\s+explain|por\s*qu[eé])/i.test(rawNorm);
+    ) ||
+    /\b(?:add|create|make|build|insert|delete|remove|drop|connect|link|change|modify|update|rename|switch|convert|transform|turn|set)\b/i.test(
+      rawNorm
+    );
 
-  if (isImperativeAction) {
+  // Cláusulas explícitas de mutación de relaciones o clases (ES y EN)
+  const isExplicitMutationClause =
+    /(?:a|por|en|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation|association)/i.test(rawNorm) ||
+    /(?:donde|que)\s+(?:la\s+clase\s+)?todo\s+(?:sea|es)/i.test(rawNorm) ||
+    /(?:where\s+(?:the\s+)?(?:whole|container|owner)\s+(?:class\s+)?is|whole\s+is|container\s+is)/i.test(rawNorm) ||
+    /(?:rombo\s+(?:negro|blanco)|(?:black|white)\s+diamond)/i.test(rawNorm) ||
+    /(?:abstract[ao]?|interfa[cz]|interface)/i.test(rawNorm);
+
+  const isQuestionPrefix = /^(?:c[oó]mo\s+(?:se\s+)?|qu[eé]\s+|how\s+(?:to|many|is|are)|what\s+is|can\s+you\s+explain|por\s*qu[eé]|why|is\s+there)/i.test(rawNorm);
+
+  if ((isImperativeAction || isExplicitMutationClause) && !isQuestionPrefix) {
     return null;
   }
 

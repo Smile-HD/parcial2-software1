@@ -17,6 +17,16 @@ export function normalizeUmlUtterance(raw: string): string {
   if (!raw) return '';
   let s = raw;
 
+  // ── 0. Desaglutinación de términos UML comunes
+  s = s.replace(/(?<!\p{L})larelaci[oó]n(?!\p{L})/giu, 'la relacion');
+  s = s.replace(/(?<!\p{L})delarelaci[oó]n(?!\p{L})/giu, 'de la relacion');
+  s = s.replace(/(?<!\p{L})tipoderelaci[oó]n(?!\p{L})/giu, 'tipo de relacion');
+  s = s.replace(/(?<!\p{L})therelationship(?!\p{L})/giu, 'the relationship');
+  s = s.replace(/(?<!\p{L})therelation(?!\p{L})/giu, 'the relation');
+  s = s.replace(/(?<!\p{L})theassociation(?!\p{L})/giu, 'the association');
+  s = s.replace(/(?<!\p{L})theclass(?!\p{L})/giu, 'the class');
+  s = s.replace(/(?<!\p{L})theattribute(?!\p{L})/giu, 'the attribute');
+
   // ── A. Verbos de Creación (crear, armar, construir, diseñar, modelar, generar, definir, registrar, etc.)
   // Abarca: Tuteo (crea), Voseo (creá), Ustedeo (cree), Vosotros (cread), Infinitivo (crear)
   // Enclíticos: crealo, creala, creame, armalo, etc.
@@ -126,25 +136,31 @@ export function normalizeUmlUtterance(raw: string): string {
   );
 
   // ── D. Verbos de Renombrar / Modificar (renombrar, cambiar, modificar, actualizar, editar)
+  // Enclíticos en español: cambiame, cámbiame, cambianos, modificame, actualizame, etc.
+  // Sinónimos en inglés: rename, modify, update, change, alter, convert, transform, switch
   s = s.replace(
-    /(?<!\p{L})(?:renombr[aáeé]|renomvrar|renomra|rnombre|renombrad|renombrar|renombr[aá]l[oa]|ren[oó]mbral[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:renombr[aáeé]|renomvrar|renomra|rnombre|renombrad|renombrar|renombr[aá]l[oa]|ren[oó]mbral[oa]|renombr[aá]me|ren[oó]mbrame|renombr[aá]le[s]?|ren[oó]mbrale[s]?|rename|renaming|re-name)(?!\p{L})/giu,
     'renombra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:cambi[aáeé]|cambiad|cambiar|cambi[aá]le[s]?|c[aá]mbiale[s]?|cambi[aá]l[oa]|c[aá]mbial[oa])(?!\p{L})/giu,
-    'renombra'
+    /(?<!\p{L})(?:cambi[aáeé]|cambiad|cambiar|cambi[aá]le[s]?|c[aá]mbiale[s]?|cambi[aá]l[oa]|c[aá]mbial[oa]|cambi[aá]me|c[aá]mbiame|cambi[aá]nos|c[aá]mbianos|chang(?:e|ing|ed)|switch(?:ing|ed)?)(?!\p{L})/giu,
+    'cambia'
   );
   s = s.replace(
-    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa]|modif[ií]cal[oa])(?!\p{L})/giu,
-    'renombra'
+    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa]|modif[ií]cal[oa]|modific[aá]me|modif[ií]came|modific[aá]le[s]?|modif[ií]cale[s]?|modific[aá]nos|modif[ií]canos|modify|modifying|modified|alter(?:ing|ed)?)(?!\p{L})/giu,
+    'cambia'
   );
   s = s.replace(
-    /(?<!\p{L})(?:actualiz[aá]|actualice|actualizad|actualizar|actualiz[aá]l[oa]|actual[ií]zal[oa])(?!\p{L})/giu,
-    'renombra'
+    /(?<!\p{L})(?:actualiz[aá]|actualice|actualizad|actualizar|actualiz[aá]l[oa]|actual[ií]zal[oa]|actualiz[aá]me|actual[ií]zame|actualiz[aá]le[s]?|actual[ií]zale[s]?|updat(?:e|ing|ed))(?!\p{L})/giu,
+    'cambia'
   );
   s = s.replace(
-    /(?<!\p{L})(?:edit[aáeé]|editad|editar|edit[aá]l[oa]|ed[ií]tal[oa])(?!\p{L})/giu,
-    'renombra'
+    /(?<!\p{L})(?:edit[aáeé]|editad|editar|edit[aá]l[oa]|ed[ií]tal[oa]|edit[aá]me|ed[ií]tame|edit(?:ing|ed)?)(?!\p{L})/giu,
+    'cambia'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:convert[aáeé]|convertid|convertir|convert[aá]l[oa]|convi[eé]rtal[oa]|convert[aá]me|convi[eé]rtame|convert(?:ing|ed)?|transform(?:ing|ed)?|turn\s+(?:in)?to)(?!\p{L})/giu,
+    'cambia'
   );
 
   // ── E. Verbos de Relación / Conexión (conectar, relacionar, asociar, vincular, unir, enlazar)
@@ -198,17 +214,26 @@ export function normalizeUmlUtterance(raw: string): string {
   // ── I. Fraseos de Relaciones Especiales (Composición, Agregación, Herencia, Realización, Dependencia, Reflexiva)
   // Composición (fuerte): "compone", "compuesto por"
   s = s.replace(
-    /(?<!\p{L})(?:est[aá]\s+compuest[ao]\s+(?:por|de)|compuest[ao]\s+por|es\s+composici[oó]n\s+de|contiene\s+fuertemente|contiene\s+exclusivamente)(?!\p{L})/giu,
+    /(?<!\p{L})(?:est[aá]\s+compuest[ao]\s+(?:por|de)|compuest[ao]\s+por|es\s+composici[oó]n\s+de|contiene\s+fuertemente|contiene\s+exclusivamente|(?:is\s+)?composed\s+of|(?:is\s+)?a\s+composition\s+of)(?!\p{L})/giu,
     'compone'
   );
   s = s.replace(
-    /(?<!\p{L})(?:es\s+parte\s+de|forma\s+parte\s+de|pertenece\s+a)(?!\p{L})/giu,
+    /(?<!\p{L})(?:es\s+parte\s+de|forma\s+parte\s+de|pertenece\s+a|(?:is\s+)?part\s+of|belongs\s+to)(?!\p{L})/giu,
     'es parte de'
   );
   // Agregación (débil): "agregación entre", "agrega"
   s = s.replace(
-    /(?<!\p{L})(?:est[aá]\s+agregad[ao]\s+a|es\s+agregaci[oó]n\s+de)(?!\p{L})/giu,
+    /(?<!\p{L})(?:est[aá]\s+agregad[ao]\s+a|es\s+agregaci[oó]n\s+de|(?:is\s+)?aggregated\s+(?:to|in|with)|(?:is\s+)?an\s+aggregation\s+of)(?!\p{L})/giu,
     'agregación entre'
+  );
+  // Semántica Todo/Parte: estandarizar a "donde la clase todo es" y "rombo en"
+  s = s.replace(
+    /(?<!\p{L})(?:where\s+(?:the\s+)?(?:whole|container|owner)\s+(?:class\s+)?is|whole\s+is|container\s+is)(?!\p{L})/giu,
+    'donde la clase todo es'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:diamond\s+(?:on|at)|black\s+diamond\s+(?:on|at)|white\s+diamond\s+(?:on|at))(?!\p{L})/giu,
+    'rombo en'
   );
   // Herencia / Generalización: estandarizar a "inherits from" (reconocido directamente por el intérprete)
   s = s.replace(
