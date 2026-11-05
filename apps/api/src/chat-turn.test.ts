@@ -323,7 +323,7 @@ describe('processUnifiedAmongusTurn', () => {
       expect(res.replyContent).toContain('1. **Auditoria**');
     });
 
-    it('does not stream chunks in real-time to the client for /suggest', async () => {
+    it('streams chunks in real-time to the client for /suggest and halts stream at item 4', async () => {
       const streamedToClient: string[] = [];
       const clientOnChunk = (chunk: string) => {
         streamedToClient.push(chunk);
@@ -335,6 +335,9 @@ describe('processUnifiedAmongusTurn', () => {
           capturedOptions = options;
           if (typeof options?.onChunk === 'function') {
             options.onChunk('1. **Auditoria**: Registra logs.\n');
+            options.onChunk('2. **Reclamo**: Gestiona quejas.\n');
+            options.onChunk('3. **Sucursal**: Punto físico.\n');
+            options.onChunk('\n4. **FacturaItem**: Slop.');
           }
           return '1. **Auditoria**: Registra logs.\n2. **Reclamo**: Gestiona quejas.\n3. **Sucursal**: Punto físico.\n\n4. **FacturaItem**: Slop.';
         }),
@@ -357,9 +360,13 @@ describe('processUnifiedAmongusTurn', () => {
         clientOnChunk
       );
 
-      // onChunk must be undefined for /suggest to prevent streaming unpruned text to UI
-      expect(capturedOptions.onChunk).toBeUndefined();
-      expect(streamedToClient).toEqual([]);
+      // onChunk is passed to stream tokens in real-time to the UI
+      expect(typeof capturedOptions.onChunk).toBe('function');
+      expect(streamedToClient.join('')).toContain('1. **Auditoria**');
+      expect(streamedToClient.join('')).toContain('2. **Reclamo**');
+      expect(streamedToClient.join('')).toContain('3. **Sucursal**');
+      // The 4th item was halted by the streaming valve
+      expect(streamedToClient.join('')).not.toContain('FacturaItem');
 
       // Final reply must still be pruned to at most 3 items and no chimeras
       expect(res.replyContent).toContain('1. **Auditoria**');
@@ -510,6 +517,101 @@ describe('processUnifiedAmongusTurn', () => {
         .map((d: any) => d.name);
       expect(classNames.length).toBeGreaterThanOrEqual(2);
       expect(classNames.length).toBeLessThanOrEqual(5);
+    });
+  });
+
+  describe('Relationship mutation parity & Contextual diagram explanation', () => {
+    it('mutates an existing association to composition when user requests it', async () => {
+      const mockDiagram = {
+        id: 'diag-shoes',
+        classes: [
+          { id: 'c1', name: 'Zapato' },
+          { id: 'c2', name: 'Material' },
+        ],
+        associations: [
+          {
+            id: 'a1',
+            sourceClassId: 'c1',
+            targetClassId: 'c2',
+            aggregation: 'none',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1..*',
+          },
+        ],
+      };
+
+      // Simular que el LLM devolvió texto plano conversacional como en la captura
+      const mockLlm = {
+        chat: vi.fn().mockResolvedValue(
+          'Claro, aquí tienes la nueva asociación: - Relación entre "Zapato" y "Material" (composición, multiplicidad: 1 a 1).'
+        ),
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambia el tipo de relacion, que sea una de composicion y no de asociacion',
+        'Carlos',
+        'es',
+        'diag-shoes',
+        mockLlm as any,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      expect(res.batchDelta?.deltas.length).toBeGreaterThan(0);
+      const assocDelta = res.batchDelta?.deltas.find((d: any) => d.kind === 'association');
+      expect(assocDelta).toBeDefined();
+      expect(assocDelta.op).toBe('updateMultiplicity');
+      expect(assocDelta.associationId).toBe('a1');
+      expect(assocDelta.aggregation).toBe('composite');
+    });
+
+    it('explains diagram context and key classes when asked in natural language', async () => {
+      const mockDiagram = {
+        id: 'diag-shoes',
+        classes: [
+          { id: 'c1', name: 'Zapato', attributes: [{ name: 'modelo', type: 'string' }] },
+          { id: 'c2', name: 'Material', attributes: [{ name: 'tipo', type: 'string' }] },
+          { id: 'c3', name: 'Color', attributes: [{ name: 'nombre', type: 'string' }] },
+        ],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'explicame el contexto del diagrama actual',
+        'Carlos',
+        'es',
+        'diag-shoes',
+        undefined, // Sin LLM para probar el fallback determinista contextual
+        mockDiagram
+      );
+
+      expect(res.replyContent).toContain('El diagrama actual modela la arquitectura');
+      expect(res.replyContent).toContain('Zapato');
+      expect(res.replyContent).toContain('Material');
+      expect(res.replyContent).toContain('Color');
+    });
+
+    it('enriches /context command with domain entities list', async () => {
+      const mockDiagram = {
+        id: 'diag-shoes',
+        classes: [
+          { id: 'c1', name: 'Zapato' },
+          { id: 'c2', name: 'Material' },
+        ],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        '/context',
+        'Carlos',
+        'es',
+        'diag-shoes',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.replyContent).toContain('Estado del Contexto Real');
+      expect(res.replyContent).toContain('Entidades del Dominio en el Lienzo (2): Zapato, Material');
     });
   });
 });

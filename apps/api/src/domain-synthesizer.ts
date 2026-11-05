@@ -1381,7 +1381,8 @@ export function expandSemanticDomainToDelta(
       const isRequestedComposite = assoc.aggregation === 'composite' || (assoc as any).type === 'composition';
       const isRequestedShared = assoc.aggregation === 'shared' || (assoc as any).type === 'aggregation';
 
-      const canBeComposite = isRequestedComposite && !isRecursive && isHeuristicComposition(sourceName, targetName, !!assocClassId || !!assoc.associationClass);
+      const isExplicitInText = !!originText && /(?:composici[oó]n|composite)\b/i.test(originText);
+      const canBeComposite = isRequestedComposite && !isRecursive && (isExplicitInText || isHeuristicComposition(sourceName, targetName, !!assocClassId || !!assoc.associationClass));
       const targetAggregation = canBeComposite ? 'composite' : (isRequestedShared ? 'shared' : 'none');
       const targetEnd = (canBeComposite || isRequestedShared) ? (assoc.aggregationEnd ?? 'source') : 'source';
 
@@ -2100,6 +2101,122 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
       attributes: c.attributes.map(a => ({ name: a, type: 'string' })),
     }));
     return { classes: mappedClasses, associations };
+  }
+
+  return null;
+}
+
+/**
+ * Extrae mutaciones explícitas de relaciones y clases solicitadas por el usuario o formuladas en el chat.
+ * Soporta cambios de agregación (composición, agregación, asociación), modificaciones de clase (abstracta, interfaz)
+ * y renombrados directos, vinculándolos con las clases y relaciones reales presentes en el lienzo.
+ */
+export function extractExplicitModelMutations(text: string, currentDiagram?: any): SemanticDomainModel | null {
+  if (!text || !currentDiagram) return null;
+  const normalized = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const classes: Array<{ id: string; name: string }> = currentDiagram.classes || [];
+  const associations: Array<any> = currentDiagram.associations || [];
+  if (classes.length === 0) return null;
+
+  // 1. Mutación de relación (asociación <-> composición <-> agregación)
+  const isRelationChange =
+    /(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea).*?(?:relaci[oó]n|asociaci[oó]n|tipo|v[ií]nculo)/i.test(normalized) ||
+    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo)/i.test(normalized) ||
+    /(?:relaci[oó]n\s+entre\s+["']?[A-Za-z_ñÑáéíóúÁÉÍÓÚ].*?\(.*?(?:composici|agregaci|asociaci))/i.test(text);
+
+  if (isRelationChange) {
+    let targetAggregation: 'composite' | 'shared' | 'none' = 'none';
+    if (/(?:composici[oó]n|composite|rombo\s+negro)/i.test(normalized)) {
+      targetAggregation = 'composite';
+    } else if (/(?:agregaci[oó]n|shared|rombo\s+blanco)/i.test(normalized)) {
+      targetAggregation = 'shared';
+    } else if (/(?:asociaci[oó]n\s+simple|asociaci[oó]n\b|simple)/i.test(normalized)) {
+      targetAggregation = 'none';
+    }
+
+    // Buscar qué clases del lienzo están mencionadas en el texto
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      return regex.test(normalized);
+    });
+
+    if (mentionedClasses.length >= 2) {
+      // Buscar si existe una relación en el lienzo entre el par de clases
+      const c1 = mentionedClasses[0]!;
+      const c2 = mentionedClasses[1]!;
+      const matchingAssoc = associations.find(
+        (a) =>
+          (a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
+          (a.sourceClassId === c2.id && a.targetClassId === c1.id)
+      );
+
+      if (matchingAssoc) {
+        const sourceName = matchingAssoc.sourceClassId === c1.id ? c1.name : c2.name;
+        const targetName = matchingAssoc.targetClassId === c2.id ? c2.name : c1.name;
+        return {
+          action: 'modify',
+          updates: {
+            associations: [
+              {
+                source: sourceName,
+                target: targetName,
+                aggregation: targetAggregation,
+              },
+            ],
+          },
+        };
+      }
+    } else if (associations.length === 1) {
+      // Si el lienzo tiene una sola asociación y el usuario pide cambiar el tipo de relación
+      const singleAssoc = associations[0]!;
+      const src = classes.find((c) => c.id === singleAssoc.sourceClassId);
+      const tgt = classes.find((c) => c.id === singleAssoc.targetClassId);
+      if (src && tgt) {
+        return {
+          action: 'modify',
+          updates: {
+            associations: [
+              {
+                source: src.name,
+                target: tgt.name,
+                aggregation: targetAggregation,
+              },
+            ],
+          },
+        };
+      }
+    }
+  }
+
+  // 2. Mutación de clase a abstracta o interfaz
+  const isClassMod =
+    /(?:hac|haz|marc|cambi|modific|que\s+sea).*?(?:clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*).*?(?:abstract|interfa)/i.exec(text) ||
+    /(?:clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:sea\s+)?(?:abstract|interfa)/i.exec(text);
+
+  if (isClassMod) {
+    const rawTargetName = isClassMod[1]?.trim();
+    const matchedClass = classes.find((c) => c.name.toLowerCase() === rawTargetName?.toLowerCase());
+    if (matchedClass) {
+      const wantsAbstract = /abstract/i.test(normalized);
+      const wantsInterface = /interfa/i.test(normalized);
+      return {
+        action: 'modify',
+        updates: {
+          classes: [
+            {
+              name: matchedClass.name,
+              isAbstract: wantsAbstract,
+              classKind: wantsInterface ? 'interface' : 'class',
+            },
+          ],
+        },
+      };
+    }
   }
 
   return null;

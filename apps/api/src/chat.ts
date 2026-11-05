@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { z } from 'zod';
-import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel, canonicalToSemantic } from './domain-synthesizer.js';
+import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainModel, canonicalToSemantic, extractExplicitModelMutations } from './domain-synthesizer.js';
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
 import { auditDiagramOOAD } from './diagram-auditor.js';
@@ -182,7 +182,8 @@ export function generateAmongusContextualReply(
   userContent: string,
   senderName: string,
   language: 'es' | 'en' = 'es',
-  peerUsers?: readonly string[]
+  peerUsers?: readonly string[],
+  diagram?: any
 ): string {
   const text = userContent
     .normalize('NFD')
@@ -229,6 +230,38 @@ export function generateAmongusContextualReply(
     return isEn
       ? `What domain or specific entities would you like to model, ${senderName}? Please tell me which classes and attributes to include or type '/model <topic>' (e.g. /model library or /model airline) so I can prepare an exact proposal on the canvas.`
       : `¿Qué entidades o dominio te gustaría modelar, ${senderName}? Podés decirme qué clases y atributos querés incluir o escribir '/model <tema>' (ej. /model biblioteca o /model aerolinea) para que arme la propuesta exacta en el lienzo.`;
+  }
+
+  // 3. Consultas sobre el contexto, significado o clases del diagrama actual
+  const isDiagramContextQuery =
+    /(?:contexto|de\s+qu[eé]\s+trata|explic(?:ame|a|ar)?\s+(?:el\s+)?(?:diagrama|modelo|lienzo)|qu[eé]\s+(?:hace|modela|representa)\s+(?:el\s+)?(?:diagrama|modelo|sistema)|qu[eé]\s+clases?\s+(?:hay|tenemos|existen)|resumen\s+del\s+(?:diagrama|modelo)|what\s+does\s+the\s+diagram\s+(?:do|represent)|explain\s+(?:the\s+)?(?:diagram|model|canvas)|what\s+classes\s+are\s+there)/i.test(
+      text
+    );
+
+  if (isDiagramContextQuery) {
+    if (!diagram || !diagram.classes || diagram.classes.length === 0) {
+      return isEn
+        ? 'The canvas is currently empty (no classes or relationships). You can ask me to model a domain (e.g. /model ecommerce) or create your first class.'
+        : 'Actualmente el lienzo está vacío (sin clases ni relaciones). Podés pedirme modelar un dominio (ej. /model ecommerce) o crear tu primera clase.';
+    }
+
+    const classNames = diagram.classes.map((c: any) => c.name);
+    const domainMatch = matchCanonicalDomain(classNames.join(' '));
+    const domainTitle = domainMatch ? ` (${domainMatch.domain.title})` : '';
+
+    if (isEn) {
+      const summaryList = diagram.classes.map((c: any) => {
+        const attrs = (c.attributes || []).map((a: any) => a.name).join(', ');
+        return `• **${c.name}**${attrs ? `: ${attrs}` : ''}`;
+      }).join('\n');
+      return `The current diagram models the domain architecture${domainTitle}. It contains ${diagram.classes.length} classes:\n${summaryList}\n\nYou can ask me to extend the model, modify relationships, or audit its OOAD structure.`;
+    }
+
+    const summaryList = diagram.classes.map((c: any) => {
+      const attrs = (c.attributes || []).map((a: any) => a.name).join(', ');
+      return `• **${c.name}**${attrs ? `: ${attrs}` : ''}`;
+    }).join('\n');
+    return `El diagrama actual modela la arquitectura del dominio${domainTitle}. Contiene ${diagram.classes.length} clases principales:\n${summaryList}\n\nPodés pedirme que agregue nuevas entidades, cambie el tipo de relación entre clases (ej. a composición) o audite el diseño con /audit.`;
   }
 
   if (isEn) {
@@ -761,7 +794,7 @@ export async function processUnifiedAmongusTurn(
     normalized.includes('?');
 
   const isImperativeAction =
-    /^(?:por\s+favor\s+)?(?:agreg[aá]|agrga|agregar|craer|cre[aá]|crear|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|brra|borrar|elimi[nñ][aá]|elmina|eliminar|arm[aá]|gener[aá]|constru[yí]|add|create|connect|link|delete|remove)\b/i.test(
+    /^(?:por\s+favor\s+)?(?:agreg[aá]|agrga|agregar|craer|cre[aá]|crear|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|brra|borrar|elimi[nñ][aá]|elmina|eliminar|arm[aá]|gener[aá]|constru[yí]|renombr[aá]|renombrar|cambi[aá]|cambiar|modific[aá]|modificar|add|create|connect|link|delete|remove|rename|modify)\b/i.test(
       normalized.replace(/^[¿?¡!\s]+/, '').trim()
     );
 
@@ -769,7 +802,7 @@ export async function processUnifiedAmongusTurn(
     !isExplicitQuestion &&
     !isToolQuery &&
     (isImperativeAction ||
-      /(agreg|agrga|crea|craer|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|brra|elimin|elmina|hace|haz|arma|genera|constru|plante|propon|levant|falt|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|pizzeria|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
+      /(agreg|agrga|crea|craer|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|brra|elimin|elmina|hace|haz|arma|genera|constru|plante|propon|levant|falt|renombr|rename|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|pizzeria|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
         normalized
       ));
 
@@ -863,9 +896,13 @@ export async function processUnifiedAmongusTurn(
       tip = isEn ? 'Acceptable speed.' : 'Velocidad aceptable.';
     }
 
+    const classesSummary = classCount > 0
+      ? `\n\n${isEn ? 'Domain Entities on Canvas' : 'Entidades del Dominio en el Lienzo'} (${classCount}): ${diagram.classes.map((c: any) => c.name).join(', ')}`
+      : '';
+
     const reply = isEn
-      ? `Real Context Status: ~${totalInputTokens} input tokens (System/Rules: ${systemBaseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}${domainGroundingTokens ? `, Domain RAG: ${domainGroundingTokens}` : ''}). Output budget: 650 tokens (max 5 classes). Estimated CPU Latency: ${latency}. Recommendation: ${tip}`
-      : `Estado del Contexto Real: ~${totalInputTokens} tokens de entrada (Sistema/Reglas: ${systemBaseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}${domainGroundingTokens ? `, Catálogo RAG: ${domainGroundingTokens}` : ''}). Tope de salida: 650 tokens (máx. 5 clases). Latencia estimada en CPU: ${latency}. Recomendación: ${tip}`;
+      ? `Real Context Status: ~${totalInputTokens} input tokens (System/Rules: ${systemBaseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}${domainGroundingTokens ? `, Domain RAG: ${domainGroundingTokens}` : ''}). Output budget: 650 tokens (max 5 classes). Estimated CPU Latency: ${latency}. Recommendation: ${tip}${classesSummary}`
+      : `Estado del Contexto Real: ~${totalInputTokens} tokens de entrada (Sistema/Reglas: ${systemBaseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}${domainGroundingTokens ? `, Catálogo RAG: ${domainGroundingTokens}` : ''}). Tope de salida: 650 tokens (máx. 5 clases). Latencia estimada en CPU: ${latency}. Recomendación: ${tip}${classesSummary}`;
 
     return { replyContent: reply };
   }
@@ -1002,6 +1039,22 @@ export async function processUnifiedAmongusTurn(
           'Sé directo, pedagógico y conciso, sin bloques de código ni JSON.',
         ].filter(Boolean).join('\n');
 
+    let suggestChunks = '';
+    let streamHalted = false;
+
+    const wrappedSuggestChunk = (chunk: string) => {
+      suggestChunks += chunk;
+      if (streamHalted) return;
+
+      // Si el acumulador detecta el inicio de un 4to ítem numerado, cortamos el stream para mantener el límite estricto de 3
+      if (/(?:\n|^)\s*4\s*[\.\)-]/.test(suggestChunks)) {
+        streamHalted = true;
+        return;
+      }
+
+      onChunk?.(chunk);
+    };
+
     try {
       const suggestResult = await llm.chat(
         [
@@ -1011,7 +1064,7 @@ export async function processUnifiedAmongusTurn(
         {
           timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
           maxTokens: 400,
-          onChunk: undefined, // No emitir en streaming en tiempo real a la UI: esperar el bloque completo para podar y entregar limpio
+          onChunk: onChunk ? wrappedSuggestChunk : undefined, // Streaming en tiempo real a la UI token a token
           stop: ['\n4.', '\n4 ', '4. ', '4.-', '<|im_end|>'],
           repeatPenalty: 1.15,
           repeatLastN: 128,
@@ -1019,6 +1072,9 @@ export async function processUnifiedAmongusTurn(
       );
       return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestResult), existingNames).trim() };
     } catch {
+      if (suggestChunks.trim().length > 30) {
+        return { replyContent: pruneSuggestionsToMax3(stripEmojis(suggestChunks), existingNames).trim() };
+      }
       return {
         replyContent: isEn
           ? 'I suggest reviewing transaction details or intermediate entities for your model.'
@@ -1133,7 +1189,7 @@ export async function processUnifiedAmongusTurn(
 
   if (!llm || typeof llm.chat !== 'function') {
     return {
-      replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers),
+      replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers, diagram),
     };
   }
 
@@ -1306,11 +1362,26 @@ export async function processUnifiedAmongusTurn(
       }
     }
 
-    // 2b. Resiliencia: si el usuario solicitó modelar o crear un dominio/sistema pero el modelo no devolvió JSON,
-    // sintetizar la propuesta directamente para que el usuario reciba su tarjeta visual en lugar de texto plano
+    // 2b. Resiliencia: si el usuario solicitó modelar, cambiar relaciones o mutar clases pero el modelo no devolvió JSON
     if (!hasAnyContent && isAction) {
+      // 2b.1 Extraer mutación determinista directa (cambio de tipo de relación a composición/agregación, clase abstracta, etc.)
+      const explicitMutation = extractExplicitModelMutations(`${userContent} ${clean}`, diagram);
+      if (explicitMutation) {
+        const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
+        if (mutationDelta && mutationDelta.deltas.length > 0) {
+          const defaultReply = isEn
+            ? 'I have prepared the proposal for this change. You can preview the updated relationship on the canvas and confirm to apply it.'
+            : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
+          return {
+            replyContent: defaultReply,
+            batchDelta: mutationDelta,
+          };
+        }
+      }
+
+      // 2b.2 Síntesis resiliente si el usuario pidió modelar o modificar pero el modelo no emitió JSON
       const isExplicitModelingRequest =
-        /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur|agrga|agreg|clse|calse|craer)/i.test(
+        /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur|agrga|agreg|clse|calse|craer|cambi|modific|relaci[oó]n|composici[oó]n|agregaci[oó]n|asociaci[oó]n)/i.test(
           cleanContent
         );
       if (isExplicitModelingRequest) {
@@ -1396,7 +1467,7 @@ export async function processUnifiedAmongusTurn(
   }
 
   return {
-    replyContent: generateAmongusContextualReply(userContent, senderName, language),
+    replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers, diagram),
   };
 }
 

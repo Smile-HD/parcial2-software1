@@ -71,7 +71,7 @@ export function classifyTurnIntent(
     normalized.includes('?');
 
   const isImperativeAction =
-    /^(?:por\s+favor\s+)?(?:agreg[aá]|agrga|agregar|craer|cre[aá]|crear|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|brra|borrar|elimi[nñ][aá]|elmina|eliminar|arm[aá]|gener[aá]|constru[yí]|add|create|connect|link|delete|remove)\b/i.test(
+    /^(?:por\s+favor\s+)?(?:agreg[aá]|agrga|agregar|craer|cre[aá]|crear|dise[ñn][aá]|model[aá]|conect[aá]|incorpor[aá]|insert[aá]|quit[aá]|borr[aá]|brra|borrar|elimi[nñ][aá]|elmina|eliminar|arm[aá]|gener[aá]|constru[yí]|renombr[aá]|renombrar|cambi[aá]|cambiar|modific[aá]|modificar|add|create|connect|link|delete|remove|rename|modify)\b/i.test(
       normalized.replace(/^[¿?¡!\s]+/, '').trim()
     );
 
@@ -79,7 +79,7 @@ export function classifyTurnIntent(
     !isExplicitQuestion &&
     !isToolQuery &&
     (isImperativeAction ||
-      /(agreg|agrga|crea|craer|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|brra|elimin|elmina|hace|haz|arma|genera|constru|plante|propon|levant|falt|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|pizzeria|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
+      /(agreg|agrga|crea|craer|dise[ñn]|model|conecta|generaliz|hered|implement|depend|n-ari|cambi|modific|marca|actualiz|pone|pon\b|insert|quit|borr|brra|elimin|elmina|hace|haz|arma|genera|constru|plante|propon|levant|falt|renombr|rename|base de datos|aerolinea|vuelo|hotel|hospital|tienda|comercio|banco|escuela|universidad|reserva|factura|venta|alquiler|biblioteca|pizzeria|add|create|connect|modify|link|delete|remove|abstract|interface)/i.test(
         normalized
       ));
 
@@ -133,23 +133,28 @@ export function buildActionPrompt(options: Omit<PromptBuildOptions, 'isAction'>)
       '1. NEVER output plain text introductions, greetings, explanations, or Markdown bullet points.',
       '2. YOUR ENTIRE RESPONSE MUST START IMMEDIATELY WITH THE ```json BLOCK.',
       '3. STRICT LIMIT: Generate AT MOST 5 classes in your proposal (ideally 3 to 5 core classes). NEVER exceed 5 classes in a turn.',
-      '4. OOAD DESIGN PRINCIPLES:',
-      '   - Default to plain association ("aggregation": "none"). Use composition ("composite") ONLY for strict lifecycle dependency.',
-      '   - Associations: specify "sourceMultiplicity" (source end) and "targetMultiplicity" (target end) using standard "1", "0..1", "1..*", "0..*".',
-      '   - Recursive associations: same class in source and target with "sourceRole" and "targetRole".',
-      '   - Generalizations: [{"subclass": "Child", "superclass": "Parent"}]. Do not create associations between child and parent.',
-      '   - Zero duplicates: at most ONE relationship between any two classes. Zero empty classes: each class must have 2 to 4 domain attributes.',
+      '4. OOAD DESIGN & MUTATIONS:',
+      '   - Default: "aggregation": "none". Composition (existential): "composite". Aggregation: "shared".',
+      '   - To mutate relation: specify source, target, and new aggregation ("composite"|"shared"|"none").',
+      '   - Multiplicities: "1", "0..1", "1..*", "0..*".',
+      '   - Inheritance: "generalizations": [{"subclass": "Child", "superclass": "Parent"}]. Never link child to parent.',
+      '   - Mutations: use "updates" and "renames". Deletions: "deletions".',
       'Output schema:',
       '```json',
       '{',
       '  "action": "modify",',
       '  "classes": [',
-      '    { "name": "Airline", "attributes": [{ "name": "name", "type": "string" }, { "name": "iataCode", "type": "string" }] },',
-      '    { "name": "Flight", "attributes": [{ "name": "flightNumber", "type": "string" }, { "name": "capacity", "type": "int" }] }',
+      '    { "name": "Airline", "attributes": [{ "name": "name", "type": "string" }, { "name": "iataCode", "type": "string" }] }',
       '  ],',
       '  "associations": [',
       '    { "source": "Airline", "target": "Flight", "aggregation": "none", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" }',
-      '  ]',
+      '  ],',
+      '  "updates": {',
+      '    "associations": [{ "source": "Order", "target": "OrderItem", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1..*" }],',
+      '    "classes": [{ "name": "Vehicle", "isAbstract": true }]',
+      '  },',
+      '  "renames": { "classes": [{ "from": "OldName", "to": "NewName" }] },',
+      '  "deletions": { "classes": ["ObsoleteClass"], "associations": [{ "source": "A", "target": "B" }] }',
       '}',
       '```',
       `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
@@ -162,24 +167,28 @@ export function buildActionPrompt(options: Omit<PromptBuildOptions, 'isAction'>)
     '1. NUNCA escribas introducciones, saludos, explicaciones ni viñetas en texto plano.',
     '2. TU RESPUESTA DEBE EMPEZAR INMEDIATAMENTE CON EL BLOQUE ```json.',
     '3. LÍMITE ESTRICTO: Generá como MÁXIMO 5 clases en la propuesta (idealmente entre 3 y 5 clases núcleo). NUNCA generes más de 5 clases en un solo turno.',
-    '4. REGLAS DE DISEÑO OOAD:',
-    '   - Por defecto asociación simple ("aggregation": "none"). Usá composición ("composite") SOLO cuando la parte dependa existencialmente del todo.',
-    '   - En asociaciones usá multiplicidades estándar: "sourceMultiplicity" y "targetMultiplicity" ("1", "0..1", "1..*", "0..*").',
-    '   - Asociaciones recursivas: misma clase en source y target con "sourceRole" y "targetRole".',
+    '4. REGLAS OOAD Y MUTACIONES:',
+    '   - Por defecto: "aggregation": "none". Composición (existencial): "composite". Agregación: "shared".',
+    '   - Para mutar relación: declará source, target y la nueva aggregation ("composite"|"shared"|"none").',
+    '   - Multiplicidades: "1", "0..1", "1..*", "0..*".',
     '   - Herencia: "generalizations": [{"subclass": "Hijo", "superclass": "Padre"}]. NUNCA asocies subclase con superclase.',
-    '   - Cero duplicados: COMO MÁXIMO UNA relación por par de clases. Cero clases vacías: 2 a 4 atributos por clase.',
-    '   - Extender modelo: Poné en "classes" ÚNICAMENTE las clases nuevas. En "associations" vinculalas con los nombres de las clases del lienzo.',
+    '   - Mutaciones: usá "updates" y "renames". Eliminaciones: "deletions".',
     'Formato de salida requerido:',
     '```json',
     '{',
     '  "action": "modify",',
     '  "classes": [',
-    '    { "name": "Aerolinea", "attributes": [{ "name": "nombre", "type": "string" }, { "name": "codigoIATA", "type": "string" }] },',
-    '    { "name": "Vuelo", "attributes": [{ "name": "codigo", "type": "string" }, { "name": "capacidad", "type": "int" }] }',
+    '    { "name": "Aerolinea", "attributes": [{ "name": "nombre", "type": "string" }, { "name": "codigoIATA", "type": "string" }] }',
     '  ],',
     '  "associations": [',
     '    { "source": "Aerolinea", "target": "Vuelo", "aggregation": "none", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" }',
-    '  ]',
+    '  ],',
+    '  "updates": {',
+    '    "associations": [{ "source": "Zapato", "target": "Material", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1" }],',
+    '    "classes": [{ "name": "Vehiculo", "isAbstract": true }]',
+    '  },',
+    '  "renames": { "classes": [{ "from": "ViejoNombre", "to": "NuevoNombre" }] },',
+    '  "deletions": { "classes": ["ClaseObsoleta"], "associations": [{ "source": "A", "target": "B" }] }',
     '}',
     '```',
     `ESTADO ACTUAL DEL DIAGRAMA EN EL LIENZO:\n${diagramContext}`,
@@ -209,6 +218,7 @@ export function buildConversationalPrompt(options: Omit<PromptBuildOptions, 'isA
       '- Answer in natural, clear, pedagogical human language explaining architectural principles and trade-offs.',
       '- STRICT: NEVER output raw JSON blocks or code tutorials in conversational mode.',
       '- NEVER say "here is the code". The user interacts with a visual diagramming canvas.',
+      '- When asked about the current diagram, its context, or what the model represents: analyze the classes and relationships from CURRENT CANVAS CONTEXT and provide a clear, pedagogical overview of the business domain, key entities, and how they interact.',
       `CURRENT CANVAS CONTEXT:\n${diagramContext}`,
     ].join('\n');
   }
@@ -226,6 +236,7 @@ export function buildConversationalPrompt(options: Omit<PromptBuildOptions, 'isA
     '- Respondé siempre en lenguaje natural humano, claro y pedagógico como arquitecto de software.',
     '- ESTRICTO: NUNCA incluyas bloques de código ni JSON crudo en tus respuestas conversacionales.',
     '- NUNCA digas "aquí tienes el código" o "acá tenés el código". El usuario interactúa con un lienzo visual.',
+    '- Cuando te pregunten sobre el diagrama actual, su contexto o de qué trata el modelo: analizá las clases y relaciones de ESTADO ACTUAL DEL DIAGRAMA EN EL LIENZO y explicá con claridad pedagógica el dominio de negocio modelado, sus entidades clave y cómo colaboran.',
     `ESTADO ACTUAL DEL DIAGRAMA EN EL LIENZO:\n${diagramContext}`,
   ].join('\n');
 }
