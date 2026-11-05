@@ -2123,11 +2123,16 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   if (classes.length === 0) return null;
 
   // 1. Mutación de relación (asociación <-> composición <-> agregación)
+  const isClassModCandidate =
+    /(?:abstract[ao]?|interfa[cz]|interface)/i.test(normalized) &&
+    /(?:hac|haz|marc|cambi|modific|make|set|turn|convert|defin|sea|to\s+be|as)/i.test(normalized);
+
   const isRelationChange =
-    /(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo|v[ií]nculo|relation|relationship|association|link)/i.test(
+    !isClassModCandidate &&
+    ((/(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link)/i.test(
       normalized
-    ) ||
-    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo|relationship\s+type|change\s+type)/i.test(
+    ) && /(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation|shared|composite|none)/i.test(normalized)) ||
+    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo|relationship\s+type|change\s+type)\s+(?:a|por|to)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation)/i.test(
       normalized
     ) ||
     /(?:relaci[oó]n|relationship|association)\s+(?:entre|between)\s+["']?[A-Za-z_ñÑáéíóúÁÉÍÓÚ].*?\(.*?(?:composici|agregaci|asociaci|composite|aggregation|association)/i.test(
@@ -2135,7 +2140,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     ) ||
     /(?:a|por|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation)/i.test(
       normalized
-    );
+    ));
 
   if (isRelationChange) {
     let targetAggregation: 'composite' | 'shared' | 'none' = 'none';

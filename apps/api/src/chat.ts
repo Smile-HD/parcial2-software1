@@ -1384,8 +1384,8 @@ export async function processUnifiedAmongusTurn(
 
     // 2b. Resiliencia: si el usuario solicitó modelar, cambiar relaciones o mutar clases pero el modelo no devolvió JSON
     if (!hasAnyContent && isAction) {
-      // 2b.1 Extraer mutación determinista directa (cambio de tipo de relación a composición/agregación, clase abstracta, etc.)
-      const explicitMutation = extractExplicitModelMutations(`${userContent} ${clean}`, diagram);
+      // 2b.1 Extraer mutación determinista directa (cambio de tipo de relación a composición/agregación, clase abstracta, renombre, borrado, etc.)
+      const explicitMutation = extractExplicitModelMutations(userContent, diagram);
       if (explicitMutation) {
         const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
         if (mutationDelta && mutationDelta.deltas.length > 0) {
