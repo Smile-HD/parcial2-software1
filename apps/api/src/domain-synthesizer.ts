@@ -2122,13 +2122,175 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   const associations: Array<any> = currentDiagram.associations || [];
   if (classes.length === 0) return null;
 
-  // 1. Mutación de relación (asociación <-> composición <-> agregación)
-  const isClassModCandidate =
+  // 1. Borrado agnóstico determinista (clases, relaciones, atributos)
+  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin[aá]?(?:me|te|le|nos|les)?|borr[aá]?(?:me|te|le|nos|les)?|sac[aá]?(?:me|te|le|nos|les)?|quit[aá]?(?:me|te|le|nos|les)?)\b/i.test(normalized);
+  if (isDeleteIntent) {
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      if (regex.test(normalized)) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
+    });
+
+    // 1a. Borrado de atributo (si menciona atributo/campo o un atributo de clase)
+    const isAttrTarget = /(?:atributo|campo|field|attribute|propiedad|property)/i.test(normalized);
+    if (isAttrTarget) {
+      for (const cls of classes) {
+        if (Array.isArray(cls.attributes)) {
+          for (const attr of cls.attributes) {
+            const aNorm = attr.name.toLowerCase();
+            const attrRegex = new RegExp(`(?:\\b|["'])${aNorm}(?:\\b|["'])`, 'i');
+            if (attrRegex.test(normalized)) {
+              return {
+                action: 'modify',
+                deletions: {
+                  attributes: [{ class: cls.name, attribute: attr.name }],
+                },
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // 1b. Si el usuario pide explícitamente borrar una CLASE específica (ej. "elimina la clase Multa que esta relacionada con Libro")
+    const explicitClassTargetMatch = /(?:la\s+clase\s+|clase\s+|class\s+|tabla\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+    if (explicitClassTargetMatch) {
+      const targetName = explicitClassTargetMatch[1]?.toLowerCase();
+      const targetCls = classes.find((c) => c.name.toLowerCase() === targetName);
+      if (targetCls) {
+        return {
+          action: 'modify',
+          deletions: {
+            classes: [targetCls.name],
+          },
+        };
+      }
+    }
+
+    // 1c. Borrado de relación / asociación
+    const isRelTarget = /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|enlace|link|relationship|association)/i.test(normalized);
+    if (isRelTarget || mentionedClasses.length >= 2) {
+      if (mentionedClasses.length >= 2) {
+        const c1 = mentionedClasses[0]!;
+        const c2 = mentionedClasses[1]!;
+        const matchingAssoc = associations.find(
+          (a) =>
+            (a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
+            (a.sourceClassId === c2.id && a.targetClassId === c1.id)
+        );
+        if (matchingAssoc) {
+          const src = classes.find((c) => c.id === matchingAssoc.sourceClassId);
+          const tgt = classes.find((c) => c.id === matchingAssoc.targetClassId);
+          if (src && tgt) {
+            return {
+              action: 'modify',
+              deletions: {
+                associations: [{ source: src.name, target: tgt.name }],
+              },
+            };
+          }
+        }
+      } else if (associations.length === 1 && isRelTarget) {
+        const singleAssoc = associations[0]!;
+        const src = classes.find((c) => c.id === singleAssoc.sourceClassId);
+        const tgt = classes.find((c) => c.id === singleAssoc.targetClassId);
+        if (src && tgt) {
+          return {
+            action: 'modify',
+            deletions: {
+              associations: [{ source: src.name, target: tgt.name }],
+            },
+          };
+        }
+      }
+    }
+
+    // 1d. Borrado de clase si se menciona exactamente una clase
+    if (mentionedClasses.length === 1) {
+      return {
+        action: 'modify',
+        deletions: {
+          classes: [mentionedClasses[0]!.name],
+        },
+      };
+    }
+  }
+
+  // 2. Renombrado de clase (ES y EN con pronombres enclíticos)
+  const isClassRename =
+    /(?:rename|renaming|renombr[aáeé]?(?:me|te|le|nos|les)?|change\s+name\s+of)\s+(?:la\s+clase\s+|clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text) ||
+    /(?:cambi[aáeé]?(?:me|te|le|nos|les)?\s+el\s+nombre\s+de\s+(?:la\s+clase\s+|class\s+)?)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+
+  if (isClassRename) {
+    const fromName = isClassRename[1]?.trim();
+    const toName = isClassRename[2]?.trim();
+    const matchedClass = classes.find((c) => c.name.toLowerCase() === fromName?.toLowerCase());
+    if (matchedClass && toName) {
+      return {
+        action: 'modify',
+        renames: {
+          classes: [
+            {
+              from: matchedClass.name,
+              to: toName,
+            },
+          ],
+        },
+      };
+    }
+  }
+
+  // 3. Mutación de clase a abstracta o interfaz (ES y EN)
+  const isClassModIntent =
     /(?:abstract[ao]?|interfa[cz]|interface)/i.test(normalized) &&
     /(?:hac|haz|marc|cambi|modific|make|set|turn|convert|defin|sea|to\s+be|as)/i.test(normalized);
 
+  if (isClassModIntent) {
+    const wantsAbstract = /abstract/i.test(normalized);
+    const wantsInterface = /interfa/i.test(normalized);
+
+    // Priorizar la clase que está directamente adyacente a la declaración (ej. "hace que Multa sea abstracta")
+    const explicitClassContext = /(?:clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:sea\s+|to\s+be\s+|as\s+)?(?:abstract|interfa)/i.exec(text) ||
+      /(?:abstract[ao]?|interfa[cz]|interface).*?(?:para\s+|de\s+|in\s+|for\s+)(?:la\s+clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+
+    let matchedClass: { id: string; name: string } | undefined;
+    if (explicitClassContext) {
+      const candName = explicitClassContext[1]?.toLowerCase();
+      matchedClass = classes.find((c) => c.name.toLowerCase() === candName);
+    }
+
+    if (!matchedClass) {
+      const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+      matchedClass = classes.find((c) => {
+        const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const wordRegex = new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i');
+        if (wordRegex.test(normalized)) return true;
+        if (cleanedTextWithoutSpaces.includes(cNorm)) return true;
+        return false;
+      });
+    }
+
+    if (matchedClass) {
+      return {
+        action: 'modify',
+        updates: {
+          classes: [
+            {
+              name: matchedClass.name,
+              isAbstract: wantsAbstract,
+              classKind: wantsInterface ? 'interface' : 'class',
+            },
+          ],
+        },
+      };
+    }
+  }
+
+  // 4. Mutación de relación (asociación <-> composición <-> agregación)
   const isRelationChange =
-    !isClassModCandidate &&
     ((/(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link)/i.test(
       normalized
     ) && /(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation|shared|composite|none)/i.test(normalized)) ||
@@ -2239,202 +2401,6 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
           },
         };
       }
-    }
-  }
-
-  // 2. Mutación de clase a abstracta o interfaz (ES y EN)
-  const isClassModIntent =
-    /(?:abstract[ao]?|interfa[cz]|interface)/i.test(normalized) &&
-    /(?:hac|haz|marc|cambi|modific|make|set|turn|convert|defin|sea|to\s+be|as)/i.test(normalized);
-
-  if (isClassModIntent) {
-    const wantsAbstract = /abstract/i.test(normalized);
-    const wantsInterface = /interfa/i.test(normalized);
-
-    // Buscar cuál de las clases del lienzo está nombrada en el texto
-    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
-    const matchedClass = classes.find((c) => {
-      const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      const wordRegex = new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i');
-      if (wordRegex.test(normalized)) return true;
-      if (cleanedTextWithoutSpaces.includes(cNorm)) return true;
-      return false;
-    });
-
-    if (matchedClass) {
-      return {
-        action: 'modify',
-        updates: {
-          classes: [
-            {
-              name: matchedClass.name,
-              isAbstract: wantsAbstract,
-              classKind: wantsInterface ? 'interface' : 'class',
-            },
-          ],
-        },
-      };
-    }
-  }
-
-  // 3. Renombrado de clase (ES y EN)
-  const isClassRename =
-    /(?:rename|renaming|renombr[aáeé]|renombra|renombrar|change\s+name\s+of)\s+(?:la\s+clase\s+|clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text) ||
-    /(?:cambia\s+el\s+nombre\s+de\s+(?:la\s+clase\s+|class\s+)?)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
-
-  if (isClassRename) {
-    const fromName = isClassRename[1]?.trim();
-    const toName = isClassRename[2]?.trim();
-    const matchedClass = classes.find((c) => c.name.toLowerCase() === fromName?.toLowerCase());
-    if (matchedClass && toName) {
-      return {
-        action: 'modify',
-        renames: {
-          classes: [
-            {
-              from: matchedClass.name,
-              to: toName,
-            },
-          ],
-        },
-      };
-    }
-  }
-
-  // 4. Renombrado de atributo (ES y EN)
-  const isAttrRename =
-    /(?:rename|renaming|renombr[aáeé]|renombra|renombrar|change\s+attribute\s+name)\s+(?:el\s+atributo\s+|atributo\s+|attribute\s+|field\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:en|in)\s+(?:la\s+clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
-  if (isAttrRename) {
-    const fromAttr = isAttrRename[1]?.trim();
-    const toAttr = isAttrRename[2]?.trim();
-    const targetClassName = isAttrRename[3]?.trim();
-    const targetClass = targetClassName
-      ? classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase())
-      : classes.find((c) => Array.isArray(c.attributes) && c.attributes.some((a: any) => a.name.toLowerCase() === fromAttr?.toLowerCase()));
-    if (targetClass && fromAttr && toAttr) {
-      return {
-        action: 'modify',
-        renames: {
-          attributes: [
-            {
-              className: targetClass.name,
-              from: fromAttr,
-              to: toAttr,
-            },
-          ],
-        },
-      };
-    }
-  }
-
-  // 5. Cambio de tipo de atributo (ES y EN)
-  const isAttrUpdate =
-    /(?:cambi[aáeé]|modific[aáeé]|change|modify|update|set)\s+(?:el\s+tipo\s+del?\s+atributo\s+|tipo\s+de\s+|type\s+of\s+attribute\s+|type\s+of\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]+)(?:\s+(?:en|in)\s+(?:la\s+clase\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
-  if (isAttrUpdate) {
-    const attrName = isAttrUpdate[1]?.trim();
-    const newType = isAttrUpdate[2]?.trim().toLowerCase();
-    const targetClassName = isAttrUpdate[3]?.trim();
-    const validTypes = ['string', 'int', 'integer', 'float', 'double', 'boolean', 'bool', 'date', 'void'];
-    if (validTypes.includes(newType)) {
-      const targetClass = targetClassName
-        ? classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase())
-        : classes.find((c) => Array.isArray(c.attributes) && c.attributes.some((a: any) => a.name.toLowerCase() === attrName?.toLowerCase()));
-      if (targetClass && attrName) {
-        return {
-          action: 'modify',
-          updates: {
-            attributes: [
-              {
-                className: targetClass.name,
-                name: attrName,
-                type: newType === 'integer' ? 'int' : newType === 'bool' ? 'boolean' : newType,
-              },
-            ],
-          },
-        };
-      }
-    }
-  }
-
-  // 6. Borrado agnóstico de clases, relaciones o atributos (ES y EN)
-  const isDeleteIntent = /\b(?:delete|remove|elimina|eliminá|eliminar|elmina|borra|borrá|borrar|brra|sacar|sacá|saca|quitar|quitá|quita)\b/i.test(normalized);
-  if (isDeleteIntent) {
-    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
-    const mentionedClasses = classes.filter((c) => {
-      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
-      if (regex.test(normalized)) return true;
-      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
-      return false;
-    });
-
-    const isRelTarget = /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|enlace|link|relationship|association)/i.test(normalized);
-    if (isRelTarget || mentionedClasses.length >= 2) {
-      if (mentionedClasses.length >= 2) {
-        const c1 = mentionedClasses[0]!;
-        const c2 = mentionedClasses[1]!;
-        const matchingAssoc = associations.find(
-          (a) =>
-            (a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
-            (a.sourceClassId === c2.id && a.targetClassId === c1.id)
-        );
-        if (matchingAssoc) {
-          const src = classes.find((c) => c.id === matchingAssoc.sourceClassId);
-          const tgt = classes.find((c) => c.id === matchingAssoc.targetClassId);
-          if (src && tgt) {
-            return {
-              action: 'modify',
-              deletions: {
-                associations: [{ source: src.name, target: tgt.name }],
-              },
-            };
-          }
-        }
-      } else if (associations.length === 1 && isRelTarget) {
-        const singleAssoc = associations[0]!;
-        const src = classes.find((c) => c.id === singleAssoc.sourceClassId);
-        const tgt = classes.find((c) => c.id === singleAssoc.targetClassId);
-        if (src && tgt) {
-          return {
-            action: 'modify',
-            deletions: {
-              associations: [{ source: src.name, target: tgt.name }],
-            },
-          };
-        }
-      }
-    }
-
-    // Borrado agnóstico de atributo
-    const isAttrTarget = /(?:atributo|campo|field|attribute|propiedad|property)/i.test(normalized);
-    if (isAttrTarget) {
-      for (const cls of classes) {
-        if (Array.isArray(cls.attributes)) {
-          for (const attr of cls.attributes) {
-            const aNorm = attr.name.toLowerCase();
-            const attrRegex = new RegExp(`(?:\\b|["'])${aNorm}(?:\\b|["'])`, 'i');
-            if (attrRegex.test(normalized)) {
-              return {
-                action: 'modify',
-                deletions: {
-                  attributes: [{ class: cls.name, attribute: attr.name }],
-                },
-              };
-            }
-          }
-        }
-      }
-    }
-
-    // Borrado agnóstico de clase si coincide con una clase del lienzo
-    if (mentionedClasses.length === 1) {
-      const targetClass = mentionedClasses[0]!;
-      return {
-        action: 'modify',
-        deletions: {
-          classes: [targetClass.name],
-        },
-      };
     }
   }
 
