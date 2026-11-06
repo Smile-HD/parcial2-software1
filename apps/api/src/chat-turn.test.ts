@@ -935,6 +935,65 @@ describe('processUnifiedAmongusTurn', () => {
       expect((createGenDelta as any).subClassId).toBe('c_ejemplar');
       expect((createGenDelta as any).superClassId).toBe('c_prestamo');
     });
+
+    it('converts generalization to normal association without throwing TypeError (agnostic patch for generalizations)', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          { id: 'c_lector', name: 'Lector', attributes: [] },
+          { id: 'c_libro', name: 'Libro', attributes: [] },
+          { id: 'c_ejemplar', name: 'Ejemplar', attributes: [] },
+          { id: 'c_prestamo', name: 'Prestamo', attributes: [] },
+        ],
+        associations: [],
+        generalizations: [
+          {
+            id: 'g_ejemplar_prestamo',
+            subClassId: 'c_ejemplar',
+            superClassId: 'c_prestamo',
+          },
+        ],
+        realizations: [
+          {
+            id: 'r_dummy',
+            clientClassId: 'c_libro',
+            supplierInterfaceId: 'c_lector',
+          },
+        ],
+        dependencies: [
+          {
+            id: 'd_dummy',
+            clientClassId: 'c_prestamo',
+            supplierClassId: 'c_libro',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambiame la relacion entre ejemplar y prestamos por una asociacion normal',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const deltas = res.batchDelta?.deltas || [];
+      expect(deltas.length).toBe(2);
+
+      const deleteGenDelta = deltas.find(
+        (d: any) => d.kind === 'generalization' && d.op === 'delete'
+      );
+      expect(deleteGenDelta).toBeDefined();
+      expect((deleteGenDelta as any).generalizationId).toBe('g_ejemplar_prestamo');
+
+      const createAssocDelta = deltas.find(
+        (d: any) => d.kind === 'association' && d.op === 'create'
+      );
+      expect(createAssocDelta).toBeDefined();
+      expect((createAssocDelta as any).aggregation).toBe('none');
+    });
   });
 });
 

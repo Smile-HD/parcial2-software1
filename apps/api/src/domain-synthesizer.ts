@@ -1627,7 +1627,11 @@ export function expandSemanticDomainToDelta(
         const subId = resolveClassId(item.subclass);
         const superId = resolveClassId(item.superclass);
         if (subId && superId) {
-          const gen = currentDiagram.generalizations.find((g: any) => g.subClassId === subId && g.superClassId === superId);
+          const gen = currentDiagram.generalizations.find(
+            (g: any) =>
+              (g.subClassId === subId && g.superClassId === superId) ||
+              (g.subClassId === superId && g.superClassId === subId)
+          );
           if (gen) {
             deltas.push({
               id: crypto.randomUUID(),
@@ -1648,7 +1652,11 @@ export function expandSemanticDomainToDelta(
         const client = resolveClassId(item.clientClass);
         const supplier = resolveClassId(item.supplierInterface);
         if (client && supplier) {
-          const r = currentDiagram.realizations.find((rel: any) => rel.clientClassId === client && rel.supplierInterfaceId === supplier);
+          const r = currentDiagram.realizations.find(
+            (rel: any) =>
+              (rel.clientClassId === client && rel.supplierInterfaceId === supplier) ||
+              (rel.clientClassId === supplier && rel.supplierInterfaceId === client)
+          );
           if (r) {
             deltas.push({
               id: crypto.randomUUID(),
@@ -1669,7 +1677,11 @@ export function expandSemanticDomainToDelta(
         const client = resolveClassId(item.client);
         const supplier = resolveClassId(item.supplier);
         if (client && supplier) {
-          const d = currentDiagram.dependencies.find((dep: any) => dep.clientClassId === client && dep.supplierClassId === supplier);
+          const d = currentDiagram.dependencies.find(
+            (dep: any) =>
+              (dep.clientClassId === client && dep.supplierClassId === supplier) ||
+              (dep.clientClassId === supplier && dep.supplierClassId === client)
+          );
           if (d) {
             deltas.push({
               id: crypto.randomUUID(),

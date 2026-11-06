@@ -417,13 +417,25 @@ export function summarizeDiagramForPrompt(diagram?: any): string {
     return `- Dependencia: "${src}" depende de "${tgt}"`;
   }).join('\n');
 
+  const formatSection = (header: string, content: string | string[] | undefined | null): string | null => {
+    if (!content) return null;
+    if (Array.isArray(content)) {
+      return content.length > 0 ? `${header}:\n${content.join('\n')}` : null;
+    }
+    const trimmed = String(content).trim();
+    return trimmed.length > 0 ? `${header}:\n${trimmed}` : null;
+  };
+
   const sections = [
     `CLASES EN EL LIENZO:\n${classesStr}`,
     `RELACIONES EN EL LIENZO:\n${associations || 'Ninguna asociacion directa.'}`,
   ];
-  if (generalizations.length > 0) sections.push(`HERENCIAS (GENERALIZACIONES):\n${generalizations.join('\n')}`);
-  if (realizations.length > 0) sections.push(`REALIZACIONES (INTERFACES):\n${realizations.join('\n')}`);
-  if (dependencies.length > 0) sections.push(`DEPENDENCIAS:\n${dependencies.join('\n')}`);
+  const genSec = formatSection('HERENCIAS (GENERALIZACIONES)', generalizations);
+  if (genSec) sections.push(genSec);
+  const realSec = formatSection('REALIZACIONES (INTERFACES)', realizations);
+  if (realSec) sections.push(realSec);
+  const depSec = formatSection('DEPENDENCIAS', dependencies);
+  if (depSec) sections.push(depSec);
 
   return sections.join('\n\n');
 }
