@@ -2487,6 +2487,10 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       return false;
     });
 
+    // Ordenar por longitud de nombre descendente para priorizar clases más específicas
+    // (ej. 'PrestamoLibro' tiene precedencia sobre 'Prestamo' si ambas coinciden en el texto)
+    mentionedClasses.sort((a, b) => b.name.length - a.name.length);
+
     const resolveAggregationEnd = (sourceCls: { id: string; name: string }, targetCls: { id: string; name: string }, existingAssoc?: any): 'source' | 'target' => {
       if (rawWholeName) {
         const sNorm = sourceCls.name.toLowerCase();
@@ -2505,18 +2509,31 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     };
 
     if (mentionedClasses.length >= 2) {
-      // Buscar si existe una relación en el lienzo entre el par de clases
-      const c1 = mentionedClasses[0]!;
-      const c2 = mentionedClasses[1]!;
-      const matchingAssoc = associations.find(
-        (a) =>
-          (a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
-          (a.sourceClassId === c2.id && a.targetClassId === c1.id)
-      );
+      // Evaluar todas las combinaciones posibles de pares de clases mencionadas contra las asociaciones existentes en el lienzo
+      let matchingAssoc: any = null;
+      let sourceCls: { id: string; name: string } | null = null;
+      let targetCls: { id: string; name: string } | null = null;
 
-      if (matchingAssoc) {
-        const sourceCls = matchingAssoc.sourceClassId === c1.id ? c1 : c2;
-        const targetCls = matchingAssoc.targetClassId === c2.id ? c2 : c1;
+      for (let i = 0; i < mentionedClasses.length; i++) {
+        for (let j = i + 1; j < mentionedClasses.length; j++) {
+          const ci = mentionedClasses[i]!;
+          const cj = mentionedClasses[j]!;
+          const found = associations.find(
+            (a) =>
+              (a.sourceClassId === ci.id && a.targetClassId === cj.id) ||
+              (a.sourceClassId === cj.id && a.targetClassId === ci.id)
+          );
+          if (found) {
+            matchingAssoc = found;
+            sourceCls = found.sourceClassId === ci.id ? ci : cj;
+            targetCls = found.targetClassId === cj.id ? cj : ci;
+            break;
+          }
+        }
+        if (matchingAssoc) break;
+      }
+
+      if (matchingAssoc && sourceCls && targetCls) {
         const calcEnd = resolveAggregationEnd(sourceCls, targetCls, matchingAssoc);
         return {
           action: 'modify',
@@ -2531,6 +2548,51 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
             ],
           },
         };
+      }
+
+      // Si no existe asociación previa entre las dos clases, creamos la asociación con el tipo de agregación requerido
+      const c1 = mentionedClasses[0]!;
+      const c2 = mentionedClasses[1]!;
+      const calcEnd = resolveAggregationEnd(c1, c2);
+      return {
+        action: 'modify',
+        associations: [
+          {
+            source: c1.name,
+            target: c2.name,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1..*',
+            aggregation: targetAggregation,
+            aggregationEnd: calcEnd,
+          },
+        ],
+      };
+    } else if (mentionedClasses.length === 1) {
+      // Si se menciona exactamente una clase y tiene una única asociación conectada en el lienzo
+      const c = mentionedClasses[0]!;
+      const touchingAssocs = associations.filter(
+        (a) => a.sourceClassId === c.id || a.targetClassId === c.id
+      );
+      if (touchingAssocs.length === 1) {
+        const singleAssoc = touchingAssocs[0]!;
+        const src = classes.find((cls) => cls.id === singleAssoc.sourceClassId);
+        const tgt = classes.find((cls) => cls.id === singleAssoc.targetClassId);
+        if (src && tgt) {
+          const calcEnd = resolveAggregationEnd(src, tgt, singleAssoc);
+          return {
+            action: 'modify',
+            updates: {
+              associations: [
+                {
+                  source: src.name,
+                  target: tgt.name,
+                  aggregation: targetAggregation,
+                  aggregationEnd: calcEnd,
+                },
+              ],
+            },
+          };
+        }
       }
     } else if (associations.length === 1) {
       // Si el lienzo tiene una sola asociación y el usuario pide cambiar el tipo de relación

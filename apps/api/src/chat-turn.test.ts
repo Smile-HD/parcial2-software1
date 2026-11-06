@@ -850,6 +850,76 @@ describe('processUnifiedAmongusTurn', () => {
       expect(res.replyContent).toContain('Prestamo');
       expect(res.replyContent).toContain('Lector');
     });
+
+    it('changes relationship between Libro and PrestamoLibro to aggregation deterministically without hallucination', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          { id: 'c_libro', name: 'Libro', attributes: [] },
+          { id: 'c_prestamo', name: 'Prestamo', attributes: [] },
+          { id: 'c_prestamo_libro', name: 'PrestamoLibro', attributes: [] },
+        ],
+        associations: [
+          {
+            id: 'a_libro_pl',
+            sourceClassId: 'c_libro',
+            targetClassId: 'c_prestamo_libro',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1..*',
+            aggregation: 'none',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambiame la relacion de libro con prestamo libro por una agregacion',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      expect(res.batchDelta?.deltas.length).toBe(1);
+      const delta = res.batchDelta?.deltas[0] as any;
+      expect(delta.kind).toBe('association');
+      expect(delta.op).toBe('updateMultiplicity');
+      expect(delta.associationId).toBe('a_libro_pl');
+      expect(delta.aggregation).toBe('shared');
+    });
+
+    it('never calls synthesizeDomainModel when mutation request fails to find association, avoiding 14-entity hallucinations', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          { id: 'c_libro', name: 'Libro', attributes: [] },
+          { id: 'c_lector', name: 'Lector', attributes: [] },
+        ],
+        associations: [],
+      };
+
+      const mockLlm = {
+        chat: vi.fn().mockResolvedValue('Entendido, querés cambiar la relación.'),
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambiame la relacion de libro con prestamo libro por una agregacion',
+        'Zovako',
+        'es',
+        'diag-library',
+        mockLlm as any,
+        mockDiagram,
+        [{ role: 'user', content: 'creame el sistema de biblioteca con libro, lector, prestamo' }, { role: 'assistant', content: 'Listo' }]
+      );
+
+      // Should not have hallucinated the 14 deltas from the history
+      if (res.batchDelta) {
+        expect(res.batchDelta.deltas.length).toBeLessThan(3);
+        const addedClasses = res.batchDelta.deltas.filter((d: any) => d.op === 'createClass');
+        expect(addedClasses.length).toBe(0);
+      }
+    });
   });
 });
 

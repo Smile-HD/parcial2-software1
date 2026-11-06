@@ -1445,9 +1445,20 @@ export async function processUnifiedAmongusTurn(
         }
       }
 
-      // 2b.2 Síntesis resiliente si el usuario pidió modelar o modificar pero el modelo no emitió JSON
+      // 2b.2 Síntesis resiliente: SOLO para creación/modelado de dominios completos desde cero.
+      // NUNCA disparar synthesizeDomainModel con historial completo si el turno es de mutación puntual (relación, atributo, borrado, renombrado),
+      // ya que eso causa que el LLM regenere todas las entidades del chat previo y alucine cambios no solicitados.
+      const isMutationIntent =
+        /(?:cambi|modific|elimin|borr|sac[aá]|quit[aá]|renombr|pas[aá]|convert|turn|change|rename|delete|remove|hace\s+que|hac[eé]\s+que|ponele|agreg[aáeé]|a[ñn]ad[eé]|sum[aá]|insert)\b/i.test(
+          cleanContent
+        ) ||
+        /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|multiplicidad)/i.test(
+          cleanContent
+        );
+
       const isExplicitModelingRequest =
-        /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur|agrga|agreg|clse|calse|craer|cambi|modific|relaci[oó]n|composici[oó]n|agregaci[oó]n|asociaci[oó]n)/i.test(
+        !isMutationIntent &&
+        /(?:model|dise[ñn]|arm[aá]|gener[aá]|constru[yí]|sistema|dominio|aerolinea|hospital|banco|tienda|comercio|universidad|biblioteca|factur|cre[aá]\s+un\s+modelo)/i.test(
           cleanContent
         );
       if (isExplicitModelingRequest) {
