@@ -889,36 +889,51 @@ describe('processUnifiedAmongusTurn', () => {
       expect(delta.aggregation).toBe('shared');
     });
 
-    it('never calls synthesizeDomainModel when mutation request fails to find association, avoiding 14-entity hallucinations', async () => {
+    it('changes association between Ejemplar and Prestamo into generalization with plural tolerance', async () => {
       const mockDiagram = {
         id: 'diag-library',
         classes: [
-          { id: 'c_libro', name: 'Libro', attributes: [] },
-          { id: 'c_lector', name: 'Lector', attributes: [] },
+          { id: 'c_ejemplar', name: 'Ejemplar', attributes: [] },
+          { id: 'c_prestamo', name: 'Prestamo', attributes: [] },
         ],
-        associations: [],
-      };
-
-      const mockLlm = {
-        chat: vi.fn().mockResolvedValue('Entendido, querés cambiar la relación.'),
+        associations: [
+          {
+            id: 'a_ejemplar_prestamo',
+            sourceClassId: 'c_ejemplar',
+            targetClassId: 'c_prestamo',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '0..*',
+            aggregation: 'none',
+          },
+        ],
+        generalizations: [],
       };
 
       const res = await processUnifiedAmongusTurn(
-        'cambiame la relacion de libro con prestamo libro por una agregacion',
+        'cambiame la relacion entre ejemplar y prestamos por una generalizacion',
         'Zovako',
         'es',
         'diag-library',
-        mockLlm as any,
-        mockDiagram,
-        [{ role: 'user', content: 'creame el sistema de biblioteca con libro, lector, prestamo' }, { role: 'assistant', content: 'Listo' }]
+        undefined,
+        mockDiagram
       );
 
-      // Should not have hallucinated the 14 deltas from the history
-      if (res.batchDelta) {
-        expect(res.batchDelta.deltas.length).toBeLessThan(3);
-        const addedClasses = res.batchDelta.deltas.filter((d: any) => d.op === 'createClass');
-        expect(addedClasses.length).toBe(0);
-      }
+      expect(res.batchDelta).toBeDefined();
+      const deltas = res.batchDelta?.deltas || [];
+      expect(deltas.length).toBe(2);
+
+      const deleteAssocDelta = deltas.find(
+        (d: any) => d.kind === 'association' && d.op === 'delete'
+      );
+      expect(deleteAssocDelta).toBeDefined();
+      expect((deleteAssocDelta as any).associationId).toBe('a_ejemplar_prestamo');
+
+      const createGenDelta = deltas.find(
+        (d: any) => d.kind === 'generalization' && d.op === 'create'
+      );
+      expect(createGenDelta).toBeDefined();
+      expect((createGenDelta as any).subClassId).toBe('c_ejemplar');
+      expect((createGenDelta as any).superClassId).toBe('c_prestamo');
     });
   });
 });

@@ -572,21 +572,42 @@ export function expandSemanticDomainToDelta(
   if (currentDiagram?.generalizations && Array.isArray(currentDiagram.generalizations)) {
     for (const g of currentDiagram.generalizations) {
       if (g.subClassId && g.superClassId) {
-        seenConnectedPairs.add(getPairKey(g.subClassId, g.superClassId));
+        const isBeingDeleted = model.deletions?.generalizations?.some((dg) => {
+          const sId = resolveClassId(dg.subclass);
+          const supId = resolveClassId(dg.superclass);
+          return (sId === g.subClassId && supId === g.superClassId) || (sId === g.superClassId && supId === g.subClassId);
+        });
+        if (!isBeingDeleted) {
+          seenConnectedPairs.add(getPairKey(g.subClassId, g.superClassId));
+        }
       }
     }
   }
   if (currentDiagram?.realizations && Array.isArray(currentDiagram.realizations)) {
     for (const r of currentDiagram.realizations) {
       if (r.clientClassId && r.supplierInterfaceId) {
-        seenConnectedPairs.add(getPairKey(r.clientClassId, r.supplierInterfaceId));
+        const isBeingDeleted = model.deletions?.realizations?.some((dr) => {
+          const cId = resolveClassId(dr.clientClass);
+          const supId = resolveClassId(dr.supplierInterface);
+          return (cId === r.clientClassId && supId === r.supplierInterfaceId) || (cId === r.supplierInterfaceId && supId === r.clientClassId);
+        });
+        if (!isBeingDeleted) {
+          seenConnectedPairs.add(getPairKey(r.clientClassId, r.supplierInterfaceId));
+        }
       }
     }
   }
   if (currentDiagram?.dependencies && Array.isArray(currentDiagram.dependencies)) {
     for (const d of currentDiagram.dependencies) {
       if (d.clientClassId && d.supplierClassId) {
-        seenConnectedPairs.add(getPairKey(d.clientClassId, d.supplierClassId));
+        const isBeingDeleted = model.deletions?.dependencies?.some((dd) => {
+          const cId = resolveClassId(dd.clientClass);
+          const supId = resolveClassId(dd.supplierClass);
+          return (cId === d.clientClassId && supId === d.supplierClassId) || (cId === d.supplierClassId && supId === d.clientClassId);
+        });
+        if (!isBeingDeleted) {
+          seenConnectedPairs.add(getPairKey(d.clientClassId, d.supplierClassId));
+        }
       }
     }
   }
@@ -2441,20 +2462,26 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
-  // 4. Mutación de relación (asociación <-> composición <-> agregación)
+  // 4. Mutación de relación (asociación <-> composición <-> agregación <-> generalización <-> realización <-> dependencia)
+  const isGeneralization = /(?:generalizaci[oó]n|generalization|herencia|hered[aáeé]|extends|subclase|superclase)/i.test(normalized);
+  const isRealization = /(?:realizaci[oó]n|realization|implement[aáeé]|implements)/i.test(normalized);
+  const isDependency = /(?:dependencia|dependency|depend[eé])/i.test(normalized);
+
   const isRelationChange =
     ((/(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link)/i.test(
       normalized
-    ) && /(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation|shared|composite|none)/i.test(normalized)) ||
-    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo|relationship\s+type|change\s+type)\s+(?:a|por|to)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation)/i.test(
+    ) && /(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|generalization|inheritance|realization|dependency|shared|composite|none)/i.test(normalized)) ||
+    /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo|relationship\s+type|change\s+type)\s+(?:a|por|to)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|generalization|inheritance)/i.test(
       normalized
     ) ||
-    /(?:relaci[oó]n|relationship|association)\s+(?:entre|between)\s+["']?[A-Za-z_ñÑáéíóúÁÉÍÓÚ].*?\(.*?(?:composici|agregaci|asociaci|composite|aggregation|association)/i.test(
+    /(?:relaci[oó]n|relationship|association)\s+(?:entre|between)\s+["']?[A-Za-z_ñÑáéíóúÁÉÍÓÚ].*?\(.*?(?:composici|agregaci|asociaci|generaliz|hered|realiz|depend|composite|aggregation|association)/i.test(
       text
     ) ||
-    /(?:a|por|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation)/i.test(
+    /(?:a|por|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|generalization|inheritance)/i.test(
       normalized
-    ));
+    ) ||
+    ((isGeneralization || isRealization || isDependency) &&
+      /(?:cambi|modific|pas[aá]|convert|turn|relaci[oó]n)/i.test(normalized)));
 
   if (isRelationChange) {
     let targetAggregation: 'composite' | 'shared' | 'none' = 'none';
@@ -2476,13 +2503,14 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       );
     const rawWholeName = wholeMatch ? wholeMatch[1]?.toLowerCase() : undefined;
 
-    // Buscar qué clases del lienzo están mencionadas en el texto
-    // Tolera: palabras compuestas ("prestamolector"), espacios accidentales ("lecto r" -> "lector")
+    // Buscar qué clases del lienzo están mencionadas en el texto (con soporte para plurales: prestamos -> prestamo)
     const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const tokens = normalized.split(/[^a-z0-9áéíóúñ]+/i).filter(Boolean);
     const mentionedClasses = classes.filter((c) => {
       const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
       if (regex.test(normalized)) return true;
+      if (tokens.some((t) => classExactOrPluralMatches(t, cNameNorm))) return true;
       if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
       return false;
     });
@@ -2508,9 +2536,41 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       return 'source';
     };
 
+    const generalizations: Array<any> = currentDiagram.generalizations || [];
+    const realizations: Array<any> = currentDiagram.realizations || [];
+    const dependencies: Array<any> = currentDiagram.dependencies || [];
+
+    // Helper para determinar el orden de subclase/superclase
+    const resolveHierarchyOrder = (clsA: { id: string; name: string }, clsB: { id: string; name: string }): { subclass: { id: string; name: string }; superclass: { id: string; name: string } } => {
+      const aNorm = clsA.name.toLowerCase();
+      const bNorm = clsB.name.toLowerCase();
+      // "A hereda de B" o "A es subclase de B"
+      if (new RegExp(`${aNorm}\\s+(?:hereda\\s+de|sea\\s+subclase\\s+de|subclase\\s+de|extends)\\s+${bNorm}`, 'i').test(normalized)) {
+        return { subclass: clsA, superclass: clsB };
+      }
+      if (new RegExp(`${bNorm}\\s+(?:hereda\\s+de|sea\\s+subclase\\s+de|subclase\\s+de|extends)\\s+${aNorm}`, 'i').test(normalized)) {
+        return { subclass: clsB, superclass: clsA };
+      }
+      // "B es padre de A" o "B es superclase de A"
+      if (new RegExp(`${bNorm}\\s+(?:es\\s+padre\\s+de|sea\\s+superclase\\s+de|superclase\\s+de)\\s+${aNorm}`, 'i').test(normalized)) {
+        return { subclass: clsA, superclass: clsB };
+      }
+      if (new RegExp(`${aNorm}\\s+(?:es\\s+padre\\s+de|sea\\s+superclase\\s+de|superclase\\s+de)\\s+${bNorm}`, 'i').test(normalized)) {
+        return { subclass: clsB, superclass: clsA };
+      }
+      // Orden de aparición en el texto: el primero mencionado suele ser la entidad especializada (ej. "entre ejemplar y prestamo")
+      const posA = normalized.indexOf(aNorm);
+      const posB = normalized.indexOf(bNorm);
+      if (posA !== -1 && posB !== -1 && posA <= posB) {
+        return { subclass: clsA, superclass: clsB };
+      }
+      return { subclass: clsB, superclass: clsA };
+    };
+
     if (mentionedClasses.length >= 2) {
-      // Evaluar todas las combinaciones posibles de pares de clases mencionadas contra las asociaciones existentes en el lienzo
+      // Evaluar todas las combinaciones posibles de pares de clases mencionadas contra las asociaciones y generalizaciones existentes en el lienzo
       let matchingAssoc: any = null;
+      let matchingGen: any = null;
       let sourceCls: { id: string; name: string } | null = null;
       let targetCls: { id: string; name: string } | null = null;
 
@@ -2518,19 +2578,122 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         for (let j = i + 1; j < mentionedClasses.length; j++) {
           const ci = mentionedClasses[i]!;
           const cj = mentionedClasses[j]!;
-          const found = associations.find(
+          const foundAssoc = associations.find(
             (a) =>
               (a.sourceClassId === ci.id && a.targetClassId === cj.id) ||
               (a.sourceClassId === cj.id && a.targetClassId === ci.id)
           );
-          if (found) {
-            matchingAssoc = found;
-            sourceCls = found.sourceClassId === ci.id ? ci : cj;
-            targetCls = found.targetClassId === cj.id ? cj : ci;
+          if (foundAssoc) {
+            matchingAssoc = foundAssoc;
+            sourceCls = foundAssoc.sourceClassId === ci.id ? ci : cj;
+            targetCls = foundAssoc.targetClassId === cj.id ? cj : ci;
+            break;
+          }
+          const foundGen = generalizations.find(
+            (g) =>
+              (g.subClassId === ci.id && g.superClassId === cj.id) ||
+              (g.subClassId === cj.id && g.superClassId === ci.id)
+          );
+          if (foundGen) {
+            matchingGen = foundGen;
+            sourceCls = ci;
+            targetCls = cj;
             break;
           }
         }
-        if (matchingAssoc) break;
+        if (matchingAssoc || matchingGen) break;
+      }
+
+      const c1 = sourceCls || mentionedClasses[0]!;
+      const c2 = targetCls || mentionedClasses[1]!;
+
+      // Caso 4A: El usuario pide GENERALIZACIÓN / HERENCIA
+      if (isGeneralization) {
+        const hierarchy = resolveHierarchyOrder(c1, c2);
+        const deletions: any = {};
+        if (matchingAssoc) {
+          const s = classes.find((c) => c.id === matchingAssoc.sourceClassId);
+          const t = classes.find((c) => c.id === matchingAssoc.targetClassId);
+          if (s && t) deletions.associations = [{ source: s.name, target: t.name }];
+        }
+        return {
+          action: 'modify',
+          deletions: Object.keys(deletions).length > 0 ? deletions : undefined,
+          generalizations: [
+            {
+              subclass: hierarchy.subclass.name,
+              superclass: hierarchy.superclass.name,
+            },
+          ],
+        };
+      }
+
+      // Caso 4B: El usuario pide REALIZACIÓN (interfaz)
+      if (isRealization) {
+        const hierarchy = resolveHierarchyOrder(c1, c2);
+        const deletions: any = {};
+        if (matchingAssoc) {
+          const s = classes.find((c) => c.id === matchingAssoc.sourceClassId);
+          const t = classes.find((c) => c.id === matchingAssoc.targetClassId);
+          if (s && t) deletions.associations = [{ source: s.name, target: t.name }];
+        }
+        return {
+          action: 'modify',
+          deletions: Object.keys(deletions).length > 0 ? deletions : undefined,
+          realizations: [
+            {
+              clientClass: hierarchy.subclass.name,
+              supplierInterface: hierarchy.superclass.name,
+            },
+          ],
+        };
+      }
+
+      // Caso 4C: El usuario pide DEPENDENCIA
+      if (isDependency) {
+        const hierarchy = resolveHierarchyOrder(c1, c2);
+        const deletions: any = {};
+        if (matchingAssoc) {
+          const s = classes.find((c) => c.id === matchingAssoc.sourceClassId);
+          const t = classes.find((c) => c.id === matchingAssoc.targetClassId);
+          if (s && t) deletions.associations = [{ source: s.name, target: t.name }];
+        }
+        return {
+          action: 'modify',
+          deletions: Object.keys(deletions).length > 0 ? deletions : undefined,
+          dependencies: [
+            {
+              clientClass: hierarchy.subclass.name,
+              supplierClass: hierarchy.superclass.name,
+            },
+          ],
+        };
+      }
+
+      // Caso 4D: El usuario pide cambiar a ASOCIACIÓN / AGREGACIÓN / COMPOSICIÓN
+      // Si existía una generalización previa entre ellos, la eliminamos para dar paso a la asociación
+      if (matchingGen) {
+        const sub = classes.find((c) => c.id === matchingGen.subClassId);
+        const sup = classes.find((c) => c.id === matchingGen.superClassId);
+        if (sub && sup) {
+          const calcEnd = resolveAggregationEnd(sub, sup);
+          return {
+            action: 'modify',
+            deletions: {
+              generalizations: [{ subclass: sub.name, superclass: sup.name }],
+            },
+            associations: [
+              {
+                source: sub.name,
+                target: sup.name,
+                aggregation: targetAggregation,
+                aggregationEnd: calcEnd,
+                sourceMultiplicity: '1',
+                targetMultiplicity: '1..*',
+              },
+            ],
+          };
+        }
       }
 
       if (matchingAssoc && sourceCls && targetCls) {
@@ -2551,8 +2714,6 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       }
 
       // Si no existe asociación previa entre las dos clases, creamos la asociación con el tipo de agregación requerido
-      const c1 = mentionedClasses[0]!;
-      const c2 = mentionedClasses[1]!;
       const calcEnd = resolveAggregationEnd(c1, c2);
       return {
         action: 'modify',
@@ -2578,6 +2739,21 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         const src = classes.find((cls) => cls.id === singleAssoc.sourceClassId);
         const tgt = classes.find((cls) => cls.id === singleAssoc.targetClassId);
         if (src && tgt) {
+          if (isGeneralization) {
+            const hierarchy = resolveHierarchyOrder(src, tgt);
+            return {
+              action: 'modify',
+              deletions: {
+                associations: [{ source: src.name, target: tgt.name }],
+              },
+              generalizations: [
+                {
+                  subclass: hierarchy.subclass.name,
+                  superclass: hierarchy.superclass.name,
+                },
+              ],
+            };
+          }
           const calcEnd = resolveAggregationEnd(src, tgt, singleAssoc);
           return {
             action: 'modify',
@@ -2600,6 +2776,21 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       const src = classes.find((c) => c.id === singleAssoc.sourceClassId);
       const tgt = classes.find((c) => c.id === singleAssoc.targetClassId);
       if (src && tgt) {
+        if (isGeneralization) {
+          const hierarchy = resolveHierarchyOrder(src, tgt);
+          return {
+            action: 'modify',
+            deletions: {
+              associations: [{ source: src.name, target: tgt.name }],
+            },
+            generalizations: [
+              {
+                subclass: hierarchy.subclass.name,
+                superclass: hierarchy.superclass.name,
+              },
+            ],
+          };
+        }
         const calcEnd = resolveAggregationEnd(src, tgt, singleAssoc);
         return {
           action: 'modify',
