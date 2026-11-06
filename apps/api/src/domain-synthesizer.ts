@@ -1,4 +1,5 @@
 import type { BatchDelta, LlmPort } from '@app/core';
+import { stripAccents, findClosestClassName } from '@app/adapters-ai';
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 
 export interface SemanticAttribute {
@@ -221,7 +222,10 @@ export function cleanClassName(raw?: string): string {
  */
 export function toCanonicalKey(raw?: string): string {
   if (!raw) return '';
-  const cleaned = cleanClassName(raw).toLowerCase();
+  const cleaned = cleanClassName(raw)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
   if (cleaned.endsWith('es') && cleaned.length > 4) return cleaned.slice(0, -2);
   if (cleaned.endsWith('s') && cleaned.length > 3) return cleaned.slice(0, -1);
   return cleaned;
@@ -2289,6 +2293,154 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
+  // 3b. Adición / modificación determinista de atributos en una clase existente
+  // Ejemplos:
+  // - "a la clase prestamo agregarle un id de tipo entero"
+  // - "a la clase préstamo agrega el atributo codigo de tipo texto"
+  // - "agrega el atributo email:string a la clase Usuario"
+  // - "ponele a Libro el atributo paginas tipo int"
+  const isAddAttrIntent =
+    /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|set)/i.test(normalized) &&
+    /(?:atributo|campo|field|attribute|propiedad|property|un\s+id|el\s+id|id\b)/i.test(normalized);
+
+  if (isAddAttrIntent) {
+    // Buscar la clase objetivo en la petición
+    let targetClass: { id: string; name: string } | undefined;
+
+    // Patrón 1: "a la clase <Clase>" o "en la clase <Clase>"
+    const targetClassMatch =
+      /(?:a\s+la\s+clase|en\s+la\s+clase|para\s+la\s+clase|to\s+class|in\s+class|on\s+class|a|en|to)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+    if (targetClassMatch) {
+      const cand = targetClassMatch[1]!;
+      const match = findClosestClassName(cand, classes);
+      if (match && match.distance <= 2) {
+        targetClass = classes.find((c) => c.name.toLowerCase() === match.matchedName.toLowerCase());
+      }
+    }
+
+    if (!targetClass) {
+      // Buscar cualquier clase mencionada con tolerancia a tildes
+      for (const cls of classes) {
+        const cNorm = stripAccents(cls.name);
+        if (normalized.includes(cNorm)) {
+          targetClass = cls;
+          break;
+        }
+      }
+    }
+
+    if (!targetClass) {
+      // Fuzzy Levenshtein <= 2
+      const tokens = normalized.split(/\s+/).map((w) => w.replace(/[^a-z0-9]/g, '')).filter((w) => w.length >= 3);
+      for (const token of tokens) {
+        const match = findClosestClassName(token, classes);
+        if (match && match.distance <= 2) {
+          targetClass = classes.find((c) => c.name.toLowerCase() === match.matchedName.toLowerCase());
+          if (targetClass) break;
+        }
+      }
+    }
+
+    if (targetClass) {
+      // Extraer nombre y tipo del atributo
+      // Formatos:
+      // - "un id de tipo entero"
+      // - "el atributo nombre de tipo texto"
+      // - "atributo email:string"
+      // - "atributo fechaDevolucion tipo date"
+      let attrName = '';
+      let attrType = 'string';
+
+      const typeMap: Record<string, string> = {
+        entero: 'int',
+        entera: 'int',
+        int: 'int',
+        integer: 'int',
+        numero: 'int',
+        number: 'int',
+        texto: 'string',
+        cadena: 'string',
+        string: 'string',
+        str: 'string',
+        booleano: 'boolean',
+        booleana: 'boolean',
+        bool: 'boolean',
+        boolean: 'boolean',
+        fecha: 'date',
+        date: 'date',
+        timestamp: 'date',
+        datetime: 'date',
+        decimal: 'float',
+        float: 'float',
+        double: 'float',
+        real: 'float',
+      };
+
+      // Intentar extraer con regex: "(?:un|el|atributo|campo)\s+([a-zA-Z_]\w*)\s+(?:de\s+tipo|tipo|type|as)\s+([a-zA-Z_]\w*)"
+      const attrWithTypeMatch =
+        /(?:(?:un|el|el\s+atributo|un\s+atributo|atributo|campo|field|property)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:de\s+tipo|tipo|type|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+          text
+        );
+
+      const attrColonMatch =
+        /(?:atributo|campo|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*:\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+          text
+        );
+
+      const idDirectMatch =
+        /(?:un\s+id|el\s+id|id)\s*(?:de\s+tipo|tipo|type|as)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)?/i.exec(
+          text
+        );
+
+      if (attrColonMatch) {
+        attrName = attrColonMatch[1]!;
+        const rawType = stripAccents(attrColonMatch[2]!);
+        attrType = typeMap[rawType] || 'string';
+      } else if (attrWithTypeMatch) {
+        const candName = attrWithTypeMatch[1]!;
+        // Asegurar que candName no sea una stop-word como "clase" o el nombre de la clase misma
+        const stopWords = new Set(['clase', 'class', 'tipo', 'type', 'de', 'la', 'el', 'un', 'una']);
+        if (!stopWords.has(candName.toLowerCase()) && candName.toLowerCase() !== targetClass.name.toLowerCase()) {
+          attrName = candName;
+          const rawType = stripAccents(attrWithTypeMatch[2]!);
+          attrType = typeMap[rawType] || 'string';
+        }
+      }
+
+      if (!attrName && idDirectMatch) {
+        attrName = 'id';
+        const rawType = idDirectMatch[1] ? stripAccents(idDirectMatch[1]) : 'int';
+        attrType = typeMap[rawType] || 'int';
+      }
+
+      if (attrName) {
+        // Sanitizar nombre de atributo: camelCase / ASCII
+        const cleanAttrName = attrName
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^A-Za-z0-9_]/g, '');
+
+        if (cleanAttrName) {
+          return {
+            action: 'modify',
+            classes: [
+              {
+                name: targetClass.name,
+                attributes: [
+                  {
+                    name: cleanAttrName,
+                    type: attrType,
+                    visibility: '+',
+                  },
+                ],
+              },
+            ],
+          };
+        }
+      }
+    }
+  }
+
   // 4. Mutación de relación (asociación <-> composición <-> agregación)
   const isRelationChange =
     ((/(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link)/i.test(
@@ -2481,16 +2633,12 @@ export async function synthesizeDomainModel(
     '  - Renames: "renames": {"classes": [{"from": "OldName", "to": "NewName"}]}. DO NOT put the renamed class into "classes" as a new class!',
     '  - Updates: "updates": {"classes": [{"name": "ClassName", "isAbstract": true}], "associations": [{"source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "0..*"}]}',
     '  - Deletions: "deletions": {"classes": ["DeletedClassName"], "associations": [{"source": "A", "target": "B"}]}',
-    'Output ONLY a valid raw JSON object matching the requested domain (DO NOT copy example class or attribute names like CatalogItem, Order, OrderItem unless they belong to the user requested domain):',
+    'Output ONLY a valid raw JSON object matching the requested domain:',
     '{',
     '  "classes": [',
-    '    {"name": "Order", "attributes": ["orderNumber:string", "totalAmount:float"]},',
-    '    {"name": "OrderItem", "attributes": ["quantity:int", "unitPrice:float"]}',
+    '    {"name": "DomainEntity", "attributes": ["id:int", "name:string"]}',
     '  ],',
-    '  "associations": [',
-    '    {"source": "Order", "target": "OrderItem", "aggregation": "composite", "sourceMultiplicity": "1", "targetMultiplicity": "1..*"}',
-    '  ],',
-    '  "generalizations": []',
+    '  "associations": []',
     '}',
   ].filter(Boolean).join('\n');
 

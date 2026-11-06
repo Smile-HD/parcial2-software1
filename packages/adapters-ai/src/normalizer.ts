@@ -387,9 +387,18 @@ export function extractExclusionClasses(utterance: string): string[] {
     .filter((w) => w.length > 1);
 }
 
-// ── 6. Sugerencia de Comandos Slash (Distancia de Levenshtein) ──────────────────
+// ── 6. Normalización sin acentos y Coincidencia Difusa (Levenshtein) ───────────
 
-function levenshtein(a: string, b: string): number {
+export function stripAccents(str: string): string {
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+export function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
   const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
@@ -408,6 +417,48 @@ function levenshtein(a: string, b: string): number {
     }
   }
   return dp[m]![n]!;
+}
+
+export function findClosestClassName(
+  input: string,
+  existingClasses: Array<{ id?: string; name: string } | string>
+): { matchedName: string; distance: number } | null {
+  if (!input) return null;
+  const normInput = stripAccents(input);
+  if (!normInput) return null;
+
+  let bestMatch: string | null = null;
+  let minDistance = 999;
+
+  for (const item of existingClasses) {
+    const rawName = typeof item === 'string' ? item : item.name;
+    if (!rawName) continue;
+    const normCand = stripAccents(rawName);
+
+    // Coincidencia exacta o por inclusión directa
+    if (normCand === normInput) {
+      return { matchedName: rawName, distance: 0 };
+    }
+    if (normCand.includes(normInput) || normInput.includes(normCand)) {
+      const dist = Math.abs(normCand.length - normInput.length);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestMatch = rawName;
+      }
+      continue;
+    }
+
+    const dist = levenshtein(normInput, normCand);
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestMatch = rawName;
+    }
+  }
+
+  if (bestMatch && minDistance <= 2) {
+    return { matchedName: bestMatch, distance: minDistance };
+  }
+  return bestMatch ? { matchedName: bestMatch, distance: minDistance } : null;
 }
 
 const KNOWN_SLASH_COMMANDS = [

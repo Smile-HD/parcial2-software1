@@ -638,10 +638,13 @@ export async function processUnifiedAmongusTurn(
       if (missingA || missingB) {
         const missing = missingA && missingB ? `"${rawClassA}" ni "${rawClassB}"` : (missingA ? `"${rawClassA}"` : `"${rawClassB}"`);
         const missingEn = missingA && missingB ? `"${rawClassA}" nor "${rawClassB}"` : (missingA ? `"${rawClassA}"` : `"${rawClassB}"`);
+        const suggestion = isEn
+          ? ` If you want to create a new class, use 'create class <Name>'.`
+          : ` Si querés crear una nueva clase, podés pedirme "creá la clase <Nombre>".`;
         return {
           replyContent: isEn
-            ? `I could not find the class ${missingEn} in the current diagram. Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`
-            : `No encontré la clase ${missing} en el diagrama actual. Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.`,
+            ? `I could not find the class ${missingEn} in the current diagram. Available classes: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.${suggestion}`
+            : `No encontré la clase ${missing} en el diagrama actual. Las clases disponibles son: ${existingClassNames.map((n: string) => `"${n}"`).join(', ')}.${suggestion}`,
         };
       }
     }

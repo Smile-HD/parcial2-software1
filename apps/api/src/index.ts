@@ -893,7 +893,14 @@ export function buildApp(options?: AppOptions): FastifyInstance {
             parsed.data.senderName
           );
           chatHistory = recentMessages
-            .filter((m) => m.id !== message.id)
+            .filter((m) => {
+              if (m.id === message.id) return false;
+              // Si el canal es group, solo incluir mensajes dirigidos explícitamente a Amongus o respuestas del bot
+              if (parsed.data.channelType === 'group') {
+                return m.senderType === 'bot' || m.content.includes('@Amongus') || m.content.trim().startsWith('/');
+              }
+              return true;
+            })
             .slice(-6)
             .map((m) => {
               let content = m.content;

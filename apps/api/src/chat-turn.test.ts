@@ -796,6 +796,60 @@ describe('processUnifiedAmongusTurn', () => {
       expect(classDeleteDelta.op).toBe('delete');
       expect(classDeleteDelta.classId).toBe('c2');
     });
+
+    it('adds attributes deterministically with accent insensitivity (e.g. préstamo -> Prestamo id:int)', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          { id: 'c_prestamo', name: 'Prestamo', attributes: [{ id: 'a1', name: 'fechaInicio', type: 'date' }] },
+          { id: 'c_lector', name: 'Lector', attributes: [] },
+        ],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'a la clase préstamo agregarle un id de tipo entero',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const attrDelta = res.batchDelta?.deltas.find(
+        (d: any) => d.kind === 'member' && d.op === 'addAttribute'
+      );
+      expect(attrDelta).toBeDefined();
+      expect(attrDelta.classId).toBe('c_prestamo');
+      expect(attrDelta.name).toBe('id');
+      expect(attrDelta.type).toBe('int');
+    });
+
+    it('provides pedagogical guidance with available classes when target class does not exist', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          { id: 'c_prestamo', name: 'Prestamo', attributes: [] },
+          { id: 'c_lector', name: 'Lector', attributes: [] },
+        ],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambiame la relacion entre Factura y Prestamo por una agregacion',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeUndefined();
+      expect(res.replyContent).toContain('No encontré la clase "Factura"');
+      expect(res.replyContent).toContain('Prestamo');
+      expect(res.replyContent).toContain('Lector');
+    });
   });
 });
 
