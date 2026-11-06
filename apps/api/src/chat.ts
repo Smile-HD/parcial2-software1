@@ -1225,7 +1225,11 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
-  if (!llm || typeof llm.chat !== 'function') {
+  // 00d. Si el usuario solicita una mutación puntual sobre elementos existentes del diagrama
+  // (cambiar tipo de relación, agregar/modificar atributos, renombrar o borrar clases/miembros),
+  // resolverla de forma 100% determinista e inmediata ANTES de llamar al LLM.
+  // Esto previene que el LLM alucine clases o relaciones viejas en turnos de edición de grafo.
+  if (diagram && diagram.classes && diagram.classes.length > 0) {
     const explicitMutation = extractExplicitModelMutations(userContent, diagram);
     if (explicitMutation) {
       const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
@@ -1239,6 +1243,9 @@ export async function processUnifiedAmongusTurn(
         };
       }
     }
+  }
+
+  if (!llm || typeof llm.chat !== 'function') {
     return {
       replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers, diagram),
     };
