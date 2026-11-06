@@ -27,6 +27,7 @@ export interface SendMessagePayload {
   content: string;
   language?: 'es' | 'en';
   peerUsers?: readonly string[];
+  currentDiagram?: any;
 }
 
 /**

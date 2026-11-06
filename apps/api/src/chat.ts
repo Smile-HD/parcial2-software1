@@ -31,6 +31,7 @@ export const CreateChatMessageSchema = z.object({
   content: z.string().min(1),
   language: z.enum(['es', 'en']).optional(),
   peerUsers: z.array(z.string()).optional(),
+  currentDiagram: z.any().optional(),
 });
 export type CreateChatMessageInput = z.infer<typeof CreateChatMessageSchema>;
 

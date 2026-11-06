@@ -42,6 +42,7 @@ export interface ChatPanelProps {
   onToggleRecord?: () => void;
   isTranscribing?: boolean;
   existingClasses?: Array<{ id: string; name: string }>;
+  getCurrentDiagram?: () => any;
 }
 
 function renderStreamingContent(text: string, isEn: boolean) {
@@ -228,6 +229,7 @@ export function ChatPanel({
   onToggleRecord,
   isTranscribing: propIsTranscribing = false,
   existingClasses = [],
+  getCurrentDiagram,
 }: ChatPanelProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
@@ -242,7 +244,7 @@ export function ChatPanel({
     isLoading,
     error,
     streamingBotMessage,
-  } = useChat({ diagramId, userName, language: lang, peerUsers });
+  } = useChat({ diagramId, userName, language: lang, peerUsers, getCurrentDiagram });
 
   const safeMessages = Array.isArray(messages) ? messages : [];
 

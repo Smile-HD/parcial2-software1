@@ -815,6 +815,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
             recording={recording}
             onToggleRecord={handleToggleRecord}
             isTranscribing={isTranscribing}
+            getCurrentDiagram={() => projectYDocToDiagram(doc)}
           />
           <TutorialModal
             isOpen={isTutorialOpen}

@@ -13,6 +13,7 @@ export interface UseChatOptions {
   language?: 'es' | 'en';
   pollIntervalMs?: number;
   peerUsers?: readonly { name: string; color?: string }[];
+  getCurrentDiagram?: () => any;
 }
 
 export function useChat({
@@ -21,6 +22,7 @@ export function useChat({
   language = 'es',
   pollIntervalMs = 3000,
   peerUsers,
+  getCurrentDiagram,
 }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeChannel, setActiveChannel] = useState<'group' | 'direct_bot'>('group');
@@ -160,6 +162,8 @@ export function useChat({
         peerNames.push(userName);
       }
 
+      const currentSnapshot = getCurrentDiagram ? getCurrentDiagram() : undefined;
+
       try {
         await streamChatMessage(
           diagramId,
@@ -170,6 +174,7 @@ export function useChat({
             content: trimmed,
             language,
             peerUsers: peerNames,
+            currentDiagram: currentSnapshot,
           },
           {
             onUserMessage: (serverUserMsg: ChatMessage) => {
@@ -207,6 +212,7 @@ export function useChat({
             content: trimmed,
             language,
             peerUsers: peerNames,
+            currentDiagram: currentSnapshot,
           });
         } catch (err: unknown) {
           setError(err instanceof Error ? err.message : 'Error al enviar mensaje');

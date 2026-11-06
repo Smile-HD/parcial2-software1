@@ -841,11 +841,17 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       let replyContent = '';
 
       // Cargar diagrama actual para dar contexto tanto al modelado como a las respuestas de Amongus
+      // Prioridad 1: Estado vivo del cliente (evita desfases de sincronización de DB)
+      // Prioridad 2: Carga autoritativa desde PostgreSQL
       let diagram: import('@app/core').Diagram | undefined;
-      try {
-        const loaded = await loadDiagramFromRow(exists.rows[0]);
-        diagram = loaded.diagram;
-      } catch {}
+      if (parsed.data.currentDiagram && Array.isArray(parsed.data.currentDiagram.classes) && parsed.data.currentDiagram.classes.length > 0) {
+        diagram = parsed.data.currentDiagram as import('@app/core').Diagram;
+      } else {
+        try {
+          const loaded = await loadDiagramFromRow(exists.rows[0]);
+          diagram = loaded.diagram;
+        } catch {}
+      }
 
       // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como creación de clase simple, borrado o edición)
       const hasMultipleClasses = (parsed.data.content.match(/\b(?:clase|calse|clse|tabla|class)\b/gi) || []).length > 1;
