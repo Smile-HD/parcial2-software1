@@ -994,6 +994,111 @@ describe('processUnifiedAmongusTurn', () => {
       expect(createAssocDelta).toBeDefined();
       expect((createAssocDelta as any).aggregation).toBe('none');
     });
+
+    it('modifies attribute type deterministically (e.g. cambia el tipo del atributo id en Prestamo a string)', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          {
+            id: 'c_prestamo',
+            name: 'Prestamo',
+            attributes: [{ id: 'a_id', name: 'id', type: 'int' }],
+          },
+        ],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambia el tipo del atributo id en Prestamo a string',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const editAttrDelta = res.batchDelta?.deltas.find(
+        (d: any) => d.kind === 'member' && d.op === 'editAttribute'
+      );
+      expect(editAttrDelta).toBeDefined();
+      expect((editAttrDelta as any).memberId).toBe('a_id');
+      expect((editAttrDelta as any).type).toBe('string');
+    });
+
+    it('infers class when changing attribute type without naming class explicitly', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          {
+            id: 'c_prestamo',
+            name: 'Prestamo',
+            attributes: [{ id: 'a_fec', name: 'fechaDevolucion', type: 'date' }],
+          },
+          {
+            id: 'c_libro',
+            name: 'Libro',
+            attributes: [{ id: 'a_tit', name: 'titulo', type: 'string' }],
+          },
+        ],
+        associations: [],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambia el tipo de fechaDevolucion a string',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const editAttrDelta = res.batchDelta?.deltas.find(
+        (d: any) => d.kind === 'member' && d.op === 'editAttribute'
+      );
+      expect(editAttrDelta).toBeDefined();
+      expect((editAttrDelta as any).memberId).toBe('a_fec');
+      expect((editAttrDelta as any).type).toBe('string');
+    });
+
+    it('updates association multiplicity deterministically (e.g. cambia la multiplicidad a 1..* y 1)', async () => {
+      const mockDiagram = {
+        id: 'diag-library',
+        classes: [
+          { id: 'c_libro', name: 'Libro', attributes: [] },
+          { id: 'c_prestamo', name: 'Prestamo', attributes: [] },
+        ],
+        associations: [
+          {
+            id: 'a_lp',
+            sourceClassId: 'c_libro',
+            targetClassId: 'c_prestamo',
+            sourceMultiplicity: '1',
+            targetMultiplicity: '0..*',
+            aggregation: 'none',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'cambia la multiplicidad de la relacion entre libro y prestamo a 1..* y 1',
+        'Zovako',
+        'es',
+        'diag-library',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const updateMultDelta = res.batchDelta?.deltas.find(
+        (d: any) => d.kind === 'association' && d.op === 'updateMultiplicity'
+      );
+      expect(updateMultDelta).toBeDefined();
+      expect((updateMultDelta as any).associationId).toBe('a_lp');
+      expect((updateMultDelta as any).newSourceMultiplicity).toBe('1..*');
+      expect((updateMultDelta as any).newTargetMultiplicity).toBe('1');
+    });
   });
 });
 

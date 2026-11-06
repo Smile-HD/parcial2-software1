@@ -2326,23 +2326,140 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
-  // 3b. Adición / modificación determinista de atributos en una clase existente
+  // 3b. Adición / modificación / renombrado determinista de atributos en una clase existente
   // Ejemplos:
   // - "a la clase prestamo agregarle un id de tipo entero"
-  // - "a la clase préstamo agrega el atributo codigo de tipo texto"
-  // - "agrega el atributo email:string a la clase Usuario"
-  // - "ponele a Libro el atributo paginas tipo int"
-  const isAddAttrIntent =
-    /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|set)/i.test(normalized) &&
-    /(?:atributo|campo|field|attribute|propiedad|property|un\s+id|el\s+id|id\b)/i.test(normalized);
+  // - "cambia el tipo del atributo id en Prestamo a string"
+  // - "cambia el tipo de fechaDevolucion a string" (infiere que pertenece a Prestamo)
+  // - "renombra el atributo fechaDevolucion a fechaEntrega en Prestamo"
+  const isAttrIntent =
+    /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|set|cambi[aáeé]|modific[aáeé]|pas[aáeé]|change|modify|renombr[aáeé]|rename)/i.test(normalized) &&
+    /(?:atributo|campo|field|attribute|propiedad|property|tipo\s+de|un\s+id|el\s+id|id\b)/i.test(normalized);
 
-  if (isAddAttrIntent) {
-    // Buscar la clase objetivo en la petición
+  if (isAttrIntent) {
+    const typeMap: Record<string, string> = {
+      entero: 'int',
+      entera: 'int',
+      int: 'int',
+      integer: 'int',
+      numero: 'int',
+      number: 'int',
+      texto: 'string',
+      cadena: 'string',
+      string: 'string',
+      str: 'string',
+      booleano: 'boolean',
+      booleana: 'boolean',
+      bool: 'boolean',
+      boolean: 'boolean',
+      fecha: 'date',
+      date: 'date',
+      timestamp: 'date',
+      datetime: 'date',
+      decimal: 'float',
+      float: 'float',
+      double: 'float',
+      real: 'float',
+    };
+
+    let attrName = '';
+    let attrType = 'string';
+    let newAttrName = '';
+    let matchedCandClass: string | undefined;
+
+    // Patrón renombrar atributo: "renombra el atributo <A> a/por <B>"
+    const attrRenameMatch =
+      /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+del?\s+atributo)\s+(?:el\s+atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+    if (attrRenameMatch) {
+      attrName = attrRenameMatch[1]!;
+      newAttrName = attrRenameMatch[2]!;
+    }
+
+    // Patrón cambio de tipo con clase intermedia: "cambia el tipo de <A> en <Clase> a <Tipo>"
+    const changeTypeWithClass =
+      /(?:cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+)?tipo\s+(?:del?\s+)?(?:atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:para\s+que\s+sea|a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+
+    // Patrón cambio de tipo con clase al inicio: "en <Clase> cambia el tipo de <A> a <Tipo>"
+    const changeTypeClassFirst =
+      /(?:en|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+)?tipo\s+(?:del?\s+)?(?:atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:para\s+que\s+sea|a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+
+    // Patrón cambio de tipo directo: "cambia el tipo de <A> a <Tipo> [en <Clase>]"
+    const changeTypeDirect =
+      /(?:cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+)?tipo\s+(?:del?\s+)?(?:atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:para\s+que\s+sea|a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(
+        text
+      ) ||
+      /(?:cambi[aáeé]|modific[aáeé])\s+(?:el\s+atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:para\s+que\s+sea|a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(
+        text
+      );
+
+    // Patrón atributo:tipo
+    const attrColonMatch =
+      /(?:atributo|campo|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*:\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+
+    // Patrón general: "<A> de tipo <Tipo>"
+    const attrWithTypeMatch =
+      /(?:(?:un|el|el\s+atributo|un\s+atributo|atributo|campo|field|property)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:de\s+tipo|tipo|type|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+
+    const idDirectMatch =
+      /(?:un\s+id|el\s+id|id)\s*(?:de\s+tipo|tipo|type|as)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)?/i.exec(
+        text
+      );
+
+    if (attrRenameMatch) {
+      // ya asignado
+    } else if (changeTypeWithClass) {
+      attrName = changeTypeWithClass[1]!;
+      matchedCandClass = changeTypeWithClass[2]!;
+      const rawType = stripAccents(changeTypeWithClass[3]!);
+      attrType = typeMap[rawType] || rawType;
+    } else if (changeTypeClassFirst) {
+      matchedCandClass = changeTypeClassFirst[1]!;
+      attrName = changeTypeClassFirst[2]!;
+      const rawType = stripAccents(changeTypeClassFirst[3]!);
+      attrType = typeMap[rawType] || rawType;
+    } else if (changeTypeDirect) {
+      attrName = changeTypeDirect[1]!;
+      const rawType = stripAccents(changeTypeDirect[2]!);
+      attrType = typeMap[rawType] || rawType;
+      if (changeTypeDirect[3]) matchedCandClass = changeTypeDirect[3];
+    } else if (attrColonMatch) {
+      attrName = attrColonMatch[1]!;
+      const rawType = stripAccents(attrColonMatch[2]!);
+      attrType = typeMap[rawType] || rawType;
+    } else if (attrWithTypeMatch) {
+      const candName = attrWithTypeMatch[1]!;
+      const stopWords = new Set(['clase', 'class', 'tipo', 'type', 'de', 'la', 'el', 'un', 'una']);
+      if (!stopWords.has(candName.toLowerCase())) {
+        attrName = candName;
+        const rawType = stripAccents(attrWithTypeMatch[2]!);
+        attrType = typeMap[rawType] || rawType;
+      }
+    } else if (idDirectMatch) {
+      attrName = 'id';
+      const rawType = idDirectMatch[1] ? stripAccents(idDirectMatch[1]) : 'int';
+      attrType = typeMap[rawType] || 'int';
+    }
+
+    // Buscar clase objetivo
     let targetClass: { id: string; name: string } | undefined;
-
-    // Patrón 1: "a la clase <Clase>" o "en la clase <Clase>"
+    if (matchedCandClass) {
+      const match = findClosestClassName(matchedCandClass, classes);
+      if (match && match.distance <= 2) {
+        targetClass = classes.find((c) => c.name.toLowerCase() === match.matchedName.toLowerCase());
+      }
+    }
     const targetClassMatch =
-      /(?:a\s+la\s+clase|en\s+la\s+clase|para\s+la\s+clase|to\s+class|in\s+class|on\s+class|a|en|to)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+      /(?:a\s+la\s+clase|en\s+la\s+clase|para\s+la\s+clase|de\s+la\s+clase|to\s+class|in\s+class|on\s+class|a|en|para)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
     if (targetClassMatch) {
       const cand = targetClassMatch[1]!;
       const match = findClosestClassName(cand, classes);
@@ -2352,7 +2469,6 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
 
     if (!targetClass) {
-      // Buscar cualquier clase mencionada con tolerancia a tildes
       for (const cls of classes) {
         const cNorm = stripAccents(cls.name);
         if (normalized.includes(cNorm)) {
@@ -2362,114 +2478,199 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       }
     }
 
-    if (!targetClass) {
-      // Fuzzy Levenshtein <= 2
-      const tokens = normalized.split(/\s+/).map((w) => w.replace(/[^a-z0-9]/g, '')).filter((w) => w.length >= 3);
-      for (const token of tokens) {
-        const match = findClosestClassName(token, classes);
-        if (match && match.distance <= 2) {
-          targetClass = classes.find((c) => c.name.toLowerCase() === match.matchedName.toLowerCase());
-          if (targetClass) break;
+    // Si la clase no fue nombrada explícitamente, buscar qué clase del lienzo posee este atributo
+    if (!targetClass && attrName) {
+      const aNorm = attrName.toLowerCase();
+      for (const cls of classes) {
+        const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
+        if (fullCls && Array.isArray(fullCls.attributes)) {
+          const hasAttr = fullCls.attributes.some((a: any) => a.name && a.name.toLowerCase() === aNorm);
+          if (hasAttr) {
+            targetClass = cls;
+            break;
+          }
         }
       }
     }
 
-    if (targetClass) {
-      // Extraer nombre y tipo del atributo
-      // Formatos:
-      // - "un id de tipo entero"
-      // - "el atributo nombre de tipo texto"
-      // - "atributo email:string"
-      // - "atributo fechaDevolucion tipo date"
-      let attrName = '';
-      let attrType = 'string';
+    if (targetClass && attrName) {
+      const cleanAttrName = attrName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
 
-      const typeMap: Record<string, string> = {
-        entero: 'int',
-        entera: 'int',
-        int: 'int',
-        integer: 'int',
-        numero: 'int',
-        number: 'int',
-        texto: 'string',
-        cadena: 'string',
-        string: 'string',
-        str: 'string',
-        booleano: 'boolean',
-        booleana: 'boolean',
-        bool: 'boolean',
-        boolean: 'boolean',
-        fecha: 'date',
-        date: 'date',
-        timestamp: 'date',
-        datetime: 'date',
-        decimal: 'float',
-        float: 'float',
-        double: 'float',
-        real: 'float',
-      };
-
-      // Intentar extraer con regex: "(?:un|el|atributo|campo)\s+([a-zA-Z_]\w*)\s+(?:de\s+tipo|tipo|type|as)\s+([a-zA-Z_]\w*)"
-      const attrWithTypeMatch =
-        /(?:(?:un|el|el\s+atributo|un\s+atributo|atributo|campo|field|property)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:de\s+tipo|tipo|type|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
-          text
-        );
-
-      const attrColonMatch =
-        /(?:atributo|campo|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*:\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
-          text
-        );
-
-      const idDirectMatch =
-        /(?:un\s+id|el\s+id|id)\s*(?:de\s+tipo|tipo|type|as)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)?/i.exec(
-          text
-        );
-
-      if (attrColonMatch) {
-        attrName = attrColonMatch[1]!;
-        const rawType = stripAccents(attrColonMatch[2]!);
-        attrType = typeMap[rawType] || 'string';
-      } else if (attrWithTypeMatch) {
-        const candName = attrWithTypeMatch[1]!;
-        // Asegurar que candName no sea una stop-word como "clase" o el nombre de la clase misma
-        const stopWords = new Set(['clase', 'class', 'tipo', 'type', 'de', 'la', 'el', 'un', 'una']);
-        if (!stopWords.has(candName.toLowerCase()) && candName.toLowerCase() !== targetClass.name.toLowerCase()) {
-          attrName = candName;
-          const rawType = stripAccents(attrWithTypeMatch[2]!);
-          attrType = typeMap[rawType] || 'string';
-        }
-      }
-
-      if (!attrName && idDirectMatch) {
-        attrName = 'id';
-        const rawType = idDirectMatch[1] ? stripAccents(idDirectMatch[1]) : 'int';
-        attrType = typeMap[rawType] || 'int';
-      }
-
-      if (attrName) {
-        // Sanitizar nombre de atributo: camelCase / ASCII
-        const cleanAttrName = attrName
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^A-Za-z0-9_]/g, '');
-
-        if (cleanAttrName) {
-          return {
-            action: 'modify',
-            classes: [
+      // Caso Renombrado de atributo
+      if (newAttrName) {
+        const cleanNewName = newAttrName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
+        return {
+          action: 'modify',
+          renames: {
+            attributes: [
               {
-                name: targetClass.name,
-                attributes: [
-                  {
-                    name: cleanAttrName,
-                    type: attrType,
-                    visibility: '+',
-                  },
-                ],
+                class: targetClass.name,
+                from: cleanAttrName,
+                to: cleanNewName,
               },
             ],
-          };
+          },
+        };
+      }
+
+      // Comprobar si el atributo ya existe en la clase (en cuyo caso es una modificación de tipo)
+      const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetClass!.id);
+      const existingAttr = fullCls?.attributes?.find((a: any) => a.name && a.name.toLowerCase() === cleanAttrName.toLowerCase());
+
+      if (existingAttr || /(?:cambi|modific|pas|change|modify)/i.test(normalized)) {
+        return {
+          action: 'modify',
+          updates: {
+            attributes: [
+              {
+                class: targetClass.name,
+                name: cleanAttrName,
+                type: attrType,
+              },
+            ],
+          },
+        };
+      }
+
+      // Si es adición de nuevo atributo
+      return {
+        action: 'modify',
+        classes: [
+          {
+            name: targetClass.name,
+            attributes: [
+              {
+                name: cleanAttrName,
+                type: attrType,
+                visibility: '+',
+              },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
+  // 3c. Mutación de multiplicidades, roles y clases de asociación en relaciones existentes
+  const isMultiplicityOrRoleIntent =
+    /(?:multiplicidad|cardinalidad|multiplicity|cardinality|rol\b|role\b|clase\s+de\s+asociaci[oó]n)/i.test(normalized) ||
+    (/(?:cambi|modific|pon|set|change|modify|ajust)/i.test(normalized) &&
+      /(?:1\.\.\*|0\.\.\*|0\.\.1|\b1\b\s+a\s+\*|\b1\b\s+a\s+muchos|muchos\s+a\s+\b1\b|muchos\s+a\s+muchos|uno\s+a\s+muchos|muchos\s+a\s+uno|uno\s+a\s+uno)/i.test(normalized));
+
+  if (isMultiplicityOrRoleIntent && associations.length > 0) {
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const tokens = normalized.split(/[^a-z0-9áéíóúñ]+/i).filter(Boolean);
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      if (regex.test(normalized)) return true;
+      if (tokens.some((t) => classExactOrPluralMatches(t, cNameNorm))) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
+    });
+    mentionedClasses.sort((a, b) => b.name.length - a.name.length);
+
+    let matchingAssoc: any = null;
+    let sourceCls: { id: string; name: string } | null = null;
+    let targetCls: { id: string; name: string } | null = null;
+
+    if (mentionedClasses.length >= 2) {
+      for (let i = 0; i < mentionedClasses.length; i++) {
+        for (let j = i + 1; j < mentionedClasses.length; j++) {
+          const ci = mentionedClasses[i]!;
+          const cj = mentionedClasses[j]!;
+          const found = associations.find(
+            (a) =>
+              (a.sourceClassId === ci.id && a.targetClassId === cj.id) ||
+              (a.sourceClassId === cj.id && a.targetClassId === ci.id)
+          );
+          if (found) {
+            matchingAssoc = found;
+            sourceCls = found.sourceClassId === ci.id ? ci : cj;
+            targetCls = found.targetClassId === cj.id ? cj : ci;
+            break;
+          }
         }
+        if (matchingAssoc) break;
+      }
+    } else if (associations.length === 1) {
+      matchingAssoc = associations[0]!;
+      sourceCls = classes.find((c) => c.id === matchingAssoc.sourceClassId) || null;
+      targetCls = classes.find((c) => c.id === matchingAssoc.targetClassId) || null;
+    }
+
+    if (matchingAssoc && sourceCls && targetCls) {
+      let sourceMultiplicity: string | undefined;
+      let targetMultiplicity: string | undefined;
+
+      // Extracción de multiplicidades explícitas (ej: "1..* y 1", "uno a muchos", "1 a *")
+      const multPairMatch = /(1\.\.\*|0\.\.\*|0\.\.1|\*|1)\s*(?:a|y|-|\/)\s*(1\.\.\*|0\.\.\*|0\.\.1|\*|1)/i.exec(text);
+      if (multPairMatch) {
+        sourceMultiplicity = multPairMatch[1] === '*' ? '1..*' : multPairMatch[1];
+        targetMultiplicity = multPairMatch[2] === '*' ? '1..*' : multPairMatch[2];
+      } else if (/(?:uno|1)\s+a\s+(?:muchos|\*)/i.test(normalized)) {
+        sourceMultiplicity = '1';
+        targetMultiplicity = '1..*';
+      } else if (/(?:muchos|\*)\s+a\s+(?:uno|1)/i.test(normalized)) {
+        sourceMultiplicity = '1..*';
+        targetMultiplicity = '1';
+      } else if (/(?:muchos|\*)\s+a\s+(?:muchos|\*)/i.test(normalized)) {
+        sourceMultiplicity = '1..*';
+        targetMultiplicity = '1..*';
+      } else if (/(?:uno|1)\s+a\s+(?:uno|1)/i.test(normalized)) {
+        sourceMultiplicity = '1';
+        targetMultiplicity = '1';
+      } else if (/(?:cero|0)\s+a\s+(?:muchos|\*)/i.test(normalized)) {
+        sourceMultiplicity = '1';
+        targetMultiplicity = '0..*';
+      } else if (/(?:cero|0)\s+a\s+(?:uno|1)/i.test(normalized)) {
+        sourceMultiplicity = '1';
+        targetMultiplicity = '0..1';
+      }
+
+      // Si se especificó una sola multiplicidad con "a <mult>"
+      if (!sourceMultiplicity && !targetMultiplicity) {
+        const singleMultMatch = /(?:multiplicidad\s+(?:sea\s+|a\s+|por\s+)?|a\s+)(1\.\.\*|0\.\.\*|0\.\.1|\*|1)/i.exec(text);
+        if (singleMultMatch) {
+          const val = singleMultMatch[1] === '*' ? '1..*' : singleMultMatch[1]!;
+          targetMultiplicity = val;
+        }
+      }
+
+      // Extracción de roles (sourceRole / targetRole)
+      let sourceRole: string | undefined;
+      let targetRole: string | undefined;
+      const roleOriginMatch = /(?:rol\s+origen|source\s+role)\s+(?:sea\s+|es\s+|a\s+)?["']?([A-Za-z_][\w]*)["']?/i.exec(text);
+      if (roleOriginMatch) sourceRole = roleOriginMatch[1];
+      const roleDestMatch = /(?:rol\s+destino|target\s+role)\s+(?:sea\s+|es\s+|a\s+)?["']?([A-Za-z_][\w]*)["']?/i.exec(text);
+      if (roleDestMatch) targetRole = roleDestMatch[1];
+
+      // Extracción de clase de asociación
+      let assocClass: string | undefined;
+      const assocClassMatch = /(?:clase\s+de\s+asociaci[oó]n|association\s+class)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text);
+      if (assocClassMatch) {
+        const candClass = assocClassMatch[1]!;
+        const foundAssocCls = classes.find((c) => c.name.toLowerCase() === candClass.toLowerCase());
+        if (foundAssocCls) assocClass = foundAssocCls.name;
+      }
+
+      if (sourceMultiplicity || targetMultiplicity || sourceRole || targetRole || assocClass) {
+        return {
+          action: 'modify',
+          updates: {
+            associations: [
+              {
+                source: sourceCls.name,
+                target: targetCls.name,
+                sourceMultiplicity: sourceMultiplicity || matchingAssoc.sourceMultiplicity || '1',
+                targetMultiplicity: targetMultiplicity || matchingAssoc.targetMultiplicity || '1',
+                sourceRole,
+                targetRole,
+                associationClass: assocClass,
+              },
+            ],
+          },
+        };
       }
     }
   }

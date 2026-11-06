@@ -49,7 +49,7 @@ export function resolveDiagramFactualQuery(
 
   // Cláusulas explícitas de mutación de relaciones o clases (ES y EN)
   const isExplicitMutationClause =
-    /(?:a|por|en|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|composition|aggregation|association)/i.test(rawNorm) ||
+    /(?:a|por|en|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|association|generalization|inheritance|realization|dependency)/i.test(rawNorm) ||
     /(?:donde|que)\s+(?:la\s+clase\s+)?todo\s+(?:sea|es)/i.test(rawNorm) ||
     /(?:where\s+(?:the\s+)?(?:whole|container|owner)\s+(?:class\s+)?is|whole\s+is|container\s+is)/i.test(rawNorm) ||
     /(?:rombo\s+(?:negro|blanco)|(?:black|white)\s+diamond)/i.test(rawNorm) ||
@@ -138,6 +138,8 @@ export function resolveDiagramFactualQuery(
       // Buscar generalización (herencia)
       const gen = generalizations.find(
         (g) =>
+          (g.subClassId === c1.id && g.superClassId === c2.id) ||
+          (g.subClassId === c2.id && g.superClassId === c1.id) ||
           (g.sourceClassId === c1.id && g.targetClassId === c2.id) ||
           (g.sourceClassId === c2.id && g.targetClassId === c1.id)
       );
@@ -145,6 +147,8 @@ export function resolveDiagramFactualQuery(
       // Buscar realización
       const real = realizations.find(
         (r) =>
+          (r.clientClassId === c1.id && r.supplierInterfaceId === c2.id) ||
+          (r.clientClassId === c2.id && r.supplierInterfaceId === c1.id) ||
           (r.sourceClassId === c1.id && r.targetClassId === c2.id) ||
           (r.sourceClassId === c2.id && r.targetClassId === c1.id)
       );
@@ -152,6 +156,8 @@ export function resolveDiagramFactualQuery(
       // Buscar dependencia
       const dep = dependencies.find(
         (d) =>
+          (d.clientClassId === c1.id && d.supplierClassId === c2.id) ||
+          (d.clientClassId === c2.id && d.supplierClassId === c1.id) ||
           (d.sourceClassId === c1.id && d.targetClassId === c2.id) ||
           (d.sourceClassId === c2.id && d.targetClassId === c1.id)
       );
@@ -190,24 +196,30 @@ export function resolveDiagramFactualQuery(
       }
 
       if (gen) {
-        const child = classMap.get(gen.sourceClassId)?.name || gen.sourceClassId;
-        const parent = classMap.get(gen.targetClassId)?.name || gen.targetClassId;
+        const subId = gen.subClassId || gen.sourceClassId;
+        const superId = gen.superClassId || gen.targetClassId;
+        const child = classMap.get(subId)?.name || subId;
+        const parent = classMap.get(superId)?.name || superId;
         return isEn
           ? `${countPrefix}Inheritance (generalization): "${child}" inherits from "${parent}".`
           : `${countPrefix}Herencia (generalización): "${child}" hereda de "${parent}".`;
       }
 
       if (real) {
-        const implementer = classMap.get(real.sourceClassId)?.name || real.sourceClassId;
-        const iface = classMap.get(real.targetClassId)?.name || real.targetClassId;
+        const clientId = real.clientClassId || real.sourceClassId;
+        const ifaceId = real.supplierInterfaceId || real.targetClassId;
+        const implementer = classMap.get(clientId)?.name || clientId;
+        const iface = classMap.get(ifaceId)?.name || ifaceId;
         return isEn
           ? `${countPrefix}Realization: "${implementer}" implements interface "${iface}".`
           : `${countPrefix}Realización: "${implementer}" implementa la interfaz "${iface}".`;
       }
 
       if (dep) {
-        const src = classMap.get(dep.sourceClassId)?.name || dep.sourceClassId;
-        const tgt = classMap.get(dep.targetClassId)?.name || dep.targetClassId;
+        const clientId = dep.clientClassId || dep.sourceClassId;
+        const supplierId = dep.supplierClassId || dep.targetClassId;
+        const src = classMap.get(clientId)?.name || clientId;
+        const tgt = classMap.get(supplierId)?.name || supplierId;
         return isEn
           ? `${countPrefix}Dependency: "${src}" depends on "${tgt}".`
           : `${countPrefix}Dependencia: "${src}" depende de "${tgt}".`;

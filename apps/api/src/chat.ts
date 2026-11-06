@@ -1258,6 +1258,59 @@ export async function processUnifiedAmongusTurn(
     }
   }
 
+  // 00e. Sanitizador NLP de intenciones atómicas: Si el usuario solicitó una mutación puntual
+  // pero el extractor rápido no lo cazó de primera por lenguaje coloquial o complejo, consultar al LLM
+  // con un prompt estricto de traducción a AST para que devuelva ÚNICAMENTE el JSON atómico, evitando síntesis completa.
+  if (diagram && diagram.classes && diagram.classes.length > 0 && isAction && llm && typeof llm.chat === 'function') {
+    const isMutationColloquial =
+      /(?:cambi|modific|pon|sac|borr|elimin|renombr|pas|ajust|hered|generaliz|conect|relacion|multiplicidad|rol|campo|atributo|tipo)/i.test(cleanContent);
+    if (isMutationColloquial) {
+      try {
+        const nlpMessages: Array<{ role: 'system' | 'user'; content: string }> = [
+          {
+            role: 'system',
+            content: [
+              'Sos un parser de lenguaje natural a operaciones UML sobre el diagrama actual.',
+              `ESTADO ACTUAL DEL DIAGRAMA:\n${diagramContext}`,
+              'INSTRUCCIÓN:',
+              'Traducí la petición del usuario a la mutación atómica en formato JSON estructurado dentro de ```json ```.',
+              'Formato esperado:',
+              '```json',
+              '{',
+              '  "action": "modify",',
+              '  "updates": {',
+              '    "associations": [{ "source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "1..*", "aggregation": "composite"|"shared"|"none", "sourceRole": "rol", "targetRole": "rol" }],',
+              '    "attributes": [{ "class": "Clase", "name": "attr", "type": "int"|"string"|"date"|"boolean"|"float", "newName": "nuevo" }],',
+              '    "classes": [{ "name": "Clase", "isAbstract": true, "classKind": "class"|"interface" }]',
+              '  },',
+              '  "generalizations": [{ "subclass": "Sub", "superclass": "Super" }],',
+              '  "renames": { "classes": [{ "from": "Viejo", "to": "Nuevo" }] },',
+              '  "deletions": { "classes": ["X"], "associations": [{"source": "A", "target": "B"}], "attributes": [{"class": "C", "attribute": "a"}] }',
+              '}',
+              '```',
+              'REGLAS CRÍTICAS: NUNCA generes clases ni atributos nuevos que no existan en el diagrama a menos que el usuario lo pida explícitamente.',
+            ].join('\n'),
+          },
+          { role: 'user', content: cleanContent },
+        ];
+        const rawJson = await llm.chat(nlpMessages, { timeoutMs: 12000, maxTokens: 400 });
+        const parsedNlpModel = robustParseDomainJson(rawJson);
+        if (parsedNlpModel && (parsedNlpModel.updates || parsedNlpModel.generalizations || parsedNlpModel.renames || parsedNlpModel.deletions || parsedNlpModel.associations || parsedNlpModel.classes)) {
+          const nlpDelta = expandSemanticDomainToDelta(parsedNlpModel, diagramId, diagram, cleanContent);
+          if (nlpDelta && nlpDelta.deltas.length > 0) {
+            const defaultReply = isEn
+              ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
+              : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
+            return {
+              replyContent: defaultReply,
+              batchDelta: nlpDelta,
+            };
+          }
+        }
+      } catch {}
+    }
+  }
+
   if (!llm || typeof llm.chat !== 'function') {
     return {
       replyContent: generateAmongusContextualReply(userContent, senderName, language, peerUsers, diagram),
