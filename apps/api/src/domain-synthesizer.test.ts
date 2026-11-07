@@ -1213,6 +1213,47 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       { name: 'x', type: 'float' },
     ]);
   });
+
+  it('deletes attribute from specified class without confusing other classes with matching attribute names', () => {
+    const diag: any = {
+      id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
+      classes: [
+        {
+          id: 'c_pub',
+          name: 'Publicacion',
+          attributes: [
+            { id: 'a1', name: 'isbn' },
+            { id: 'a2', name: 'autor' }, // attribute named "autor" in Publicacion!
+          ],
+        },
+        {
+          id: 'c_aut',
+          name: 'Autor',
+          attributes: [
+            { id: 'a3', name: 'nombre' },
+            { id: 'a4', name: 'nacionalidad' },
+          ],
+        },
+      ],
+      associations: [],
+    };
+
+    const mutation = extractExplicitModelMutations(
+      'elimina el atributo nacionalidad en Autor',
+      diag
+    );
+    expect(mutation).not.toBeNull();
+    expect(mutation?.deletions?.attributes).toBeDefined();
+    expect(mutation?.deletions?.attributes).toEqual([
+      { class: 'Autor', attribute: 'nacionalidad' },
+    ]);
+
+    const delta = expandSemanticDomainToDelta(mutation!, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const deleteDelta = delta!.deltas.find((d: any) => d.kind === 'member' && d.op === 'deleteAttribute');
+    expect(deleteDelta).toBeDefined();
+    expect((deleteDelta as any).classId).toBe('c_aut');
+  });
 });
 
 

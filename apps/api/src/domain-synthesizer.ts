@@ -2202,9 +2202,51 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     // 1a. Borrado de atributo (si menciona atributo/campo o un atributo de clase)
     const isAttrTarget = /(?:atributo|campo|field|attribute|propiedad|property)/i.test(normalized);
     if (isAttrTarget) {
-      for (const cls of classes) {
-        if (Array.isArray(cls.attributes)) {
-          for (const attr of cls.attributes) {
+      // 1. Extraer nombre explícito del atributo si se especificó: ej. "elimina el atributo nacionalidad [en/de Autor]"
+      const attrMatch = /(?:atributo|campo|field|attribute|propiedad|property)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      const requestedAttrName = attrMatch ? attrMatch[1]!.trim().toLowerCase() : undefined;
+
+      // 2. Extraer clase objetivo si se especificó: ej. "en/de/para [la clase] Autor"
+      let targetCls = mentionedClasses.length === 1 ? mentionedClasses[0] : undefined;
+      const classInTextMatch = /(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      if (classInTextMatch) {
+        const cCand = classes.find((c) => c.name.toLowerCase() === classInTextMatch[1]!.toLowerCase());
+        if (cCand) targetCls = cCand;
+      }
+
+      if (requestedAttrName) {
+        if (targetCls) {
+          const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetCls!.id);
+          const matchedAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === requestedAttrName);
+          if (matchedAttr) {
+            return {
+              action: 'modify',
+              deletions: {
+                attributes: [{ class: targetCls.name, attribute: matchedAttr.name }],
+              },
+            };
+          }
+        }
+        for (const cls of classes) {
+          const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
+          const matchedAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === requestedAttrName);
+          if (matchedAttr) {
+            return {
+              action: 'modify',
+              deletions: {
+                attributes: [{ class: cls.name, attribute: matchedAttr.name }],
+              },
+            };
+          }
+        }
+      }
+
+      // Fallback: si no hubo match explícito de "atributo <nombre>", buscar si algún atributo coincide
+      const searchClasses = targetCls ? [targetCls] : classes;
+      for (const cls of searchClasses) {
+        const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
+        if (fullCls && Array.isArray(fullCls.attributes)) {
+          for (const attr of fullCls.attributes) {
             const aNorm = attr.name.toLowerCase();
             const attrRegex = new RegExp(`(?:\\b|["'])${aNorm}(?:\\b|["'])`, 'i');
             if (attrRegex.test(normalized)) {
@@ -2215,6 +2257,34 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
                 },
               };
             }
+          }
+        }
+      }
+    }
+
+    // 1a2. Borrado de método (si menciona método/operación)
+    const isMethodTarget = /(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)/i.test(normalized);
+    if (isMethodTarget) {
+      const methodMatch = /(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      const requestedMethodName = methodMatch ? methodMatch[1]!.trim().toLowerCase() : undefined;
+      let targetCls = mentionedClasses.length === 1 ? mentionedClasses[0] : undefined;
+      const classInTextMatch = /(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      if (classInTextMatch) {
+        const cCand = classes.find((c) => c.name.toLowerCase() === classInTextMatch[1]!.toLowerCase());
+        if (cCand) targetCls = cCand;
+      }
+      if (requestedMethodName) {
+        const searchClasses = targetCls ? [targetCls] : classes;
+        for (const cls of searchClasses) {
+          const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
+          const matchedMethod = fullCls?.methods?.find((m: any) => m.name && m.name.toLowerCase().trim() === requestedMethodName);
+          if (matchedMethod) {
+            return {
+              action: 'modify',
+              deletions: {
+                methods: [{ class: cls.name, method: matchedMethod.name }],
+              },
+            };
           }
         }
       }
