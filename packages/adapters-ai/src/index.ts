@@ -42,14 +42,27 @@ import {
   inferAttributeType,
   splitCompoundUtterance,
   extractExclusionClasses,
+  levenshtein,
 } from './normalizer.js';
 
 // ── helpers compartidos ────────────────────────────────────────────────────
 
 function classIdByName(diagram: Diagram, name: string): string | null {
   const target = name.toLowerCase();
-  const found = diagram.classes.find((cls) => cls.name.toLowerCase() === target);
-  return found?.id ?? null;
+  const exact = diagram.classes.find((cls) => cls.name.toLowerCase() === target);
+  if (exact) return exact.id;
+
+  // Búsqueda difusa para tolerar typos tipográficos de 1 o 2 letras (ej. alunmo -> alumno)
+  let bestId: string | null = null;
+  let bestDist = 3;
+  for (const cls of diagram.classes) {
+    const dist = levenshtein(cls.name.toLowerCase(), target);
+    if (dist < bestDist && dist <= 2) {
+      bestDist = dist;
+      bestId = cls.id;
+    }
+  }
+  return bestId;
 }
 
 function parseMultiplicities(text: string): { source: string; target: string } | null {
@@ -531,12 +544,22 @@ export class FakeLlm implements LlmPort {
 
     // 5b. cambiar tipo de atributo: "cambiá el tipo de anio en Tirada a string"
     const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+del?\s*(?:atributo|campo|columna|propiedad|property|field)?|type\s+of)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
-    if (changeAttrType) {
-      const classId = classIdByName(currentIr, changeAttrType[2]!);
-      if (classId === null) return refused(`Unknown class "${changeAttrType[2]}"`);
+    // 5b2. cambiar tipo con clase al inicio: "a la tabla alunmo cambiale el id tipo int a tipo float"
+    const changeAttrTypeInverted =
+      /\b(?:a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aá]le|cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\s+(?:el\s+|la\s+)?(?:tipo\s+del?\s+|atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:de\s+tipo|tipo)\s+[A-Za-z_][\w.]*)?\s+(?:a|por|to)\s+(?:tipo\s+)?([A-Za-z_][\w.]*)/i.exec(utterance);
+
+    const parsedChangeType = changeAttrType
+      ? { className: changeAttrType[2]!, attrName: changeAttrType[1]!, rawType: changeAttrType[3]! }
+      : changeAttrTypeInverted
+        ? { className: changeAttrTypeInverted[1]!, attrName: changeAttrTypeInverted[2]!, rawType: changeAttrTypeInverted[3]! }
+        : null;
+
+    if (parsedChangeType) {
+      const classId = classIdByName(currentIr, parsedChangeType.className);
+      if (classId === null) return refused(`Unknown class "${parsedChangeType.className}"`);
       const cls = currentIr.classes.find((c) => c.id === classId)!;
-      const attr = cls.attributes.find((a) => a.name.toLowerCase() === changeAttrType[1]!.toLowerCase());
-      if (!attr) return refused(`Unknown attribute "${changeAttrType[1]}" in class "${changeAttrType[2]}"`);
+      const attr = cls.attributes.find((a) => a.name.toLowerCase() === parsedChangeType.attrName.toLowerCase());
+      if (!attr) return refused(`Unknown attribute "${parsedChangeType.attrName}" in class "${parsedChangeType.className}"`);
       const delta: MemberDelta = {
         kind: 'member',
         op: 'editAttribute',
@@ -544,7 +567,7 @@ export class FakeLlm implements LlmPort {
         classId,
         memberId: attr.id,
         name: attr.name,
-        type: changeAttrType[3]!.toLowerCase(),
+        type: sanitizeUmlType(parsedChangeType.rawType, attr.name),
       };
       return { kind: 'delta', value: delta };
     }

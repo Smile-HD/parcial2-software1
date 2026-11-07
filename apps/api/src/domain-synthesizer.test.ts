@@ -1318,6 +1318,38 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect(attrDeltas[1]).toMatchObject({ name: 'activa', type: 'boolean' });
     expect(attrDeltas[2]).toMatchObject({ name: 'fecha', type: 'date' });
   });
+
+  it('correctly parses inverted class-first attribute type change with typo (A la tabla alunmo cambiale el id tipo int a tipo float)', () => {
+    const diag: any = {
+      id: 'd_test',
+      classes: [
+        {
+          id: 'c_alumno',
+          name: 'Alumno',
+          attributes: [{ id: 'a_id', name: 'id', type: 'int' }],
+          methods: [],
+        },
+      ],
+      associations: [],
+    };
+
+    const mutations = extractExplicitModelMutations('A la tabla alunmo cambiale el id tipo int a tipo float', diag);
+    expect(mutations).not.toBeNull();
+    expect(mutations?.updates?.attributes).toEqual([
+      {
+        class: 'Alumno',
+        name: 'id',
+        type: 'float',
+      },
+    ]);
+
+    const delta = expandSemanticDomainToDelta(mutations!, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const editDelta = delta!.deltas.find((d: any) => d.kind === 'member' && d.op === 'editAttribute');
+    expect(editDelta).toBeDefined();
+    expect((editDelta as any).type).toBe('float');
+    expect((editDelta as any).name).toBe('id');
+  });
 });
 
 

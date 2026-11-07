@@ -3027,6 +3027,12 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         text
       );
 
+    // Patrón clase al inicio con cambio de tipo: "a la tabla <Clase> cambiale el <Attr> [tipo <Viejo>] a tipo <Nuevo>"
+    const changeTypeClassInverted =
+      /(?:a|en|para)\s+(?:(?:la|el)\s+)?(?:clase|tabla|entidad)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aáeé]le|cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+|la\s+)?(?:tipo\s+del?\s+|atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:de\s+tipo|tipo)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)?\s+(?:para\s+que\s+sea|a|por|to)\s+(?:tipo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+
     // Patrón cambio de tipo con clase al inicio: "en <Clase> cambia el tipo de <A> a <Tipo>"
     const changeTypeClassFirst =
       /(?:en|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+)?tipo\s+(?:del?\s+)?(?:atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:para\s+que\s+sea|a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
@@ -3061,6 +3067,11 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
     if (attrRenameMatch) {
       // ya asignado
+    } else if (changeTypeClassInverted) {
+      matchedCandClass = changeTypeClassInverted[1]!;
+      attrName = changeTypeClassInverted[2]!;
+      const rawType = stripAccents(changeTypeClassInverted[3]!);
+      attrType = typeMap[rawType] || rawType;
     } else if (changeTypeWithClass) {
       attrName = changeTypeWithClass[1]!;
       matchedCandClass = changeTypeWithClass[2]!;

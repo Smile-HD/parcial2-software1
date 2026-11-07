@@ -390,5 +390,34 @@ describe('20 Compound & Mixed Permutation Tests (C1-C20)', () => {
       expect(d.sourceMultiplicity).toBe('1');
       expect(d.targetMultiplicity).toBe('0..*');
     }
+
+    // Test Alumno change type:
+    const diagAlumno: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Alumno Diag',
+      classes: [
+        {
+          id: 'c-alumno',
+          diagramId: 'd1',
+          name: 'Alumno',
+          position: { x: 0, y: 0 },
+          attributes: [{ id: 'a-id', name: 'id', type: 'int' }],
+          methods: [],
+          isAbstract: false
+        }
+      ],
+      associations: [], generalizations: [], realizations: [], dependencies: [], naryAssociations: []
+    };
+
+    const textAlumno = 'A la tabla alunmo cambiale el id tipo int a tipo float';
+    const resAlumno = await llm.interpret(textAlumno, {}, diagAlumno);
+    expect(resAlumno.kind).toBe('delta');
+    if (resAlumno.kind === 'delta') {
+      const d = resAlumno.value as any;
+      expect(d.kind).toBe('member');
+      expect(d.op).toBe('editAttribute');
+      expect(d.name).toBe('id');
+      expect(d.type).toBe('float');
+    }
   });
 });
