@@ -3327,7 +3327,17 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         if (foundAssocCls) assocClass = foundAssocCls.name;
       }
 
-      if (sourceMultiplicity || targetMultiplicity || sourceRole || targetRole || assocClass) {
+      // Extracción del nombre de la relación (ej: "llamada dicta", "con nombre dicta", "de nombre dicta")
+      let assocName: string | undefined;
+      const assocNameMatch = /(?:llamada|llamado|nombrada|nombrado|named|called|con\s+(?:el\s+)?nombre|de\s+nombre|nombre\s+(?:sea|es))\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text);
+      if (assocNameMatch) {
+        const candidate = assocNameMatch[1]!;
+        if (!/^(clase|tabla|entidad|asociacion|relacion|multiplicidad|muchos|uno)$/i.test(candidate)) {
+          assocName = candidate;
+        }
+      }
+
+      if (sourceMultiplicity || targetMultiplicity || sourceRole || targetRole || assocClass || assocName) {
         return {
           action: 'modify',
           updates: {
@@ -3340,6 +3350,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
                 sourceRole,
                 targetRole,
                 associationClass: assocClass,
+                ...(assocName ? { name: assocName } : {}),
               },
             ],
           },

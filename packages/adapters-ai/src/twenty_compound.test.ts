@@ -354,5 +354,41 @@ describe('20 Compound & Mixed Permutation Tests (C1-C20)', () => {
       expect(b.deltas[3].name).toBe('profesor');
       expect(b.deltas[3].type).toBe('string');
     }
+
+    // Association name tests:
+    const text3 = 'cambia el nombre de la relacion entre Materia y Profesor a dicta';
+    const res3 = await llm.interpret(text3, {}, diag);
+    expect(res3.kind).toBe('delta');
+    if (res3.kind === 'delta') {
+      const d = res3.value as any;
+      expect(d.kind).toBe('association');
+      expect(d.op).toBe('updateMultiplicity');
+      expect(d.name).toBe('dicta');
+    }
+
+    const text4 = 'cambia la multiplicidad entre materia y profesor a 1 a N con nombre dicta';
+    const res4 = await llm.interpret(text4, {}, diag);
+    expect(res4.kind).toBe('delta');
+    if (res4.kind === 'delta') {
+      const d = res4.value as any;
+      expect(d.kind).toBe('association');
+      expect(d.op).toBe('updateMultiplicity');
+      // En diag, source es Profesor y target es Materia. Como el usuario dijo "materia (1) y profesor (N)":
+      expect(d.newSourceMultiplicity).toBe('0..*'); // Profesor
+      expect(d.newTargetMultiplicity).toBe('1');    // Materia
+      expect(d.name).toBe('dicta');
+    }
+
+    const text5 = 'conecta Materia con Profesor llamada dicta de 1 a N';
+    const res5 = await llm.interpret(text5, {}, diag);
+    expect(res5.kind).toBe('delta');
+    if (res5.kind === 'delta') {
+      const d = res5.value as any;
+      expect(d.kind).toBe('association');
+      expect(d.op).toBe('create');
+      expect(d.name).toBe('dicta');
+      expect(d.sourceMultiplicity).toBe('1');
+      expect(d.targetMultiplicity).toBe('0..*');
+    }
   });
 });

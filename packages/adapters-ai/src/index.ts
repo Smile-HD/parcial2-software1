@@ -877,6 +877,45 @@ export class FakeLlm implements LlmPort {
         newSourceMultiplicity: isDirect ? mults.source : mults.target,
         newTargetMultiplicity: isDirect ? mults.target : mults.source,
       };
+      const nameMatch = /\b(?:llamada|llamado|nombrada|nombrado|named|called|con\s+(?:el\s+)?nombre|de\s+nombre|nombrala|nombralo)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
+      if (nameMatch) {
+        const candidate = nameMatch[1]!;
+        if (!/^(clase|tabla|entidad|asociacion|relacion|multiplicidad|muchos|uno)$/i.test(candidate)) {
+          delta.name = candidate;
+        }
+      }
+      return { kind: 'delta', value: delta };
+    }
+
+    // 7d. ACTUALIZACIÓN / RENOMBRE de relación entre dos clases:
+    // "renombra la relación entre Materia y Profesor a dicta", "cambia el nombre de la relación entre X e Y a Z", "a la relación entre X e Y llamala Z"
+    const isRelationRename =
+      /\b(?:renombr[aá]|renombrar|cambi[aá]le|cambi[aá]|cambiar|modific[aá]|modificar|pon[eé]le|pon[eé]|nombr[aá]|rename)\b[\s\S]*?(?:el\s+nombre|de\s+nombre)?[\s\S]*?\b(?:de\s+la\s+|a\s+la\s+)?(?:relaci[oó]n|asociaci[oó]n|arista|link|association|relationship)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:a|por|como|to|llamada|llamado)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance) ||
+      /\b(?:a\s+la\s+)?(?:relaci[oó]n|asociaci[oó]n|arista|link|association|relationship)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá]|llamala|llamalo|nombra)\b[\s\S]*?(?:el\s+nombre|de\s+nombre)?[\s\S]*?\b(?:a|por|como|to)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
+
+    if (isRelationRename) {
+      const srcName = isRelationRename[1]!;
+      const tgtName = isRelationRename[2]!;
+      const sourceClassId = classIdByName(currentIr, srcName);
+      const targetClassId = classIdByName(currentIr, tgtName);
+      if (sourceClassId === null) return refused(`Unknown class "${srcName}"`);
+      if (targetClassId === null) return refused(`Unknown class "${tgtName}"`);
+      const existingAssoc = (currentIr.associations ?? []).find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId),
+      );
+      if (!existingAssoc) {
+        return refused(`No association found between "${srcName}" and "${tgtName}".`);
+      }
+      const newName = isRelationRename[3]!;
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'updateMultiplicity',
+        ...deltaBase(currentIr),
+        associationId: existingAssoc.id,
+        name: newName,
+      };
       return { kind: 'delta', value: delta };
     }
 
@@ -939,6 +978,17 @@ export class FakeLlm implements LlmPort {
         targetMultiplicity = '1';
       }
 
+      const nameMatch = /\b(?:llamada|llamado|nombrada|nombrado|named|called|con\s+(?:el\s+)?nombre|de\s+nombre)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
+      let assocName: string | undefined;
+      if (nameMatch) {
+        const candidate = nameMatch[1]!;
+        if (!/^(clase|tabla|entidad|asociacion|relacion|multiplicidad|muchos|uno)$/i.test(candidate) &&
+            candidate.toLowerCase() !== association[1]!.toLowerCase() &&
+            candidate.toLowerCase() !== association[2]!.toLowerCase()) {
+          assocName = candidate;
+        }
+      }
+
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -950,6 +1000,7 @@ export class FakeLlm implements LlmPort {
         targetMultiplicity,
         directed: false,
         aggregation: 'none',
+        ...(assocName ? { name: assocName } : {}),
       };
       return { kind: 'delta', value: delta };
     }
