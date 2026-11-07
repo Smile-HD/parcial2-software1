@@ -858,7 +858,6 @@ export function expandSemanticDomainToDelta(
               updateDelta.associationClassId = assocClassId;
             } else if (u.associationClass === null) {
               updateDelta.newAssociationClassId = null;
-              updateDelta.associationClassId = null;
             }
             deltas.push(updateDelta);
             const pair = isRecursive ? `${sourceId}::${sourceId}` : getPairKey(sourceId, targetId);
