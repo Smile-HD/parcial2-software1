@@ -68,6 +68,23 @@ describe('FakeLlm', () => {
     expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'total', type: 'decimal' });
   });
 
+  it('supports "crear tabla" synonym with typed attributes', async () => {
+    const llm = new FakeLlm();
+    const result = await llm.interpret(
+      '@Amongus crear tabla Producto con codigo:string y precio:float',
+      schema,
+      makeDiagram(),
+    );
+
+    expect(result.kind).toBe('delta');
+    if (result.kind !== 'delta') return;
+    const value = result.value as { kind: string; deltas?: { kind: string; op: string }[] };
+    expect(value.kind).toBe('batch');
+    expect(value.deltas?.[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Producto' });
+    expect(value.deltas?.[1]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'codigo', type: 'string' });
+    expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'precio', type: 'float' });
+  });
+
   it('7.5 refuses out-of-vocabulary commands instead of guessing (interpreter:R4)', async () => {
     const llm = new FakeLlm();
     const result = await llm.interpret('make the diagram prettier', schema, makeDiagram());

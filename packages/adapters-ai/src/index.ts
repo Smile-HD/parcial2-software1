@@ -198,9 +198,9 @@ export class FakeLlm implements LlmPort {
     }
 
     // 1. crear clase / diagrama [+ opcional "con atributos a, b y c" o "con a y b"]
-    const isExplicitCreateClass = /^\s*(?:add|create|crea|crear|craer|make|new)\s+(?:a|an|la|una|el|un|nueva|new)?\s*(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\b/i.test(utterance);
-    const isAddToClass = !isExplicitCreateClass && /\b(?:add|agrega|agregá|añade|pon|ponele|sumale)\b[\s\S]+?\b(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.test(utterance);
-    const createClass = !isAddToClass ? /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) : null;
+    const isExplicitCreateClass = /^\s*(?:@\w+\s+)?(?:add|create|crea|crear|craer|make|new)\s+(?:a|an|la|una|el|un|nueva|new)?\s*(?:class(?:es)?|clase|calse|clse|entidad|tabla|table|diagrama)\b/i.test(utterance);
+    const isAddToClass = !isExplicitCreateClass && /\b(?:add|agrega|agregá|añade|pon|ponele|sumale)\b[\s\S]+?\b(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.test(utterance);
+    const createClass = !isAddToClass ? /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|tabla|table|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) : null;
     const STOP_CLASS_NAMES = new Set(['de', 'del', 'la', 'el', 'un', 'una', 'los', 'las', 'con', 'para', 'flujo', 'secuencia', 'casos']);
     if (createClass && !STOP_CLASS_NAMES.has(createClass[1]!.toLowerCase())) {
       const name = createClass[1]!;
@@ -315,7 +315,7 @@ export class FakeLlm implements LlmPort {
     // 2. renombrar clase
     const isRenameMember = /\b(?:attribute|atributo|campo|columna|method|m[ée]todo)\b/i.test(utterance);
     const rename = !isRenameMember
-      ? /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
+      ? /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
       : null;
     if (rename) {
       const classId = classIdByName(currentIr, rename[1]!);

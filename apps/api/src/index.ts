@@ -865,12 +865,13 @@ export function buildApp(options?: AppOptions): FastifyInstance {
       }
 
       // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como creación de clase simple, borrado o edición)
-      const hasMultipleClasses = (parsed.data.content.match(/\b(?:clase|calse|clse|tabla|class)\b/gi) || []).length > 1;
+      const hasMultipleClasses = (parsed.data.content.match(/\b(?:clase|calse|clse|tabla|table|entidad|class)\b/gi) || []).length > 1;
       const isCompoundRelationship = /(?:asoci|conect|generaliz|hered|implement|relacion|multiplicidad|composi|agregaci|n-ari|ternari)/i.test(parsed.data.content);
       const isCompoundRequest = hasMultipleClasses || isCompoundRelationship;
       if (!replyContent && diagram && !isCompoundRequest) {
         try {
-          const outcome = await interpretCommand(parsed.data.content.trim(), new FakeLlm(), diagram, pendingDeltas);
+          const sanitizedCommand = parsed.data.content.replace(/@\w+\s*/g, '').trim();
+          const outcome = await interpretCommand(sanitizedCommand, new FakeLlm(), diagram, pendingDeltas);
           if (outcome.status === 'pending') {
             deltaId = outcome.deltaId;
             delta = outcome.delta;
