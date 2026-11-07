@@ -1561,6 +1561,26 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         expect(deleteDelta.classId).toBe(usuarioId);
       }
     });
+
+    it('creates class with typed attributes without spaces after colon (e.g. matricula:string y activa:boolean)', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeDiagram();
+      const result = await llm.interpret('crea la clase Especialidad con matricula:string y activa:boolean', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as { deltas: any[] };
+        const clsDelta = batch.deltas.find((d: any) => d.kind === 'class' && d.op === 'create');
+        expect(clsDelta).toBeDefined();
+        expect(clsDelta.name).toBe('Especialidad');
+
+        const memberDeltas = batch.deltas.filter((d: any) => d.kind === 'member');
+        expect(memberDeltas).toHaveLength(2);
+        expect(memberDeltas[0]).toMatchObject({ name: 'matricula', type: 'string' });
+        expect(memberDeltas[1]).toMatchObject({ name: 'activa', type: 'boolean' });
+      }
+    });
   });
 });
 

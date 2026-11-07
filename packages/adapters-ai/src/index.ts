@@ -233,7 +233,7 @@ export class FakeLlm implements LlmPort {
           item = item.replace(/^(?:and|y|e)\s+/i, '').trim();
           if (!item) continue;
 
-          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b)\s+([A-Za-z_][\w\s.]*)$/i.exec(item);
+          const typedMatch = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w\s.]*)$/i.exec(item);
           if (typedMatch) {
             const rawAttrName = typedMatch[1]!.trim();
             const attrParts = rawAttrName.split(/\s+/);
@@ -270,7 +270,15 @@ export class FakeLlm implements LlmPort {
               const cleanItem = item.replace(/[^A-Za-z_ñÑáéíóúÁÉÍÓÚ\s]/g, '').trim();
               if (cleanItem.length > 0) {
                 const attrParts = cleanItem.split(/\s+/);
-                const camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+                let camelName = attrParts.map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+                let inferredType = 'string';
+                for (const suffix of ['boolean', 'bool', 'string', 'integer', 'int', 'float', 'double', 'decimal', 'datetime', 'date']) {
+                  if (camelName.toLowerCase().endsWith(suffix) && camelName.length > suffix.length + 2) {
+                    inferredType = sanitizeUmlType(suffix, camelName);
+                    camelName = camelName.slice(0, -suffix.length);
+                    break;
+                  }
+                }
                 memberDeltas.push({
                   kind: 'member',
                   op: 'addAttribute',
@@ -278,7 +286,7 @@ export class FakeLlm implements LlmPort {
                   classId: create.classId,
                   memberId: crypto.randomUUID(),
                   name: camelName,
-                  type: 'string', // Tipo estándar por defecto cuando se omite
+                  type: inferredType,
                   ...adornments,
                 });
               }
