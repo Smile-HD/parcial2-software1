@@ -654,8 +654,38 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
+    // 7c. ELIMINACIÓN de asociación / relación entre dos clases:
+    // "elimina la relación entre X e Y", "borra la asociación entre X e Y", "delete association between X and Y", "desvincula X de Y"
+    const isDeleteAssociation =
+      /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá|unlink|detach)\b[\s\S]*?\b(?:asocia(?:ci[óo]n)?|association|link|relaci[oó]n|enlace)\b[\s\S]*?\b(?:between|entre|de|from)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|with|y|e|de|con)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance) ||
+      /\b(?:desvincula|desvinculá|unlink)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:de|from|con|with|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+    if (isDeleteAssociation) {
+      const sourceClassId = classIdByName(currentIr, isDeleteAssociation[1]!);
+      const targetClassId = classIdByName(currentIr, isDeleteAssociation[2]!);
+      if (sourceClassId === null) return refused(`Unknown class "${isDeleteAssociation[1]}"`);
+      if (targetClassId === null) return refused(`Unknown class "${isDeleteAssociation[2]}"`);
+      const existingAssoc = (currentIr.associations ?? []).find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId),
+      );
+      if (!existingAssoc) {
+        return refused(`No association found between "${isDeleteAssociation[1]}" and "${isDeleteAssociation[2]}".`);
+      }
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'delete',
+        ...deltaBase(currentIr),
+        associationId: existingAssoc.id,
+      };
+      return { kind: 'delta', value: delta };
+    }
+
     // 8. asociación entre dos clases (simple o con cardinalidad)
-    const association = /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const isDeleteAssocIntent = /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá)\b/i.test(utterance);
+    const association = !isDeleteAssocIntent
+      ? /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance)
+      : null;
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
       const targetClassId = classIdByName(currentIr, association[2]!);

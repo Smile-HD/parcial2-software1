@@ -1731,6 +1731,57 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
 
       expect(result.kind).toBe('refused');
     });
+
+    it('deletes association between two classes: "eliminá la relación entre Publicacion y CategoriaMedica"', async () => {
+      const llm = new FakeLlm();
+      const pubId = crypto.randomUUID();
+      const catId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: pubId,
+            name: 'Publicacion',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+          {
+            id: catId,
+            name: 'CategoriaMedica',
+            attributes: [],
+            methods: [],
+            position: { x: 100, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+        associations: [
+          {
+            id: assocId,
+            sourceClassId: pubId,
+            targetClassId: catId,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1',
+            directed: false,
+            aggregation: 'shared',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('eliminá la relación entre Publicacion y CategoriaMedica', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value).toMatchObject({
+          kind: 'association',
+          op: 'delete',
+          associationId: assocId,
+        });
+      }
+    });
   });
 });
 
