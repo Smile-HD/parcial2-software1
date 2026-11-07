@@ -3082,7 +3082,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       attrType = typeMap[rawType] || rawType;
     } else if (attrWithTypeMatch) {
       const candName = attrWithTypeMatch[1]!;
-      const stopWords = new Set(['clase', 'class', 'tipo', 'type', 'de', 'la', 'el', 'un', 'una']);
+      const stopWords = new Set(['clase', 'class', 'tipo', 'type', 'de', 'la', 'el', 'un', 'una', 'of', 'in', 'into', 'for', 'to']);
       if (!stopWords.has(candName.toLowerCase())) {
         attrName = candName;
         const rawType = stripAccents(attrWithTypeMatch[2]!);
