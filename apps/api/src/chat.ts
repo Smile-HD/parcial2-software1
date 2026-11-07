@@ -1258,7 +1258,7 @@ export async function processUnifiedAmongusTurn(
       if (mutationDelta && mutationDelta.deltas.length > 0) {
         let defaultReply = isEn
           ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
-          : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
+          : 'Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que se aplique en vivo.';
         const hasUnlink = mutationDelta.deltas.some((d: any) => d.kind === 'association' && (d as any).newAssociationClassId === null);
         const hasClassCreate = mutationDelta.deltas.some((d: any) => d.kind === 'class' && d.op === 'create');
         if (hasUnlink) {

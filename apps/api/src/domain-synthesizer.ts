@@ -3016,20 +3016,22 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+del?\s+atributo)\s+(?:el\s+atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
         text
       );
-    if (attrRenameMatch) {
-      attrName = attrRenameMatch[1]!;
-      newAttrName = attrRenameMatch[2]!;
-    }
+
+    // Patrón clase al inicio con mutación de atributo (cambio de tipo o renombrado)
+    // ej: "a la tabla materia cambiale el atribut id a id_materia"
+    // ej: "a la tabla alunmo cambiale el id tipo int a tipo float"
+    const attrMutateClassInverted =
+      /(?:a|en|para)\s+(?:(?:la|el)\s+)?(?:clase|tabla|entidad)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aáeé]le|cambi[aáeé]|renombr[aáeé]|modific[aáeé]|edit[aáeé]|pas[aáeé]|set)\s+(?:el\s+nombre\s+del?\s+|el\s+|la\s+)?(?:tipo\s+del?\s+|attributes?|atributos?|atributs?|campos?|columnas?|propiedades?|properties|fields?)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:de\s+tipo|tipo)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)?\s+(?:para\s+que\s+sea|a|por|to)\s+(?:(?:el\s+)?nombre\s+)?(?:tipo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+        text
+      );
+
+    const hasTipoKeyword = /\b(?:de\s+tipo|tipo|type)\s+[A-Za-z_]/i.test(text);
+    const targetWord = attrMutateClassInverted ? stripAccents(attrMutateClassInverted[3]!.toLowerCase()) : '';
+    const isTargetType = Boolean(typeMap[targetWord]);
 
     // Patrón cambio de tipo con clase intermedia: "cambia el tipo de <A> en <Clase> a <Tipo>"
     const changeTypeWithClass =
       /(?:cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+)?tipo\s+(?:del?\s+)?(?:atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:para\s+que\s+sea|a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
-        text
-      );
-
-    // Patrón clase al inicio con cambio de tipo: "a la tabla <Clase> cambiale el <Attr> [tipo <Viejo>] a tipo <Nuevo>"
-    const changeTypeClassInverted =
-      /(?:a|en|para)\s+(?:(?:la|el)\s+)?(?:clase|tabla|entidad)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aáeé]le|cambi[aáeé]|modific[aáeé]|pas[aáeé]|set)\s+(?:el\s+|la\s+)?(?:tipo\s+del?\s+|atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:de\s+tipo|tipo)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)?\s+(?:para\s+que\s+sea|a|por|to)\s+(?:tipo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
         text
       );
 
@@ -3066,11 +3068,16 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       );
 
     if (attrRenameMatch) {
-      // ya asignado
-    } else if (changeTypeClassInverted) {
-      matchedCandClass = changeTypeClassInverted[1]!;
-      attrName = changeTypeClassInverted[2]!;
-      const rawType = stripAccents(changeTypeClassInverted[3]!);
+      attrName = attrRenameMatch[1]!;
+      newAttrName = attrRenameMatch[2]!;
+    } else if (attrMutateClassInverted && !hasTipoKeyword && !isTargetType) {
+      matchedCandClass = attrMutateClassInverted[1]!;
+      attrName = attrMutateClassInverted[2]!;
+      newAttrName = attrMutateClassInverted[3]!;
+    } else if (attrMutateClassInverted && (hasTipoKeyword || isTargetType)) {
+      matchedCandClass = attrMutateClassInverted[1]!;
+      attrName = attrMutateClassInverted[2]!;
+      const rawType = stripAccents(attrMutateClassInverted[3]!);
       attrType = typeMap[rawType] || rawType;
     } else if (changeTypeWithClass) {
       attrName = changeTypeWithClass[1]!;

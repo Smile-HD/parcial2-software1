@@ -419,5 +419,33 @@ describe('20 Compound & Mixed Permutation Tests (C1-C20)', () => {
       expect(d.name).toBe('id');
       expect(d.type).toBe('float');
     }
+
+    const diagMateria: Diagram = {
+      id: crypto.randomUUID(),
+      name: 'Materia Diag',
+      classes: [
+        {
+          id: 'c-materia',
+          diagramId: 'd1',
+          name: 'Materia',
+          position: { x: 0, y: 0 },
+          attributes: [{ id: 'a-id', name: 'id', type: 'int' }],
+          methods: [],
+          isAbstract: false
+        }
+      ],
+      associations: [], generalizations: [], realizations: [], dependencies: [], naryAssociations: []
+    };
+
+    const textMateria = 'a la tabla materia cambiale el atribut id a id_materia';
+    const resMateria = await llm.interpret(textMateria, {}, diagMateria);
+    expect(resMateria.kind).toBe('delta');
+    if (resMateria.kind === 'delta') {
+      const d = resMateria.value as any;
+      expect(d.kind).toBe('member');
+      expect(d.op).toBe('editAttribute');
+      expect(d.name).toBe('id_materia');
+      expect(d.type).toBe('int');
+    }
   });
 });

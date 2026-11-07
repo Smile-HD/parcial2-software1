@@ -1350,6 +1350,38 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect((editDelta as any).type).toBe('float');
     expect((editDelta as any).name).toBe('id');
   });
+
+  it('correctly parses inverted class-first attribute rename with typo (a la tabla materia cambiale el atribut id a id_materia)', () => {
+    const diag: any = {
+      id: 'd_test',
+      classes: [
+        {
+          id: 'c_materia',
+          name: 'Materia',
+          attributes: [{ id: 'a_id', name: 'id', type: 'int' }],
+          methods: [],
+        },
+      ],
+      associations: [],
+    };
+
+    const mutations = extractExplicitModelMutations('a la tabla materia cambiale el atribut id a id_materia', diag);
+    expect(mutations).not.toBeNull();
+    expect(mutations?.renames?.attributes).toEqual([
+      {
+        class: 'Materia',
+        from: 'id',
+        to: 'id_materia',
+      },
+    ]);
+
+    const delta = expandSemanticDomainToDelta(mutations!, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const renameDelta = delta!.deltas.find((d: any) => d.kind === 'member' && d.op === 'editAttribute');
+    expect(renameDelta).toBeDefined();
+    expect((renameDelta as any).name).toBe('id_materia');
+    expect((renameDelta as any).type).toBe('int');
+  });
 });
 
 

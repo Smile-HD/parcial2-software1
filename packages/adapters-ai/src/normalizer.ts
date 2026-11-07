@@ -194,7 +194,7 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:tavla|tavlas)(?!\p{L})/giu, 'tabla');
 
   // ── G. Miembros y propiedades del metamodelo UML
-  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedad(?:es)?|campos?|columnas?|columns?|attibutes?|attributs?|attribs?|attrs?|props?|properties|fields?)(?!\p{L})/giu, 'atributos');
+  s = s.replace(/(?<!\p{L})(?:atributs?|atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedad(?:es)?|campos?|columnas?|columns?|attibutes?|attributs?|attribs?|attrs?|props?|properties|fields?)(?!\p{L})/giu, 'atributos');
   s = s.replace(/(?<!\p{L})(?:mtodos?|m[ée]todos?|funci[oó]n(?:es)?|operaci[oó]n(?:es)?|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
   s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|asociaci[oó]n(?:es)?|asocici[oó]n(?:es)?|soacici[oó]n(?:es)?|asosiaci[oó]n(?:es)?|asociasi[oó]n(?:es)?|asocaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
 

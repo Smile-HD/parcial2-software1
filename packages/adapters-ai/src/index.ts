@@ -544,14 +544,24 @@ export class FakeLlm implements LlmPort {
 
     // 5b. cambiar tipo de atributo: "cambiá el tipo de anio en Tirada a string"
     const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+del?\s*(?:atributo|campo|columna|propiedad|property|field)?|type\s+of)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
-    // 5b2. cambiar tipo con clase al inicio: "a la tabla alunmo cambiale el id tipo int a tipo float"
-    const changeAttrTypeInverted =
-      /\b(?:a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aá]le|cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\s+(?:el\s+|la\s+)?(?:tipo\s+del?\s+|atributo\s+|campo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:de\s+tipo|tipo)\s+[A-Za-z_][\w.]*)?\s+(?:a|por|to)\s+(?:tipo\s+)?([A-Za-z_][\w.]*)/i.exec(utterance);
+    // 5b2. mutación de atributo con clase al inicio (cambio de tipo o renombrado)
+    // ej: "a la tabla alunmo cambiale el id tipo int a tipo float"
+    // ej: "a la tabla materia cambiale el atribut id a id_materia"
+    const attrMutateClassInverted =
+      /\b(?:a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aá]le|cambi[aá]|modific[aá]|edit[aá]|renombr[aá]|change|modify|update|set|rename)\s+(?:el\s+nombre\s+del?\s+|el\s+|la\s+)?(?:tipo\s+del?\s+|attributes?|atributos?|atributs?|campos?|columnas?|propiedades?|properties|fields?)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:de\s+tipo|tipo)\s+[A-Za-z_][\w.]*)?\s+(?:a|por|to)\s+(?:(?:el\s+)?nombre\s+)?(?:tipo\s+)?([A-Za-z_][\w.]*)/i.exec(utterance);
+
+    const KNOWN_UML_TYPES = new Set([
+      'int', 'entero', 'integer', 'number', 'float', 'double', 'decimal', 'real',
+      'string', 'str', 'text', 'texto', 'varchar', 'char', 'cadena',
+      'boolean', 'bool', 'booleano', 'date', 'fecha', 'timestamp', 'datetime'
+    ]);
+    const isTargetType = (t: string) => KNOWN_UML_TYPES.has(t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+    const hasTipoKeyword = /\b(?:de\s+tipo|tipo|type)\s+[A-Za-z_]/i.test(utterance);
 
     const parsedChangeType = changeAttrType
       ? { className: changeAttrType[2]!, attrName: changeAttrType[1]!, rawType: changeAttrType[3]! }
-      : changeAttrTypeInverted
-        ? { className: changeAttrTypeInverted[1]!, attrName: changeAttrTypeInverted[2]!, rawType: changeAttrTypeInverted[3]! }
+      : (attrMutateClassInverted && (hasTipoKeyword || isTargetType(attrMutateClassInverted[3]!)))
+        ? { className: attrMutateClassInverted[1]!, attrName: attrMutateClassInverted[2]!, rawType: attrMutateClassInverted[3]! }
         : null;
 
     if (parsedChangeType) {
@@ -577,12 +587,21 @@ export class FakeLlm implements LlmPort {
     const renameAttrToIn = /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna|propiedad|property|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     // Orden 2 (InClass): "rename attribute fullName in Customer to nombreCompleto" / "poné en minúsculas el atributo nombre en Autor"
     const renameAttrInClass = !renameAttrToIn && /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna|propiedad|property|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(utterance);
+    // Orden 3 (Inverted): "a la tabla materia cambiale el atribut id a id_materia"
+    const renameAttrInverted =
+      !renameAttrToIn &&
+      !renameAttrInClass &&
+      attrMutateClassInverted &&
+      !hasTipoKeyword &&
+      !isTargetType(attrMutateClassInverted[3]!)
+        ? { className: attrMutateClassInverted[1]!, attrName: attrMutateClassInverted[2]!, toName: attrMutateClassInverted[3]! }
+        : null;
 
     const parsedRename = renameAttrToIn
       ? { attrName: renameAttrToIn[1]!, className: renameAttrToIn[3]!, toName: renameAttrToIn[2]! }
       : renameAttrInClass
         ? { attrName: renameAttrInClass[1]!, className: renameAttrInClass[2]!, toName: renameAttrInClass[3] }
-        : null;
+        : renameAttrInverted;
 
     if (parsedRename) {
       const classId = classIdByName(currentIr, parsedRename.className);
