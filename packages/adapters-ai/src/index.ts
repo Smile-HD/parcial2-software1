@@ -34,6 +34,7 @@ export * from './retry-repairing-llm.js';
 export * from './vision.js';
 export * from './repair.js';
 export * from './normalizer.js';
+export * from './canonicalizer.js';
 import { repairModelIdentifiers } from './repair.js';
 import {
   normalizeUmlUtterance,

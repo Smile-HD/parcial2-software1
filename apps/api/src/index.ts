@@ -22,7 +22,7 @@ import {
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
-import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision, normalizeUmlUtterance } from '@app/adapters-ai';
+import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision, normalizeUmlUtterance, canonicalizeUtteranceWithGroq } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { synthesizeDomainModel } from './domain-synthesizer.js';
 import { evaluateChatGuard } from './chat-guard.js';
@@ -877,7 +877,29 @@ export function buildApp(options?: AppOptions): FastifyInstance {
               : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
           }
         } catch {
-          // Si no es comando determinista, pasa directo al agente IA unificado
+          // Si no es comando determinista, pasa al canonicador o al agente IA unificado
+        }
+      }
+
+      // Nivel 1.5: Canonicador Zero-Shot de alta velocidad con Groq (si el determinista estricto no cazó la sintaxis)
+      if (!replyContent && diagram) {
+        const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
+        if (groqApiKey && groqApiKey.startsWith('gsk_')) {
+          try {
+            const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
+            if (canonicalText) {
+              const outcome = await interpretCommand(canonicalText, new FakeLlm(), diagram, pendingDeltas);
+              if (outcome.status === 'pending') {
+                deltaId = outcome.deltaId;
+                delta = outcome.delta;
+                replyContent = isEn
+                  ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+                  : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+              }
+            }
+          } catch {
+            // Continúa a Nivel 2
+          }
         }
       }
 
