@@ -25,6 +25,7 @@ import {
 import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { synthesizeDomainModel } from './domain-synthesizer.js';
+import { evaluateChatGuard } from './chat-guard.js';
 import { registerXmiImportRoutes } from './xmi-import.js';
 import { registerXmiExportRoutes } from './xmi-export.js';
 import { registerPhotoImportRoutes } from './photo-import.js';
@@ -853,11 +854,17 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         } catch {}
       }
 
+      // Nivel 0: Guardián de Dominio, Anti-Jailbreak e Invariantes Semánticas OOAD (0 ms, 0 tokens)
+      const chatGuard = evaluateChatGuard(parsed.data.content, diagram, isEn ? 'en' : 'es');
+      if (chatGuard.blocked && chatGuard.replyContent) {
+        replyContent = chatGuard.replyContent;
+      }
+
       // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como creación de clase simple, borrado o edición)
       const hasMultipleClasses = (parsed.data.content.match(/\b(?:clase|calse|clse|tabla|class)\b/gi) || []).length > 1;
-      const isCompoundRelationship = /\b(asoci|conect|generaliz|hered|implement|relacion|multiplicidad|composi|agregaci)\b/i.test(parsed.data.content);
+      const isCompoundRelationship = /(?:asoci|conect|generaliz|hered|implement|relacion|multiplicidad|composi|agregaci|n-ari|ternari)/i.test(parsed.data.content);
       const isCompoundRequest = hasMultipleClasses || isCompoundRelationship;
-      if (diagram && !isCompoundRequest) {
+      if (!replyContent && diagram && !isCompoundRequest) {
         try {
           const outcome = await interpretCommand(parsed.data.content.trim(), new FakeLlm(), diagram, pendingDeltas);
           if (outcome.status === 'pending') {
