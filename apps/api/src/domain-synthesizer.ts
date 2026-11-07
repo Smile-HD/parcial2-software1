@@ -232,6 +232,140 @@ export function toCanonicalKey(raw?: string): string {
 }
 
 /**
+ * Sanitiza nombre y tipo de atributo, separando sufijos de tipo concatenados por LLMs
+ * (ej: "matriculastring" -> "matricula" / "string", "activaboolean" -> "activa" / "boolean").
+ */
+export function sanitizeAttributeNameAndType(rawName: string, rawType?: string): { name: string; type: string } {
+  let name = (rawName || '').trim();
+  let type = (rawType || '').trim();
+
+  // Si vino en formato "nombre:tipo"
+  if (name.includes(':')) {
+    const parts = name.split(':');
+    name = parts[0]?.trim() || '';
+    if (!type || type === 'string') {
+      type = parts[1]?.trim() || type;
+    }
+  }
+
+  name = name
+    .replace(/^[-+*#~]\s*/, '')
+    .replace(/\s+/g, '')
+    .replace(/^[\[\(\{]+/, '')
+    .replace(/[\]\)\}]+$/, '');
+
+  const typeMap: Record<string, string> = {
+    string: 'string',
+    str: 'string',
+    texto: 'string',
+    int: 'int',
+    integer: 'int',
+    entero: 'int',
+    number: 'int',
+    numero: 'int',
+    float: 'float',
+    double: 'float',
+    decimal: 'float',
+    boolean: 'boolean',
+    bool: 'boolean',
+    date: 'date',
+    datetime: 'date',
+    fecha: 'date',
+    void: 'void',
+  };
+
+  const knownSuffixes = [
+    { suffix: 'boolean', type: 'boolean' },
+    { suffix: 'bool', type: 'boolean' },
+    { suffix: 'string', type: 'string' },
+    { suffix: 'str', type: 'string' },
+    { suffix: 'integer', type: 'int' },
+    { suffix: 'int', type: 'int' },
+    { suffix: 'float', type: 'float' },
+    { suffix: 'double', type: 'float' },
+    { suffix: 'decimal', type: 'float' },
+    { suffix: 'datetime', type: 'date' },
+    { suffix: 'date', type: 'date' },
+    { suffix: 'fecha', type: 'date' },
+  ];
+
+  const skipWords = new Set(['point', 'joint', 'paint', 'print', 'state', 'date', 'rate', 'gate']);
+
+  for (const ks of knownSuffixes) {
+    const lower = name.toLowerCase();
+    if (lower.endsWith(ks.suffix) && !skipWords.has(lower)) {
+      const base = name.slice(0, -ks.suffix.length);
+      if (base.length >= 2) {
+        name = base;
+        if (!type || type === 'string' || type === ks.type) {
+          type = ks.type;
+        }
+        break;
+      }
+    }
+  }
+
+  const rawNorm = (type || 'string').toLowerCase().replace(/\[\]$/, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+  const normType = typeMap[rawNorm] || (['int', 'float', 'string', 'boolean', 'date'].includes(rawNorm) ? rawNorm : 'string');
+
+  return { name, type: normType };
+}
+
+/**
+ * Parsea atributos especificados en prosa natural con soporte de dos puntos, comas y conjunciones
+ * (ej: "matricula:string y activa:boolean" -> [{ name: 'matricula', type: 'string' }, { name: 'activa', type: 'boolean' }]).
+ */
+export function parseAttributesFromProse(rawAttrsText: string): Array<{ name: string; type: string }> {
+  if (!rawAttrsText) return [];
+  const parts = rawAttrsText
+    .split(/(?:,\s*|\s+(?:y|and|e)\s+|;\s*)/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const results: Array<{ name: string; type: string }> = [];
+  const typeCandidates = new Set([
+    'string', 'str', 'texto',
+    'int', 'integer', 'entero', 'numero', 'number',
+    'float', 'double', 'decimal',
+    'boolean', 'bool', 'booleano',
+    'date', 'datetime', 'fecha',
+    'void'
+  ]);
+
+  for (const part of parts) {
+    let name = '';
+    let type = 'string';
+    if (part.includes(':')) {
+      const sub = part.split(':');
+      name = sub[0]?.trim() || '';
+      type = sub[1]?.trim() || 'string';
+    } else {
+      const words = part.split(/\s+/).filter(Boolean);
+      if (words.length === 2) {
+        if (typeCandidates.has(words[1]!.toLowerCase())) {
+          name = words[0]!;
+          type = words[1]!;
+        } else if (typeCandidates.has(words[0]!.toLowerCase())) {
+          name = words[1]!;
+          type = words[0]!;
+        } else {
+          name = words[0]!;
+        }
+      } else {
+        name = part;
+      }
+    }
+    if (name) {
+      const sanitized = sanitizeAttributeNameAndType(name, type);
+      if (sanitized.name) {
+        results.push(sanitized);
+      }
+    }
+  }
+  return results;
+}
+
+/**
  * Genera atributos de dominio realistas para evitar clases vacías cuando el LLM omite attributes.
  */
 export function generateDefaultAttributesForClass(className: string): Array<{ name: string; type: string }> {
@@ -1066,9 +1200,8 @@ export function expandSemanticDomainToDelta(
             const parts = cleaned.split(/,\s*(?=[a-zA-Z_])/);
             for (const p of parts) {
               const subParts = p.split(':');
-              const aName = subParts[0]?.trim().replace(/^[-+*#~]\s*/, '').replace(/^[\[\(\{]+/, '');
-              const aType = subParts[1]?.trim().replace(/[\]\)\}]+$/, '') || 'string';
-              if (aName) attrList.push({ name: aName, type: aType });
+              const sanitized = sanitizeAttributeNameAndType(subParts[0] || '', subParts[1] || 'string');
+              if (sanitized.name) attrList.push(sanitized);
             }
           } else if (item && typeof item === 'object') {
             attrList.push(item);
@@ -1104,16 +1237,10 @@ export function expandSemanticDomainToDelta(
           if (attr.isDerived !== undefined) isDerived = !!attr.isDerived;
         }
 
-        // Sanitizar si el modelo devolvió "nombre:string" adherido dentro del campo name
-        if (name.includes(':')) {
-          const colonParts = name.split(':');
-          name = colonParts[0]?.trim() ?? '';
-          const embeddedType = colonParts[1]?.trim();
-          if (embeddedType && (!type || type === 'string')) {
-            type = embeddedType;
-          }
-        }
-        name = name.replace(/^[-+*#~]\s*/, '').replace(/\s+/g, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+        // Sanitizar si el modelo devolvió "nombre:string" o sufijos pegados adheridos dentro del campo name
+        const sanitized = sanitizeAttributeNameAndType(name, type);
+        name = sanitized.name;
+        type = sanitized.type;
         if (!name) return;
         // Ignorar placeholders literales del esquema como "type", "string", "int", "attribute", "date"
         if (/^(type|tipo|string|int|float|boolean|attribute|attr|date)$/i.test(name)) return;
@@ -1944,28 +2071,25 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
               const parts = cleaned.split(/,\s*(?=[a-zA-Z_])/);
               for (const p of parts) {
                 const subParts = p.split(':');
-                const aName = subParts[0]?.trim().replace(/^[-+*#~]\s*/, '').replace(/^[\[\(\{]+/, '');
-                const aType = subParts[1]?.trim().replace(/[\]\)\}]+$/, '') || 'string';
-                if (aName) list.push({ name: aName, type: aType });
+                const sanitized = sanitizeAttributeNameAndType(subParts[0] || '', subParts[1] || 'string');
+                if (sanitized.name) list.push(sanitized);
               }
             } else if (item && typeof item === 'object') {
-              list.push(item);
+              const sanitized = sanitizeAttributeNameAndType(item.name || '', item.type || 'string');
+              if (sanitized.name) list.push({ ...item, name: sanitized.name, type: sanitized.type });
             }
           }
           return list;
         } else if (typeof rawAttrs === 'object') {
-          return Object.entries(rawAttrs).map(([k, v]) => ({
-            name: k,
-            type: typeof v === 'string' ? v : 'string',
-          }));
+          return Object.entries(rawAttrs).map(([k, v]) => {
+            const sanitized = sanitizeAttributeNameAndType(k, typeof v === 'string' ? v : 'string');
+            return { name: sanitized.name, type: sanitized.type };
+          });
         } else if (typeof rawAttrs === 'string') {
           const cleaned = rawAttrs.replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
           return cleaned.split(/,\s*(?=[a-zA-Z_])/).map((s) => {
             const parts = s.split(':');
-            return {
-              name: parts[0]?.trim().replace(/^[-+*#~]\s*/, '') || '',
-              type: parts[1]?.trim() || 'string',
-            };
+            return sanitizeAttributeNameAndType(parts[0] || '', parts[1] || 'string');
           }).filter((a) => a.name);
         }
         return [];
@@ -2185,6 +2309,67 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
   const classes: Array<{ id: string; name: string }> = currentDiagram.classes || [];
   const associations: Array<any> = currentDiagram.associations || [];
+
+  // 0. Creación determinista de una nueva clase con atributos explícitos y/o asociación
+  // Ej: "crea la clase Especialidad con matricula:string y activa:boolean"
+  // Ej: "crear la clase Autor con nombre:string, nacionalidad:string y asociala con Publicacion 1 a N"
+  // Ej: "crea la clase Editorial con nombre:string y fundacion:date"
+  const isSpecialClassIntent =
+    /(?:clase\s+de\s+asociaci[oó]n|association\s+class|n-ari[ao]|ternari[ao]|nary|ternary)/i.test(normalized);
+
+  const createClassIntent = !isSpecialClassIntent
+    ? /^\s*(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé])\s+(?:la|una|nueva)?\s*(?:clase|calse|clse|class|tabla|entidad)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i.exec(text)
+    : null;
+
+  if (createClassIntent) {
+    const rawClassName = createClassIntent[1]!.trim();
+    const className = cleanClassName(rawClassName);
+    const remainder = createClassIntent[2]?.trim() || '';
+
+    let attrsText = remainder;
+    let targetAssocClass: string | undefined;
+    let assocRemainder = '';
+
+    const assocMatch = /(?:y\s+)?(?:asoci[aáeé]l[ao]|conect[aáeé]l[ao]|vincul[aáeé]l[ao]|relacion[aáeé]l[ao]|link(?:ed)?\s+(?:it\s+)?with|associate(?:\s+it)?\s+with)\s+(?:con\s+)?(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(.*)$/i.exec(remainder);
+    if (assocMatch) {
+      targetAssocClass = cleanClassName(assocMatch[1]);
+      assocRemainder = assocMatch[2]?.trim() || '';
+      attrsText = remainder.slice(0, assocMatch.index).trim();
+    }
+
+    attrsText = attrsText.replace(/^(?:con|with|teniendo|having)\s+/i, '').trim();
+    const attributes = parseAttributesFromProse(attrsText);
+
+    const createdClasses = [
+      {
+        name: className,
+        attributes: attributes.length > 0 ? attributes : undefined,
+        methods: [],
+      },
+    ];
+
+    const associationsToCreate: any[] = [];
+    if (targetAssocClass) {
+      const mults = extractExplicitMultiplicities(assocRemainder || remainder, className, targetAssocClass) || {
+        sourceMultiplicity: '1',
+        targetMultiplicity: '0..*',
+      };
+      associationsToCreate.push({
+        source: className,
+        target: targetAssocClass,
+        sourceMultiplicity: mults.sourceMultiplicity || '1',
+        targetMultiplicity: mults.targetMultiplicity || '0..*',
+        aggregation: 'none',
+      });
+    }
+
+    return {
+      action: 'modify',
+      classes: createdClasses,
+      associations: associationsToCreate.length > 0 ? associationsToCreate : undefined,
+    };
+  }
+
   if (classes.length === 0) return null;
 
   // 1. Borrado agnóstico determinista (clases, relaciones, atributos)

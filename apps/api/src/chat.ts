@@ -1248,11 +1248,10 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
-  // 00d. Si el usuario solicita una mutación puntual sobre elementos existentes del diagrama
-  // (cambiar tipo de relación, agregar/modificar atributos, renombrar o borrar clases/miembros),
+  // 00d. Si el usuario solicita una mutación puntual o creación determinista de clase/relación/atributo
   // resolverla de forma 100% determinista e inmediata ANTES de llamar al LLM.
   // Esto previene que el LLM alucine clases o relaciones viejas en turnos de edición de grafo.
-  if (diagram && diagram.classes && diagram.classes.length > 0) {
+  if (diagram) {
     const explicitMutation = extractExplicitModelMutations(userContent, diagram);
     if (explicitMutation) {
       const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
@@ -1261,10 +1260,15 @@ export async function processUnifiedAmongusTurn(
           ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
           : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
         const hasUnlink = mutationDelta.deltas.some((d: any) => d.kind === 'association' && (d as any).newAssociationClassId === null);
+        const hasClassCreate = mutationDelta.deltas.some((d: any) => d.kind === 'class' && d.op === 'create');
         if (hasUnlink) {
           defaultReply = isEn
             ? 'I have prepared the proposal to unlink the association class. The relationship and classes remain intact on the canvas.'
             : 'Preparé la propuesta para desvincular la clase de asociación. La relación base y las clases se conservan intactas en el lienzo.';
+        } else if (hasClassCreate) {
+          defaultReply = isEn
+            ? 'I have prepared the proposal for this change. You can preview it on the canvas and confirm to apply.'
+            : 'Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.';
         }
         return {
           replyContent: defaultReply,

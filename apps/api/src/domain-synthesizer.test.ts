@@ -1254,6 +1254,70 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect(deleteDelta).toBeDefined();
     expect((deleteDelta as any).classId).toBe('c_aut');
   });
+
+  it('extracts class creation with typed attributes and associations deterministically', () => {
+    const diag: any = {
+      id: 'd_test',
+      classes: [
+        { id: 'c_pub', name: 'Publicacion', attributes: [], methods: [] },
+      ],
+      associations: [],
+    };
+
+    const mutation = extractExplicitModelMutations(
+      'crea la clase Especialidad con matricula:string y activa:boolean',
+      diag
+    );
+    expect(mutation).not.toBeNull();
+    expect(mutation?.action).toBe('modify');
+    expect(mutation?.classes).toHaveLength(1);
+    expect(mutation?.classes?.[0]?.name).toBe('Especialidad');
+    expect(mutation?.classes?.[0]?.attributes).toEqual([
+      { name: 'matricula', type: 'string' },
+      { name: 'activa', type: 'boolean' },
+    ]);
+
+    const delta = expandSemanticDomainToDelta(mutation!, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const classDelta = delta!.deltas.find((d: any) => d.kind === 'class' && d.op === 'create');
+    expect(classDelta).toBeDefined();
+    expect((classDelta as any).name).toBe('Especialidad');
+
+    const attrDeltas = delta!.deltas.filter((d: any) => d.kind === 'member' && d.op === 'addAttribute');
+    expect(attrDeltas).toHaveLength(2);
+    expect(attrDeltas[0]).toMatchObject({ name: 'matricula', type: 'string' });
+    expect(attrDeltas[1]).toMatchObject({ name: 'activa', type: 'boolean' });
+  });
+
+  it('sanitizes type suffixes from LLM hallucinations (matriculastring -> matricula: string, activaboolean -> activa: boolean)', () => {
+    const diag: any = {
+      id: 'd_test',
+      classes: [],
+      associations: [],
+    };
+
+    const semanticModel: SemanticDomainModel = {
+      action: 'modify',
+      classes: [
+        {
+          name: 'Especialidad',
+          attributes: [
+            { name: 'matriculastring', type: 'string' },
+            { name: 'activaboolean', type: 'string' },
+            { name: 'fechadate', type: 'string' },
+          ],
+        },
+      ],
+    };
+
+    const delta = expandSemanticDomainToDelta(semanticModel, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const attrDeltas = delta!.deltas.filter((d: any) => d.kind === 'member' && d.op === 'addAttribute');
+    expect(attrDeltas).toHaveLength(3);
+    expect(attrDeltas[0]).toMatchObject({ name: 'matricula', type: 'string' });
+    expect(attrDeltas[1]).toMatchObject({ name: 'activa', type: 'boolean' });
+    expect(attrDeltas[2]).toMatchObject({ name: 'fecha', type: 'date' });
+  });
 });
 
 
