@@ -2214,10 +2214,15 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         if (cCand) targetCls = cCand;
       }
 
+      const cleanAttr = (n: string) => n.toLowerCase().replace(/string|int|float|boolean|date$/i, '');
+
       if (requestedAttrName) {
         if (targetCls) {
           const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetCls!.id);
-          const matchedAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === requestedAttrName);
+          const matchedAttr = fullCls?.attributes?.find((a: any) => {
+            const an = a.name.toLowerCase();
+            return an === requestedAttrName || cleanAttr(an) === requestedAttrName || an.startsWith(requestedAttrName);
+          });
           if (matchedAttr) {
             return {
               action: 'modify',
@@ -2229,7 +2234,10 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         }
         for (const cls of classes) {
           const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
-          const matchedAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === requestedAttrName);
+          const matchedAttr = fullCls?.attributes?.find((a: any) => {
+            const an = a.name.toLowerCase();
+            return an === requestedAttrName || cleanAttr(an) === requestedAttrName || an.startsWith(requestedAttrName);
+          });
           if (matchedAttr) {
             return {
               action: 'modify',
@@ -2391,8 +2399,8 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       }
     }
 
-    // 1d. Borrado de clase si se menciona exactamente una clase
-    if (mentionedClasses.length === 1) {
+    // 1d. Borrado de clase si se menciona exactamente una clase (y no era una orden de borrar atributo, método o relación)
+    if (!isAttrTarget && !isRelTarget && !isMethodTarget && mentionedClasses.length === 1) {
       return {
         action: 'modify',
         deletions: {
