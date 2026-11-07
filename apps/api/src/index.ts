@@ -22,7 +22,7 @@ import {
   loadYDocFromUpdate,
   validateYDocProjection,
 } from '@app/core';
-import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision } from '@app/adapters-ai';
+import { FakeLlm, OpenAiLlm, FakeStt, WhisperStt, RetryRepairingLlmPort, FakeVision, OpenAiVision, normalizeUmlUtterance } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from './interpreter.js';
 import { synthesizeDomainModel } from './domain-synthesizer.js';
 import { evaluateChatGuard } from './chat-guard.js';
@@ -820,7 +820,11 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
     // Si es canal directo, menciona a Amongus, es un comando slash (/), contiene intención de modelado, consulta técnica o el usuario está solo en la sala, generamos respuesta del asistente
     const isSlashCommand = parsed.data.content.trim().startsWith('/');
+    const normalizedUtterance = normalizeUmlUtterance(parsed.data.content);
     const hasModelingIntent =
+      /(?:^|[\s,;.:¡!¿?])(?:crea|agrega|borra|elimina|cambia|conecta|desvincula|add|append|create|make|build|delete|remove|connect|link|attach|detach|unlink|rename|update|modify|set)(?:$|[\s,;.:¡!¿?])/iu.test(
+        normalizedUtterance
+      ) ||
       /(?:^|[\s,;.:¡!¿?])(?:cre[aáeéí]|agreg[aáeéí]|a[ñn]ad[eéíi]|insert[aáeéí]|sum[aáeéí]|pon[eé]|met[eé]|dise[ñn][aáeéí]|model[aáeéí]|constru[yí]|arm[aáeé]|borr[aáeéí]|elimin[aáeéí]|quit[aáeéí]|sac[aáeéí]|drop|renombr[aáeéí]|modific[aáeéí]|cambi[aáeéí]|conect[aáeéí]|vincul[aáeéí]|relacion[aáeéí]|asoci[aáeéí]|desvincul[aáeéí]|desasoci[aáeéí]|add|append|create|make|build|delete|remove|connect|link|attach|detach|unlink|rename|update|modify|set)(?:$|[\s,;.:¡!¿?])/iu.test(
         parsed.data.content
       );
