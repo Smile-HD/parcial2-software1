@@ -4,6 +4,7 @@ import { robustParseDomainJson, expandSemanticDomainToDelta, synthesizeDomainMod
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 import { resolveDiagramFactualQuery } from './diagram-query-resolver.js';
 import { auditDiagramOOAD } from './diagram-auditor.js';
+import { evaluateChatGuard } from './chat-guard.js';
 import {
   normalizeUmlUtterance,
   detectContradiction,
@@ -728,6 +729,14 @@ export async function processUnifiedAmongusTurn(
     };
   }
 
+  // 0b1. Guardián de Dominio y Anti-Jailbreak (0 ms, 0 tokens)
+  const chatGuard = evaluateChatGuard(userContent, diagram, language);
+  if (chatGuard.blocked && chatGuard.replyContent) {
+    return {
+      replyContent: chatGuard.replyContent,
+    };
+  }
+
   // 0c. Inspección factual determinista del estado del lienzo (0 ms, 0% alucinación)
   const factualReply = resolveDiagramFactualQuery(userContent, diagram, language);
   if (factualReply) {
@@ -1143,7 +1152,8 @@ export async function processUnifiedAmongusTurn(
     trimmedLower.startsWith('aplica') ||
     trimmedLower.startsWith('crea e implement') ||
     trimmedLower.startsWith('creá e implement') ||
-    /^(?:por\s+favor\s+)?(?:implement[aá]r?|aplic[aá]r?|constru[yí]r?|arm[aá]r?|cre[aá]r?)\b/i.test(trimmedLower);
+    /^(?:por\s+favor\s+)?(?:implement[aá]r?|aplic[aá]r?|constru[yí]r?|arm[aá]r?)\b/i.test(trimmedLower) ||
+    /^(?:por\s+favor\s+)?cre[aá]r?\s+(?:las?\s+sugerencias?|lo\s+sugerido|lo\s+que\s+(?:me\s+)?sugeriste|las?\s+clases?\s+sugeridas?)/i.test(trimmedLower);
 
   if (isApplyTrigger) {
     const cleanedTopic = userContent

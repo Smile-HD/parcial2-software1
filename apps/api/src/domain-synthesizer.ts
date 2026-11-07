@@ -417,9 +417,10 @@ export function extractExplicitMultiplicities(
 
 export function extractExplicitRequestedClasses(text?: string): string[] {
   if (!text) return [];
+  const stopWords = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'para', 'en', 'con', 'a', 'to', 'for', 'in', 'of', 'and', 'y', 'asociacion', 'asociación']);
   const matches = Array.from(
-    text.matchAll(/\b(?:clase|calse|clse|class|tabla)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/gi)
-  ).map((m) => cleanClassName(m[1]));
+    text.matchAll(/\b(?:clase|calse|clse|class|tabla)\s+(?:llamada\s+|llamado\s+|named\s+|de\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/gi)
+  ).map((m) => cleanClassName(m[1])).filter((name) => !stopWords.has(name.toLowerCase()));
   return Array.from(new Set(matches.filter(Boolean)));
 }
 
@@ -828,6 +829,15 @@ export function expandSemanticDomainToDelta(
           });
           if (existingAssoc) {
             let assocClassId = u.associationClass ? resolveClassId(u.associationClass) : undefined;
+            if (u.associationClass && !assocClassId && model.classes) {
+              const mc = model.classes.find((c) => c.name.toLowerCase() === u.associationClass!.toLowerCase());
+              if (mc) {
+                assocClassId = crypto.randomUUID();
+                const clean = cleanClassName(mc.name);
+                classIdMap.set(toCanonicalKey(clean), assocClassId);
+                classIdMap.set(clean.toLowerCase(), assocClassId);
+              }
+            }
             const updateDelta: any = {
               id: crypto.randomUUID(),
               diagramId,
@@ -843,7 +853,10 @@ export function expandSemanticDomainToDelta(
             if (u.name !== undefined) updateDelta.name = u.name;
             if (u.sourceRole !== undefined) updateDelta.sourceRole = u.sourceRole;
             if (u.targetRole !== undefined) updateDelta.targetRole = u.targetRole;
-            if (assocClassId) updateDelta.newAssociationClassId = assocClassId;
+            if (assocClassId) {
+              updateDelta.newAssociationClassId = assocClassId;
+              updateDelta.associationClassId = assocClassId;
+            }
             deltas.push(updateDelta);
             const pair = isRecursive ? `${sourceId}::${sourceId}` : getPairKey(sourceId, targetId);
             seenConnectedPairs.add(pair);
@@ -980,7 +993,7 @@ export function expandSemanticDomainToDelta(
           });
         }
       } else {
-        classId = crypto.randomUUID();
+        classId = classIdMap.get(canon) ?? classIdMap.get(lower) ?? crypto.randomUUID();
         classIdMap.set(canon, classId);
         classIdMap.set(lower, classId);
 
@@ -1570,7 +1583,7 @@ export function expandSemanticDomainToDelta(
       if (!Array.isArray(n.members) || n.members.length < 3) return;
       const memberEnds: any[] = [];
       for (const m of n.members) {
-        const cid = classIdMap.get(m.class.toLowerCase().trim());
+        const cid = resolveClassId(m.class);
         if (cid && !memberEnds.some((e) => e.classId === cid)) {
           memberEnds.push({
             classId: cid,
@@ -2672,6 +2685,126 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
           },
         };
       }
+    }
+  }
+
+  // 3d. Adición o vinculación de Clase de Asociación (con nombre explícito o autogenerado PascalCase)
+  const isAssocClassCreate =
+    /(?:clase\s+de\s+asociaci[oó]n|association\s+class)/i.test(normalized) &&
+    /(?:agreg[aáeé]|a[ñn]ad[eé]|cre[aáeé]|pon[eé]?|sum[aá]|add|insert|asoci[aáeé]|asign[aáeé]|convert)/i.test(normalized);
+
+  if (isAssocClassCreate && classes.length >= 2) {
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const tokens = normalized.split(/[^a-z0-9áéíóúñ]+/i).filter(Boolean);
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      if (regex.test(normalized)) return true;
+      if (tokens.some((t) => classExactOrPluralMatches(t, cNameNorm))) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
+    });
+
+    if (mentionedClasses.length >= 2) {
+      const c1 = mentionedClasses[0]!;
+      const c2 = mentionedClasses[1]!;
+
+      // Buscar si el usuario dio un nombre explícito a la clase de asociación
+      let assocClassName: string | undefined;
+      const explicitNameMatch =
+        /(?:llamada|nombrada|con\s+el\s+nombre|named)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text) ||
+        /(?:clase\s+de\s+asociaci[oó]n|association\s+class)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?\s+(?:entre|between)/i.exec(text);
+
+      if (explicitNameMatch) {
+        assocClassName = explicitNameMatch[1];
+      } else {
+        // Convención estándar: concatenar en PascalCase ambos extremos (ej. EstudianteCurso)
+        assocClassName = `${c1.name}${c2.name}`;
+      }
+
+      const matchingAssoc = associations.find(
+        (a) =>
+          (a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
+          (a.sourceClassId === c2.id && a.targetClassId === c1.id)
+      );
+
+      const createdClasses: any[] = [];
+      if (!classes.some((c) => c.name.toLowerCase() === assocClassName!.toLowerCase())) {
+        createdClasses.push({
+          name: assocClassName,
+          attributes: [],
+          methods: [],
+        });
+      }
+
+      if (matchingAssoc) {
+        const src = classes.find((c) => c.id === matchingAssoc.sourceClassId) || c1;
+        const tgt = classes.find((c) => c.id === matchingAssoc.targetClassId) || c2;
+        return {
+          action: 'modify',
+          classes: createdClasses.length > 0 ? createdClasses : undefined,
+          updates: {
+            associations: [
+              {
+                source: src.name,
+                target: tgt.name,
+                associationClass: assocClassName,
+              },
+            ],
+          },
+        };
+      } else {
+        return {
+          action: 'modify',
+          classes: createdClasses.length > 0 ? createdClasses : undefined,
+          associations: [
+            {
+              source: c1.name,
+              target: c2.name,
+              sourceMultiplicity: '1..*',
+              targetMultiplicity: '1..*',
+              associationClass: assocClassName,
+            },
+          ],
+        };
+      }
+    }
+  }
+
+  // 3e. Adición de Asociación N-aria (diamante central conectando 3+ clases)
+  const isNaryCreate =
+    /(?:n-ari[ao]|ternari[ao]|nary|ternary)/i.test(normalized) &&
+    /(?:cre[aáeé]|agreg[aáeé]|a[ñn]ad[eé]|pon[eé]|conect[aáeé]|arm[aáeé]|hac[eé]|haz)/i.test(normalized);
+
+  if (isNaryCreate && classes.length >= 3) {
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const tokens = normalized.split(/[^a-z0-9áéíóúñ]+/i).filter(Boolean);
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      if (regex.test(normalized)) return true;
+      if (tokens.some((t) => classExactOrPluralMatches(t, cNameNorm))) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
+    });
+
+    if (mentionedClasses.length >= 3) {
+      let naryName: string | undefined;
+      const naryNameMatch = /(?:llamada|nombrada|con\s+el\s+nombre|named)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text);
+      if (naryNameMatch) naryName = naryNameMatch[1];
+
+      return {
+        action: 'modify',
+        naryAssociations: [
+          {
+            name: naryName,
+            members: mentionedClasses.map((c) => ({
+              class: c.name,
+              multiplicity: '1',
+            })),
+          },
+        ],
+      };
     }
   }
 
