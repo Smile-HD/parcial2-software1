@@ -146,11 +146,11 @@ export class FakeLlm implements LlmPort {
     // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE.
     // Soporta orden directo ("agrega atributo X a Y"), orden con clase al inicio ("editame la tabla Y, agregale un atributo llamado X")
     // y orden invertido con destino al principio ("agregale a la tabla Y el atributo X"), además de sintaxis directa typed ("agregá telefono:string a la clase Especialidad").
-    const directAdd = /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
-    const invertedAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
-    const directToClassAdd = !directAdd && !invertedAdd && /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|inserta|insertá)\b[\s\S]*?\b(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+    const directAdd = /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attribute|atributo|campo|columna|propiedad|property|field)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const invertedAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attribute|atributo|campo|columna|propiedad|property|field)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+    const directToClassAdd = !directAdd && !invertedAdd && /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|inserta|insertá)\b[\s\S]*?\b(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:attribute|atributo|campo|columna|propiedad|property|field)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
     const directTypedAdd = !directAdd && !invertedAdd && !directToClassAdd &&
-      /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+      /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
 
     const isCreateWithAttr = /\b(?:with|con)\s+(?:attribute|atributo|attributes|atributos)\b/i.test(utterance);
     const parsedAttr = !isCreateWithAttr && (directAdd
@@ -397,7 +397,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 5. eliminar atributo / método
-    const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo)\s+([A-Za-z_]\w*)\s+(?:from|de|en)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo|campo|columna|propiedad|property|field|operaci[oó]n|funci[oó]n|operation|function)s?\s+([A-Za-z_]\w*)\s+(?:from|de|en)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)/i.exec(utterance);
     if (removeMember) {
       const classId = classIdByName(currentIr, removeMember[2]!);
       if (classId === null) return refused(`Unknown class "${removeMember[2]}"`);
@@ -415,7 +415,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 5b. cambiar tipo de atributo: "cambiá el tipo de anio en Tirada a string"
-    const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+de|type\s+of|tipo\s+del\s+atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
+    const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+de|type\s+of|tipo\s+del\s+atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
     if (changeAttrType) {
       const classId = classIdByName(currentIr, changeAttrType[2]!);
       if (classId === null) return refused(`Unknown class "${changeAttrType[2]}"`);
@@ -436,9 +436,9 @@ export class FakeLlm implements LlmPort {
 
     // 5c. renombrar atributo / cambiar mayúsculas/minúsculas
     // Orden 1 (ToIn): "rename attribute fullName to nombreCompleto in Customer" / "renombrá el atributo nombre a name en Autor"
-    const renameAttrToIn = /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const renameAttrToIn = /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna|propiedad|property|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     // Orden 2 (InClass): "rename attribute fullName in Customer to nombreCompleto" / "poné en minúsculas el atributo nombre en Autor"
-    const renameAttrInClass = !renameAttrToIn && /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(utterance);
+    const renameAttrInClass = !renameAttrToIn && /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna|propiedad|property|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(utterance);
 
     const parsedRename = renameAttrToIn
       ? { attrName: renameAttrToIn[1]!, className: renameAttrToIn[3]!, toName: renameAttrToIn[2]! }
@@ -470,8 +470,8 @@ export class FakeLlm implements LlmPort {
     // 6. agregar método (directo o invertido con parámetros y tipo de retorno)
     // Ej: "agregá el método cancelar(motivo:string):boolean a Especialidad"
     // Ej: "sumale a Especialidad el método atender():void"
-    const addMethodDirect = /(?:^|\b)(?:add|agrega|agregá|añade|añadí|sumale|ponele|inserta|insertá)(?:\b|\s)[\s\S]*?(?:method|m[ée]todo)s?\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?\s+(?:to|a|en)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
-    const addMethodInverted = !addMethodDirect && /(?:^|\b)(?:add|agrega|agregá|añade|añadí|sumale|ponele|inserta|insertá)(?:\b|\s)[\s\S]*?(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+(?:el\s+)?(?:method|m[ée]todo)s?\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?/i.exec(utterance);
+    const addMethodDirect = /(?:^|\b)(?:add|agrega|agregá|añade|añadí|sumale|ponele|inserta|insertá)(?:\b|\s)[\s\S]*?(?:method|m[ée]todo|operaci[oó]n|funci[oó]n|operation|function)s?\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?\s+(?:to|a|en)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    const addMethodInverted = !addMethodDirect && /(?:^|\b)(?:add|agrega|agregá|añade|añadí|sumale|ponele|inserta|insertá)(?:\b|\s)[\s\S]*?(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)\s+(?:el\s+|la\s+)?(?:method|m[ée]todo|operaci[oó]n|funci[oó]n|operation|function)s?\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?/i.exec(utterance);
 
     const parsedMethod = addMethodDirect
       ? { targetClass: addMethodDirect[4]!, methodName: addMethodDirect[1]!, rawParams: addMethodDirect[2], returnType: addMethodDirect[3] }
@@ -537,13 +537,19 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 6c. Asociación con CLASE DE ASOCIACIÓN:
+    // 6c. Asociación con CLASE DE ASOCIACIÓN / TABLA INTERMEDIA:
     // "association class Enrollment between Student and Course" / "clase de asociacion Matricula entre Alumno y Curso"
-    const assocClassPattern = /\b(?:association\s+class|clase\s+de\s+asociaci[óo]n)\s+([A-Za-z_]\w*)\s+(?:between|entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
-    if (assocClassPattern) {
-      const assocClassName = assocClassPattern[1]!;
-      const srcName = assocClassPattern[2]!;
-      const tgtName = assocClassPattern[3]!;
+    // "tabla intermedia Matricula entre Alumno y Curso" / "crear tabla de asociacion Matricula entre Alumno y Curso"
+    const assocClassPattern =
+      /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_]\w*)\s+(?:between|entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
+
+    const assocClassViaPattern = !assocClassPattern &&
+      /\b(?:link|connect|conecta|conectá|asocia|asociá)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)\s+(?:mediante|a\s+trav[eé]s\s+de|via|using|through)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table|association\s+table)\s+([A-Za-z_]\w*)/i.exec(utterance);
+
+    if (assocClassPattern || assocClassViaPattern) {
+      const assocClassName = assocClassPattern ? assocClassPattern[1]! : assocClassViaPattern![3]!;
+      const srcName = assocClassPattern ? assocClassPattern[2]! : assocClassViaPattern![1]!;
+      const tgtName = assocClassPattern ? assocClassPattern[3]! : assocClassViaPattern![2]!;
       const sourceClassId = classIdByName(currentIr, srcName);
       const targetClassId = classIdByName(currentIr, tgtName);
       if (sourceClassId === null) return refused(`Unknown class "${srcName}"`);
@@ -591,7 +597,7 @@ export class FakeLlm implements LlmPort {
 
     // 6d. Vincular clase existente a asociación como clase de asociación:
     // "link class Grade to association between Student and Course"
-    const linkAssocClassPattern = /\b(?:link|connect|conecta|conectá|asocia|asociá)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+(?:to\s+(?:association\s+between|asociaci[óo]n\s+entre)|a\s+(?:la\s+)?asociaci[óo]n\s+entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const linkAssocClassPattern = /\b(?:link|connect|conecta|conectá|asocia|asociá)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)\s+(?:to\s+(?:association|relation)\s+between|a\s+(?:la\s+)?(?:asociaci[óo]n|relaci[óo]n)\s+entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
     if (linkAssocClassPattern) {
       const className = linkAssocClassPattern[1]!;
       const srcName = linkAssocClassPattern[2]!;
@@ -670,7 +676,7 @@ export class FakeLlm implements LlmPort {
     // 7c. ELIMINACIÓN de asociación / relación entre dos clases:
     // "elimina la relación entre X e Y", "borra la asociación entre X e Y", "delete association between X and Y", "desvincula X de Y"
     const isDeleteAssociation =
-      /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá|unlink|detach)\b[\s\S]*?\b(?:asocia(?:ci[óo]n)?|association|link|relaci[oó]n|enlace)\b[\s\S]*?\b(?:between|entre|de|from)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|with|y|e|de|con)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance) ||
+      /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá|unlink|detach)\b[\s\S]*?\b(?:asocia(?:ci[óo]n)?|association|link|relaci[oó]n|relations?|relationships?|enlace)\b[\s\S]*?\b(?:between|entre|de|from)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|with|y|e|de|con)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance) ||
       /\b(?:desvincula|desvinculá|unlink)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:de|from|con|with|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
     if (isDeleteAssociation) {
       const sourceClassId = classIdByName(currentIr, isDeleteAssociation[1]!);
@@ -697,7 +703,7 @@ export class FakeLlm implements LlmPort {
     // 8. asociación entre dos clases (simple o con cardinalidad)
     const isDeleteAssocIntent = /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá)\b/i.test(utterance);
     const association = !isDeleteAssocIntent
-      ? /\b(?:link|conecta|conectá|asocia|asociá|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance)
+      ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance)
       : null;
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
@@ -707,7 +713,11 @@ export class FakeLlm implements LlmPort {
 
       let sourceMultiplicity = '1';
       let targetMultiplicity = '1';
-      if (/\b(?:1\s+(?:a|to)\s+[nN\*]|(?:uno|one)\s+(?:a|to)\s+(?:muchos|many)|1\s*:\s*[nN\*])\b/i.test(utterance)) {
+      const explicitMultiplicities = /(?:from\s+)?(\d+(?:\.\.(?:\d+|\*))?|\*)\s+(?:to|a)\s+(\d+(?:\.\.(?:\d+|\*))?|\*)/i.exec(utterance);
+      if (explicitMultiplicities) {
+        sourceMultiplicity = explicitMultiplicities[1]!;
+        targetMultiplicity = explicitMultiplicities[2]!;
+      } else if (/\b(?:1\s+(?:a|to)\s+[nN\*]|(?:uno|one)\s+(?:a|to)\s+(?:muchos|many)|1\s*:\s*[nN\*])\b/i.test(utterance)) {
         sourceMultiplicity = '1';
         targetMultiplicity = '0..*';
       } else if (/\b(?:[nN\*]\s+(?:a|to)\s+1|(?:muchos|many)\s+(?:a|to)\s+(?:uno|one)|[nN\*]\s*:\s*1)\b/i.test(utterance)) {

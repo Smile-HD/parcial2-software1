@@ -85,6 +85,88 @@ describe('FakeLlm', () => {
     expect(value.deltas?.[2]).toMatchObject({ kind: 'member', op: 'addAttribute', name: 'precio', type: 'float' });
   });
 
+  it('supports "tabla intermedia", "tabla de asociacion" and "junction table" phrasings', async () => {
+    const llm = new FakeLlm();
+    const baseDiagram = makeDiagram();
+    const c1 = { id: 'c1', name: 'Alumno', attributes: [], methods: [], position: { x: 0, y: 0 } };
+    const c2 = { id: 'c2', name: 'Curso', attributes: [], methods: [], position: { x: 100, y: 0 } };
+    const diagWithClasses = { ...baseDiagram, classes: [c1, c2] };
+
+    // Spanish: tabla intermedia
+    const res1 = await llm.interpret('crear tabla intermedia Matricula entre Alumno y Curso', schema, diagWithClasses);
+    expect(res1.kind).toBe('delta');
+    if (res1.kind === 'delta') {
+      const val = res1.value as any;
+      expect(val.kind).toBe('batch');
+      expect(val.deltas[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Matricula' });
+      expect(val.deltas[1]).toMatchObject({ kind: 'association', op: 'create' });
+      expect(val.deltas[1].associationClassId).toBe(val.deltas[0].classId);
+    }
+
+    // English: junction table
+    const c3 = { id: 'c3', name: 'Student', attributes: [], methods: [], position: { x: 0, y: 0 } };
+    const c4 = { id: 'c4', name: 'Course', attributes: [], methods: [], position: { x: 100, y: 0 } };
+    const diagEn = { ...baseDiagram, classes: [c3, c4] };
+    const res2 = await llm.interpret('junction table Enrollment between Student and Course', schema, diagEn);
+    expect(res2.kind).toBe('delta');
+    if (res2.kind === 'delta') {
+      const val = res2.value as any;
+      expect(val.kind).toBe('batch');
+      expect(val.deltas[0]).toMatchObject({ kind: 'class', op: 'create', name: 'Enrollment' });
+      expect(val.deltas[1]).toMatchObject({ kind: 'association', op: 'create' });
+      expect(val.deltas[1].associationClassId).toBe(val.deltas[0].classId);
+    }
+  });
+
+  it('supports delete relationship and member synonyms (field, función)', async () => {
+    const llm = new FakeLlm();
+    const baseDiagram = makeDiagram();
+    const c1 = {
+      id: 'c-cust',
+      name: 'Customer',
+      attributes: [{ id: 'a-tel', name: 'telefono', type: 'string' }],
+      methods: [],
+      position: { x: 0, y: 0 }
+    };
+    const c2 = {
+      id: 'c-fac',
+      name: 'Factura',
+      attributes: [],
+      methods: [{ id: 'm-rec', name: 'sendReceipt', returnType: 'boolean', parameters: [] }],
+      position: { x: 100, y: 0 }
+    };
+    const assoc = {
+      id: 'a-cust-fac',
+      sourceClassId: 'c-cust',
+      targetClassId: 'c-fac',
+      sourceMultiplicity: '1',
+      targetMultiplicity: '0..*',
+      directed: false
+    };
+    const diag = { ...baseDiagram, classes: [c1, c2], associations: [assoc] };
+
+    // T22: remove field
+    const r1 = await llm.interpret('remove field telefono from Customer', schema, diag);
+    expect(r1.kind).toBe('delta');
+    if (r1.kind === 'delta') {
+      expect(r1.value).toMatchObject({ kind: 'member', op: 'deleteAttribute', memberId: 'a-tel' });
+    }
+
+    // T21: elimina la función
+    const r2 = await llm.interpret('elimina la función sendReceipt en Factura', schema, diag);
+    expect(r2.kind).toBe('delta');
+    if (r2.kind === 'delta') {
+      expect(r2.value).toMatchObject({ kind: 'member', op: 'deleteMethod', memberId: 'm-rec' });
+    }
+
+    // T23: delete relationship
+    const r3 = await llm.interpret('delete relationship between Customer and Factura', schema, diag);
+    expect(r3.kind).toBe('delta');
+    if (r3.kind === 'delta') {
+      expect(r3.value).toMatchObject({ kind: 'association', op: 'delete', associationId: 'a-cust-fac' });
+    }
+  });
+
   it('7.5 refuses out-of-vocabulary commands instead of guessing (interpreter:R4)', async () => {
     const llm = new FakeLlm();
     const result = await llm.interpret('make the diagram prettier', schema, makeDiagram());

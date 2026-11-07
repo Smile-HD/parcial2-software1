@@ -866,7 +866,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
 
       // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos como creación de clase simple, borrado o edición)
       const hasMultipleClasses = (parsed.data.content.match(/\b(?:clase|calse|clse|tabla|table|entidad|class)\b/gi) || []).length > 1;
-      const isCompoundRelationship = /(?:asoci|conect|generaliz|hered|implement|relacion|multiplicidad|composi|agregaci|n-ari|ternari)/i.test(parsed.data.content);
+      const isCompoundRelationship = /(?:asoci|conect|generaliz|hered|implement|relacion|multiplicidad|composi|agregaci|n-ari|ternari|intermedia|junction)/i.test(parsed.data.content);
       const isCompoundRequest = hasMultipleClasses || isCompoundRelationship;
       if (!replyContent && diagram && !isCompoundRequest) {
         try {

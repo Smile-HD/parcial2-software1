@@ -3348,10 +3348,10 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
-  // 3d. Adición o vinculación de Clase de Asociación (con nombre explícito o autogenerado PascalCase)
+  // 3d. Adición o vinculación de Clase de Asociación / Tabla Intermedia (con nombre explícito o autogenerado PascalCase)
   const isAssocClassCreate =
-    /(?:clase\s+de\s+asociaci[oó]n|association\s+class)/i.test(normalized) &&
-    /(?:agreg[aáeé]|a[ñn]ad[eé]|cre[aáeé]|pon[eé]?|sum[aá]|add|insert|asoci[aáeé]|asign[aáeé]|convert)/i.test(normalized);
+    /(?:clase\s+de\s+asociaci[oó]n|association\s+class|tabla\s+de\s+asociaci[oó]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[oó]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table)/i.test(normalized) &&
+    /(?:agreg[aáeé]|a[ñn]ad[eé]|cre[aáeé]|pon[eé]?|sum[aá]|add|insert|asoci[aáeé]|asign[aáeé]|convert|link|connect)/i.test(normalized);
 
   if (isAssocClassCreate && classes.length >= 2) {
     const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
@@ -3369,11 +3369,12 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       const c1 = mentionedClasses[0]!;
       const c2 = mentionedClasses[1]!;
 
-      // Buscar si el usuario dio un nombre explícito a la clase de asociación
+      // Buscar si el usuario dio un nombre explícito a la clase de asociación / tabla intermedia
       let assocClassName: string | undefined;
       const explicitNameMatch =
         /(?:llamada|nombrada|con\s+el\s+nombre|named)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text) ||
-        /(?:clase\s+de\s+asociaci[oó]n|association\s+class)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?\s+(?:entre|between)/i.exec(text);
+        /(?:clase\s+de\s+asociaci[oó]n|association\s+class|tabla\s+de\s+asociaci[oó]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?\s+(?:entre|between)/i.exec(text) ||
+        /(?:mediante|a\s+trav[eé]s\s+de|via|using|through)\s+(?:(?:la|una|the|an?)\s+)?(?:clase\s+de\s+asociaci[oó]n|association\s+class|tabla\s+de\s+asociaci[oó]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text);
 
       if (explicitNameMatch) {
         assocClassName = explicitNameMatch[1];

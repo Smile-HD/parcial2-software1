@@ -194,9 +194,15 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:tavla|tavlas)(?!\p{L})/giu, 'tabla');
 
   // ── G. Miembros y propiedades del metamodelo UML
-  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedades|campos|attibutes?|attributs?|attribs?|attrs?|props|properties|fields)(?!\p{L})/giu, 'atributos');
-  s = s.replace(/(?<!\p{L})(?:mtodo|mtodos|metodo|método|metodos|métodos|funciones|operaciones|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
-  s = s.replace(/(?<!\p{L})(?:relacion|relación|relaciones|asociacion|asociación|asociaciones)(?!\p{L})/giu, 'asociacion');
+  s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedad(?:es)?|campos?|columnas?|columns?|attibutes?|attributs?|attribs?|attrs?|props?|properties|fields?)(?!\p{L})/giu, 'atributos');
+  s = s.replace(/(?<!\p{L})(?:mtodos?|m[ée]todos?|funci[oó]n(?:es)?|operaci[oó]n(?:es)?|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
+  s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|asociaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
+
+  // ── G3. Clasificadores de asociación intermedia y tabla de asociación
+  s = s.replace(
+    /(?<!\p{L})(?:tabla\s+de\s+asociaci[oó]n|tablas?\s+intermedias?|clases?\s+intermedias?|entidad(?:es)?\s+intermedias?|entidad(?:es)?\s+de\s+asociaci[oó]n|junction\s+tables?|join\s+tables?|intermediate\s+tables?|bridge\s+tables?|linking\s+tables?|association\s+tables?)(?!\p{L})/giu,
+    'clase de asociacion'
+  );
 
   // ── G2. Typos fonéticos en nombres comunes de atributos (NO afecta nombres de clases)
   s = s.replace(/(?<!\p{L})(?:nbre|nombr|nomvre|nobmre)(?!\p{L})/giu, 'nombre');
