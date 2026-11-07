@@ -1275,6 +1275,13 @@ export async function processUnifiedAmongusTurn(
           batchDelta: mutationDelta,
         };
       }
+      if (explicitMutation.deletions && Array.isArray(explicitMutation.deletions.attributes) && explicitMutation.deletions.attributes.length === 0) {
+        return {
+          replyContent: isEn
+            ? 'The requested attribute does not exist in the diagram, so no changes were made.'
+            : 'El atributo solicitado no existe en el diagrama, por lo que no se realizaron modificaciones.',
+        };
+      }
     }
   }
 

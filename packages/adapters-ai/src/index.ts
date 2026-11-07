@@ -145,10 +145,12 @@ export class FakeLlm implements LlmPort {
 
     // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE.
     // Soporta orden directo ("agrega atributo X a Y"), orden con clase al inicio ("editame la tabla Y, agregale un atributo llamado X")
-    // y orden invertido con destino al principio ("agregale a la tabla Y el atributo X").
+    // y orden invertido con destino al principio ("agregale a la tabla Y el atributo X"), además de sintaxis directa typed ("agregá telefono:string a la clase Especialidad").
     const directAdd = /\b(?:add|agrega|agregá|agregale|agregále|añade|añadile|pon|ponele)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
     const invertedAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|pon|ponele|sumale)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
     const directToClassAdd = !directAdd && !invertedAdd && /\b(?:add|agrega|agregá|agregale|agregále|añade|pon|ponele)\b[\s\S]*?\b(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:attribute|atributo|campo|columna)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+    const directTypedAdd = !directAdd && !invertedAdd && !directToClassAdd &&
+      /\b(?:add|agrega|agregá|agregale|agregále|añade|añadile|pon|ponele|sumale)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
 
     const isCreateWithAttr = /\b(?:with|con)\s+(?:attribute|atributo|attributes|atributos)\b/i.test(utterance);
     const parsedAttr = !isCreateWithAttr && (directAdd
@@ -157,7 +159,9 @@ export class FakeLlm implements LlmPort {
         ? { targetClass: invertedAdd[1]!, attrName: invertedAdd[2]!, attrType: invertedAdd[3] }
         : directToClassAdd
           ? { targetClass: directToClassAdd[1]!, attrName: directToClassAdd[2]!, attrType: directToClassAdd[3] }
-          : null);
+          : directTypedAdd
+            ? { targetClass: directTypedAdd[3]!, attrName: directTypedAdd[1]!, attrType: directTypedAdd[2] }
+            : null);
 
     if (parsedAttr) {
       const classId = classIdByName(currentIr, parsedAttr.targetClass);
@@ -194,7 +198,9 @@ export class FakeLlm implements LlmPort {
     }
 
     // 1. crear clase / diagrama [+ opcional "con atributos a, b y c" o "con a y b"]
-    const createClass = /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const isExplicitCreateClass = /^\s*(?:add|create|crea|crear|craer|make|new)\s+(?:a|an|la|una|el|un|nueva|new)?\s*(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\b/i.test(utterance);
+    const isAddToClass = !isExplicitCreateClass && /\b(?:add|agrega|agregá|añade|pon|ponele|sumale)\b[\s\S]+?\b(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.test(utterance);
+    const createClass = !isAddToClass ? /\b(?:add|create|crea|crear|craer|agregá|agrega|agrga|agregar|añade|añadir)\b[\s\S]*?\b(?:class(?:es)?|clase|calse|clse|entidad|diagrama)\s+(?:llamada\s+|llamado\s+|llamda\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) : null;
     const STOP_CLASS_NAMES = new Set(['de', 'del', 'la', 'el', 'un', 'una', 'los', 'las', 'con', 'para', 'flujo', 'secuencia', 'casos']);
     if (createClass && !STOP_CLASS_NAMES.has(createClass[1]!.toLowerCase())) {
       const name = createClass[1]!;
@@ -322,11 +328,12 @@ export class FakeLlm implements LlmPort {
     }
 
     // 2b. eliminar clase específica
-    const deleteClassWithKeyword = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|elmina|borra|borrá|borrar|borrame|borráme|brra|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|calse|clse|tabla|table|entidad)\s+(?:llamada\s+|llamado\s+|llamda\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const isDeleteAttrOrMethod = /\b(?:attribute|atributo|campo|columna|method|m[ée]todo)\b/i.test(utterance);
+    const deleteClassWithKeyword = !isDeleteAttrOrMethod ? /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|elmina|borra|borrá|borrar|borrame|borráme|brra|sacar|sacá|saca)\b[\s\S]*?\b(?:class|clase|calse|clse|tabla|table|entidad)\s+(?:llamada\s+|llamado\s+|llamda\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) : null;
     let targetClassName: string | null = null;
     if (deleteClassWithKeyword) {
       targetClassName = deleteClassWithKeyword[1];
-    } else {
+    } else if (!isDeleteAttrOrMethod) {
       // Intentar detectar si dice "borra/elimina <NombreClase>" donde NombreClase es una clase existente en el diagrama
       const deleteDirect = /\b(?:delete|remove|elimina|eliminá|eliminar|eliminame|elimináme|elmina|borra|borrá|borrar|borrame|borráme|brra|sacar|sacá|saca)\s+(?:a\s+|la\s+|el\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\b/i.exec(utterance);
       if (deleteDirect) {
@@ -387,34 +394,100 @@ export class FakeLlm implements LlmPort {
     }
 
     // 5. eliminar atributo / método
-    const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo)\s+([A-Za-z_]\w*)\s+(?:from|de)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo)\s+([A-Za-z_]\w*)\s+(?:from|de|en)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
     if (removeMember) {
       const classId = classIdByName(currentIr, removeMember[2]!);
       if (classId === null) return refused(`Unknown class "${removeMember[2]}"`);
       const cls = currentIr.classes.find((c) => c.id === classId)!;
       const memberName = removeMember[1]!.toLowerCase();
       const attr = cls.attributes.find((a) => a.name.toLowerCase() === memberName);
+      const meth = cls.methods.find((m) => m.name.toLowerCase() === memberName);
+      if (!attr && !meth) {
+        return refused(`Unknown member "${removeMember[1]}" in class "${removeMember[2]}"`);
+      }
       const delta: MemberDelta = attr
         ? { kind: 'member', op: 'deleteAttribute', ...deltaBase(currentIr), classId, memberId: attr.id }
-        : { kind: 'member', op: 'deleteMethod', ...deltaBase(currentIr), classId, memberId: cls.methods.find((m) => m.name.toLowerCase() === memberName)?.id ?? '' };
-      if (delta.memberId === '') return refused(`Unknown member "${removeMember[1]}" in class "${removeMember[2]}"`);
+        : { kind: 'member', op: 'deleteMethod', ...deltaBase(currentIr), classId, memberId: meth!.id };
       return { kind: 'delta', value: delta };
     }
 
-    // 6. agregar método
-    const addMethod = /\b(?:add|agrega|agregá|añade)\b[\s\S]*?\b(?:method|m[ée]todo)\s+([A-Za-z_]\w*)\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)\s*([A-Za-z_][\w.]*)?\s+(?:to|a)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
-    if (addMethod) {
-      const classId = classIdByName(currentIr, addMethod[3]!);
-      if (classId === null) return refused(`Unknown class "${addMethod[3]}"`);
+    // 5b. cambiar tipo de atributo: "cambiá el tipo de anio en Tirada a string"
+    const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+de|type\s+of|tipo\s+del\s+atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
+    if (changeAttrType) {
+      const classId = classIdByName(currentIr, changeAttrType[2]!);
+      if (classId === null) return refused(`Unknown class "${changeAttrType[2]}"`);
+      const cls = currentIr.classes.find((c) => c.id === classId)!;
+      const attr = cls.attributes.find((a) => a.name.toLowerCase() === changeAttrType[1]!.toLowerCase());
+      if (!attr) return refused(`Unknown attribute "${changeAttrType[1]}" in class "${changeAttrType[2]}"`);
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'editAttribute',
+        ...deltaBase(currentIr),
+        classId,
+        memberId: attr.id,
+        name: attr.name,
+        type: changeAttrType[3]!.toLowerCase(),
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 5c. renombrar atributo / cambiar mayúsculas/minúsculas: "poné en minúsculas el atributo nombre en Autor"
+    const renameAttr = /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(utterance);
+    if (renameAttr) {
+      const classId = classIdByName(currentIr, renameAttr[2]!);
+      if (classId !== null) {
+        const cls = currentIr.classes.find((c) => c.id === classId)!;
+        const attr = cls.attributes.find((a) => a.name.toLowerCase() === renameAttr[1]!.toLowerCase());
+        if (attr) {
+          const newName = /min[uú]sculas/i.test(utterance) ? attr.name.toLowerCase() : (renameAttr[3] ?? attr.name);
+          const delta: MemberDelta = {
+            kind: 'member',
+            op: 'editAttribute',
+            ...deltaBase(currentIr),
+            classId,
+            memberId: attr.id,
+            name: newName,
+            type: attr.type,
+          };
+          return { kind: 'delta', value: delta };
+        }
+      }
+    }
+
+    // 6. agregar método (directo o invertido con parámetros y tipo de retorno)
+    // Ej: "agregá el método cancelar(motivo:string):boolean a Especialidad"
+    // Ej: "sumale a Especialidad el método atender():void"
+    const addMethodDirect = /(?:^|\b)(?:add|agrega|agregá|añade|sumale|ponele)(?:\b|\s)[\s\S]*?(?:method|m[ée]todo)s?\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?\s+(?:to|a|en)\s+(?:class\s+|clase\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    const addMethodInverted = !addMethodDirect && /(?:^|\b)(?:add|agrega|agregá|añade|sumale|ponele)(?:\b|\s)[\s\S]*?(?:to|a|en)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+(?:el\s+)?(?:method|m[ée]todo)s?\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\breturning\b|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?/i.exec(utterance);
+
+    const parsedMethod = addMethodDirect
+      ? { targetClass: addMethodDirect[4]!, methodName: addMethodDirect[1]!, rawParams: addMethodDirect[2], returnType: addMethodDirect[3] }
+      : addMethodInverted
+        ? { targetClass: addMethodInverted[1]!, methodName: addMethodInverted[2]!, rawParams: addMethodInverted[3], returnType: addMethodInverted[4] }
+        : null;
+
+    if (parsedMethod) {
+      const classId = classIdByName(currentIr, parsedMethod.targetClass);
+      if (classId === null) return refused(`Unknown class "${parsedMethod.targetClass}"`);
+      const parameters: Array<{ name: string; type: string }> = [];
+      if (parsedMethod.rawParams && parsedMethod.rawParams.trim().length > 0) {
+        const parts = parsedMethod.rawParams.split(',');
+        for (const part of parts) {
+          const match = /^\s*([A-Za-z_]\w*)\s*(?::\s*([A-Za-z_][\w.]*))?\s*$/.exec(part);
+          if (match) {
+            parameters.push({ name: match[1]!, type: match[2] ?? 'string' });
+          }
+        }
+      }
       const delta: MemberDelta = {
         kind: 'member',
         op: 'addMethod',
         ...deltaBase(currentIr),
         classId,
         memberId: crypto.randomUUID(),
-        name: addMethod[1]!,
-        returnType: addMethod[2] ?? 'void',
-        parameters: [],
+        name: parsedMethod.methodName,
+        returnType: parsedMethod.returnType ?? 'void',
+        parameters,
       };
       return { kind: 'delta', value: delta };
     }

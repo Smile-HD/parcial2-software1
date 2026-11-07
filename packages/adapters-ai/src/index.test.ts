@@ -1581,6 +1581,156 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         expect(memberDeltas[1]).toMatchObject({ name: 'activa', type: 'boolean' });
       }
     });
+
+    it('adds typed attribute to existing class: "agregá telefono:string a la clase Especialidad"', async () => {
+      const llm = new FakeLlm();
+      const espId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: espId,
+            name: 'Especialidad',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('agregá telefono:string a la clase Especialidad', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value).toMatchObject({
+          kind: 'member',
+          op: 'addAttribute',
+          classId: espId,
+          name: 'telefono',
+          type: 'string',
+        });
+      }
+    });
+
+    it('changes attribute type: "cambiá el tipo de anio en Tirada a string"', async () => {
+      const llm = new FakeLlm();
+      const tiradaId = crypto.randomUUID();
+      const anioId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: tiradaId,
+            name: 'Tirada',
+            attributes: [{ id: anioId, name: 'anio', type: 'int', visibility: '+', isStatic: false, isDerived: false }],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('cambiá el tipo de anio en Tirada a string', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value).toMatchObject({
+          kind: 'member',
+          op: 'editAttribute',
+          classId: tiradaId,
+          memberId: anioId,
+          name: 'anio',
+          type: 'string',
+        });
+      }
+    });
+
+    it('adds method with params: "agregá el método cancelar(motivo:string):boolean a Especialidad"', async () => {
+      const llm = new FakeLlm();
+      const espId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: espId,
+            name: 'Especialidad',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('agregá el método cancelar(motivo:string):boolean a Especialidad', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value).toMatchObject({
+          kind: 'member',
+          op: 'addMethod',
+          classId: espId,
+          name: 'cancelar',
+          returnType: 'boolean',
+          parameters: [{ name: 'motivo', type: 'string' }],
+        });
+      }
+    });
+
+    it('adds parameterless method: "sumale a Especialidad el método atender():void"', async () => {
+      const llm = new FakeLlm();
+      const espId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: espId,
+            name: 'Especialidad',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('sumale a Especialidad el método atender():void', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value).toMatchObject({
+          kind: 'member',
+          op: 'addMethod',
+          classId: espId,
+          name: 'atender',
+          returnType: 'void',
+          parameters: [],
+        });
+      }
+    });
+
+    it('anti-fallthrough: deleting nonexistent attribute refuses without deleting class', async () => {
+      const llm = new FakeLlm();
+      const catId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: catId,
+            name: 'CategoriaMedica',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('eliminá el atributo nonexistentAttr en CategoriaMedica', {}, diagram);
+
+      expect(result.kind).toBe('refused');
+    });
   });
 });
 

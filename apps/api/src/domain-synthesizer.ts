@@ -2370,6 +2370,109 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     };
   }
 
+  // 0b. Agregar atributo a una clase existente deterministamente
+  // Ej: "agregá telefono:string a la clase Especialidad"
+  // Ej: "agregale el atributo telefono:string a Especialidad"
+  const addAttrMatch = /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]|insert[aáeé]|sum[aáeé])(?:le)?\s+(?:(?:el|la|un|una)\s+)?(?:(?:atributo|campo|columna)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bde\s+tipo\b|\bof\s+type\b)\s*([A-Za-z_][\w.]*)\s+(?:a|en|para)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+  if (addAttrMatch) {
+    const rawAttrName = addAttrMatch[1]!.trim();
+    const rawAttrType = addAttrMatch[2]!.trim().toLowerCase();
+    const targetClassName = addAttrMatch[3]!.trim();
+    const targetCls = classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase());
+    if (targetCls) {
+      return {
+        action: 'modify',
+        classes: [
+          {
+            name: targetCls.name,
+            attributes: [{ name: rawAttrName, type: rawAttrType }],
+          },
+        ],
+      };
+    }
+  }
+
+  // 0c. Cambiar tipo de atributo deterministamente
+  // Ej: "cambiá el tipo de anio en Tirada a string"
+  const changeAttrTypeMatch = /(?:cambi[aáeé]|modific[aáeé]|set|update)\s+(?:el\s+)?tipo\s+de(?:l\s+atributo)?\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|para)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(text);
+  if (changeAttrTypeMatch) {
+    const attrName = changeAttrTypeMatch[1]!.trim();
+    const targetClassName = changeAttrTypeMatch[2]!.trim();
+    const newType = changeAttrTypeMatch[3]!.trim().toLowerCase();
+    const targetCls = classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase());
+    if (targetCls) {
+      return {
+        action: 'modify',
+        updates: {
+          attributes: [{ class: targetCls.name, name: attrName, type: newType }],
+        },
+      };
+    }
+  }
+
+  // 0d. Renombrar atributo o pasar a minúsculas
+  // Ej: "poné en minúsculas el atributo nombre en Autor"
+  const renameAttrMatch = /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\s+(?:el\s+)?(?:atributo|campo)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
+  if (renameAttrMatch) {
+    const attrName = renameAttrMatch[1]!.trim();
+    const targetClassName = renameAttrMatch[2]!.trim();
+    const targetCls = classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase());
+    if (targetCls) {
+      const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetCls.id);
+      const existingAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === attrName.toLowerCase());
+      if (existingAttr) {
+        const toName = /min[uú]sculas/i.test(text) ? existingAttr.name.toLowerCase() : (renameAttrMatch[3]?.trim() || existingAttr.name);
+        return {
+          action: 'modify',
+          renames: {
+            attributes: [{ class: targetCls.name, from: existingAttr.name, to: toName }],
+          },
+        };
+      }
+    }
+  }
+
+  // 0e. Agregar método deterministamente
+  // Ej: "agregá el método cancelar(motivo:string):boolean a Especialidad"
+  // Ej: "sumale a Especialidad el método atender():void"
+  const addMethodDirectMatch = /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]|sum[aáeé]|insert[aáeé])(?:le)?\s+(?:el\s+)?(?:m[ée]todo|operaci[oó]n)\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?\s+(?:a|en|para)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+  const addMethodInvertedMatch = !addMethodDirectMatch && /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]|sum[aáeé]|insert[aáeé])(?:le)?\s+(?:a|en|para)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:el\s+)?(?:m[ée]todo|operaci[oó]n)\s+([A-Za-z_]\w*)(?:\s*\((.*?)\))?\s*(?::|\bque retorna\b|\bdevuelve\b)?\s*([A-Za-z_][\w.]*)?/i.exec(text);
+
+  const matchedMethodInfo = addMethodDirectMatch
+    ? { targetClass: addMethodDirectMatch[4]!.trim(), name: addMethodDirectMatch[1]!.trim(), rawParams: addMethodDirectMatch[2], retType: addMethodDirectMatch[3] }
+    : addMethodInvertedMatch
+      ? { targetClass: addMethodInvertedMatch[1]!.trim(), name: addMethodInvertedMatch[2]!.trim(), rawParams: addMethodInvertedMatch[3], retType: addMethodInvertedMatch[4] }
+      : null;
+
+  if (matchedMethodInfo) {
+    const targetCls = classes.find((c) => c.name.toLowerCase() === matchedMethodInfo.targetClass.toLowerCase());
+    if (targetCls) {
+      const params: Array<{ name: string; type: string }> = [];
+      if (matchedMethodInfo.rawParams && matchedMethodInfo.rawParams.trim().length > 0) {
+        const parts = matchedMethodInfo.rawParams.split(',');
+        for (const p of parts) {
+          const m = /^\s*([A-Za-z_]\w*)\s*(?::\s*([A-Za-z_][\w.]*))?\s*$/.exec(p);
+          if (m) params.push({ name: m[1]!, type: m[2] || 'string' });
+        }
+      }
+      return {
+        action: 'modify',
+        classes: [
+          {
+            name: targetCls.name,
+            methods: [
+              {
+                name: matchedMethodInfo.name,
+                returnType: matchedMethodInfo.retType || 'void',
+                parameters: params,
+              },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
   if (classes.length === 0) return null;
 
   // 1. Borrado agnóstico determinista (clases, relaciones, atributos)
@@ -2416,6 +2519,14 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
               },
             };
           }
+          // Si el atributo explícito solicitado no existe en la clase especificada,
+          // EVITAR fallthrough catastrófico que borre la clase. Devolver deleciones vacías controladas.
+          return {
+            action: 'modify',
+            deletions: {
+              attributes: [],
+            },
+          };
         }
         for (const cls of classes) {
           const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
@@ -2432,6 +2543,13 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
             };
           }
         }
+        // Si no se encontró en ninguna clase, no borrar clases por error
+        return {
+          action: 'modify',
+          deletions: {
+            attributes: [],
+          },
+        };
       }
 
       // Fallback: si no hubo match explícito de "atributo <nombre>", buscar si algún atributo coincide
