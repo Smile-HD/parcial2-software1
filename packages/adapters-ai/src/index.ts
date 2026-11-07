@@ -92,22 +92,42 @@ export class FakeLlm implements LlmPort {
     if (parts.length > 1) {
       let runningIr: Diagram = currentIr;
       const collectedDeltas: Delta[] = [];
+      const renamedClasses = new Map<string, string>();
+      let lastTargetClass: string | null = null;
 
-      for (const part of parts) {
+      for (let part of parts) {
+        // Si una clase fue renombrada previamente en este lote, reemplazar el nombre viejo en la parte
+        for (const [oldName, newName] of renamedClasses.entries()) {
+          const regex = new RegExp(`\\b${oldName}\\b`, 'gi');
+          part = part.replace(regex, newName);
+        }
+
+        // Si la parte no especifica clase pero es una adición pronominal ("agregale...", "ponele..."), heredar lastTargetClass
+        const isPronounAdd = /^(?:y\s+)?(?:agregale|agregále|ponele|sumale|sumá|insertale|añadile)\b/i.test(part.trim());
+        const specifiesClass = /\b(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.test(part);
+        if (isPronounAdd && !specifiesClass && lastTargetClass) {
+          part = `a la clase ${lastTargetClass} ${part}`;
+        }
+
         const subResult = await this.interpret(part, _deltaJsonSchema, runningIr);
         if (subResult.kind === 'delta') {
           const val = subResult.value;
-          if (val.kind === 'batch') {
-            collectedDeltas.push(...val.deltas);
-            for (const d of val.deltas) {
-              const res = applyDelta(runningIr, d);
-              if (res.ok) {
-                runningIr = res.value;
+          const deltasToApply = val.kind === 'batch' ? val.deltas : [val];
+          for (const d of deltasToApply) {
+            collectedDeltas.push(d);
+            if (d.kind === 'class') {
+              if (d.op === 'rename') {
+                const targetId = (d as any).classId || (d as any).targetId;
+                const targetCls = runningIr.classes.find(c => c.id === targetId);
+                if (targetCls && d.newName) {
+                  renamedClasses.set(targetCls.name, d.newName);
+                  lastTargetClass = d.newName;
+                }
+              } else if (d.op === 'create') {
+                lastTargetClass = d.name;
               }
             }
-          } else {
-            collectedDeltas.push(val);
-            const res = applyDelta(runningIr, val);
+            const res = applyDelta(runningIr, d);
             if (res.ok) {
               runningIr = res.value;
             }
@@ -146,15 +166,15 @@ export class FakeLlm implements LlmPort {
     // 4 (evaluado PRIMERO). agregar atributo a una clase EXISTENTE.
     // Soporta orden directo ("agrega atributo X a Y"), orden con clase al inicio ("editame la tabla Y, agregale un atributo llamado X")
     // y orden invertido con destino al principio ("agregale a la tabla Y el atributo X"), además de sintaxis directa typed ("agregá telefono:string a la clase Especialidad").
-    const directAdd = /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attribute|atributo|campo|columna|propiedad|property|field)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
-    const invertedAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attribute|atributo|campo|columna|propiedad|property|field)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
-    const directToClassAdd = !directAdd && !invertedAdd && /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|inserta|insertá)\b[\s\S]*?\b(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:attribute|atributo|campo|columna|propiedad|property|field)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+    const directAdd = /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|sumá|inserta|insertá)\b[\s\S]*?\b(?:attributes?|atributos?|campos?|columnas?|propiedades?|property|properties|fields?)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?\s+(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const invertedAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|sumá|inserta|insertá)\b[\s\S]*?\b(?:attributes?|atributos?|campos?|columnas?|propiedades?|property|properties|fields?)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
+    const directToClassAdd = !directAdd && !invertedAdd && /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|sumá|inserta|insertá)\b[\s\S]*?\b(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:attributes?|atributos?|campos?|columnas?|propiedades?|property|properties|fields?)\s+(?:llamado\s+|con\s+nombre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*))?/i.exec(utterance);
     const directTypedAdd = !directAdd && !invertedAdd && !directToClassAdd &&
-      /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+      /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|sumá|inserta|insertá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
 
     // Soporte para múltiples atributos a una clase existente:
     // "a la clase ProfesorMateria agregale atributo id de tipo entero, nombre de tipo string y profesor de tipo string"
-    const invertedMultiAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attributes?|atributos?|campos?|columnas?|propiedades?|property|properties|fields?)\s+([\s\S]+)$/i.exec(utterance);
+    const invertedMultiAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|sumá|inserta|insertá)\b[\s\S]*?\b(?:attributes?|atributos?|campos?|columnas?|propiedades?|property|properties|fields?)\s+([\s\S]+)$/i.exec(utterance);
 
     if (invertedMultiAdd && (invertedMultiAdd[2]!.includes(',') || /\s+(?:y|and)\s+/i.test(invertedMultiAdd[2]!))) {
       const targetClass = invertedMultiAdd[1]!;

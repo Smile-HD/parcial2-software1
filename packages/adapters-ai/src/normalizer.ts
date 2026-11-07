@@ -368,7 +368,7 @@ export function splitCompoundUtterance(raw: string): string[] {
   }
 
   // Si no hay ';', dividir cuando hay una coma seguida de conjunción y un VERBO de acción imperativo
-  const actionVerbAhead = /,\s*(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\b)\s+(?=(?:agreg[aá]|cambi[aá]|cre[aá]|borr[aá]|elimin[aá]|conect[aá]|renombr[aá]|asoci[aá]|sum[aá]|met[eé]|pon[eé]|hac[eé]|haz|add|create|delete|remove|rename|link|connect)\b)/iu;
+  const actionVerbAhead = /,\s*(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\b)\s+(?=(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
 
   if (actionVerbAhead.test(raw)) {
     const parts: string[] = [];
