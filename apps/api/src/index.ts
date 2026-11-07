@@ -821,7 +821,7 @@ export function buildApp(options?: AppOptions): FastifyInstance {
     // Si es canal directo, menciona a Amongus, es un comando slash (/), contiene intención de modelado, consulta técnica o el usuario está solo en la sala, generamos respuesta del asistente
     const isSlashCommand = parsed.data.content.trim().startsWith('/');
     const hasModelingIntent =
-      /(?:^|[\s,;.:¡!¿?])(?:cre[aá]|agreg[aá]|a[ñn]ad[eé]|dise[ñn][aá]|model[aá]|constru[yí]|arm[aá]|borr[aá]|elimin[aá]|quit[aá]|renombr[aá]|modific[aá]|cambi[aá]|conect[aá]|vincul[aá]|relacion[aá]|add|create|make|build|delete|remove|connect|rename|update)(?:$|[\s,;.:¡!¿?])/iu.test(
+      /(?:^|[\s,;.:¡!¿?])(?:cre[aáeéí]|agreg[aáeéí]|a[ñn]ad[eéíi]|insert[aáeéí]|sum[aáeéí]|pon[eé]|met[eé]|dise[ñn][aáeéí]|model[aáeéí]|constru[yí]|arm[aáeé]|borr[aáeéí]|elimin[aáeéí]|quit[aáeéí]|sac[aáeéí]|drop|renombr[aáeéí]|modific[aáeéí]|cambi[aáeéí]|conect[aáeéí]|vincul[aáeéí]|relacion[aáeéí]|asoci[aáeéí]|desvincul[aáeéí]|desasoci[aáeéí]|add|append|create|make|build|delete|remove|connect|link|attach|detach|unlink|rename|update|modify|set)(?:$|[\s,;.:¡!¿?])/iu.test(
         parsed.data.content
       );
     const hasUmlQuestionIntent =
