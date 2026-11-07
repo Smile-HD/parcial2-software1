@@ -367,14 +367,15 @@ export function splitCompoundUtterance(raw: string): string[] {
       .filter((p) => p.length > 0);
   }
 
-  // Si no hay ';', dividir cuando hay una coma seguida de conjunción y un VERBO de acción imperativo
-  const actionVerbAhead = /,\s*(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\b)\s+(?=(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
+  // 1) Si hay coma, dividir cuando va seguida de conjunción opcional y un VERBO de acción
+  // Ej: "agregame la clase peru, borra el atributo dureza" o "crea A, y agrega B"
+  const commaActionVerb = /,\s*(?:(?:y\s+adem[aá]s|y\s+tambi[eé]n|y|e)\s+)?(?=(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
 
-  if (actionVerbAhead.test(raw)) {
+  if (commaActionVerb.test(raw)) {
     const parts: string[] = [];
     let remaining = raw;
     while (true) {
-      const match = actionVerbAhead.exec(remaining);
+      const match = commaActionVerb.exec(remaining);
       if (!match) {
         parts.push(remaining.trim());
         break;
@@ -384,6 +385,18 @@ export function splitCompoundUtterance(raw: string): string[] {
       remaining = remaining.slice(match.index + match[0].length).trim();
     }
     return parts.filter((p) => p.length > 0);
+  }
+
+  // 2) Sin coma ni punto y coma: dos órdenes imperativas consecutivas
+  // Ej: "agregame la clase peru borra el atributo dureza"
+  // Protegido: no divide si el verbo está precedido por preposiciones ('para', 'en', 'a', 'de', 'con', 'sin', 'como')
+  const spaceActionVerb = /(?<!\b(?:para|en|a|de|con|sin|como)\s+)\s+(?=(?:borra|borrá|borrame|borráme|elimina|eliminá|eliminame|elimináme|renombra|renombrá|renombrame|renombráme|crea|creá|creame|creáme|agrega|agregá|agregame|agregáme)\b)/iu;
+
+  if (spaceActionVerb.test(raw)) {
+    const parts = raw.split(spaceActionVerb).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1 && parts[0] && /(?:agreg|cre|borr|elimin|cambi|renombr|conect|asoci)/i.test(parts[0])) {
+      return parts;
+    }
   }
 
   return [raw.trim()];

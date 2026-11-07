@@ -123,6 +123,25 @@ describe('normalizer module', () => {
       expect(parts[2]).toBe('borrá la clase Usuario');
     });
 
+    it('splits compound requests with comma and no conjunction', () => {
+      const parts = splitCompoundUtterance('agregame la clase peru, borra el atributo dureza');
+      expect(parts).toHaveLength(2);
+      expect(parts[0]).toBe('agregame la clase peru');
+      expect(parts[1]).toBe('borra el atributo dureza');
+    });
+
+    it('splits compound requests without comma when two imperative verbs are chained', () => {
+      const parts = splitCompoundUtterance('agregame la clase peru borra el atrubuto dureza');
+      expect(parts).toHaveLength(2);
+      expect(parts[0]).toBe('agregame la clase peru');
+      expect(parts[1]).toBe('borra el atrubuto dureza');
+    });
+
+    it('does not split inverted prepositional phrases like "en la clase Factura borra el atributo fecha"', () => {
+      const parts = splitCompoundUtterance('en la clase Factura borra el atributo fecha');
+      expect(parts).toHaveLength(1);
+    });
+
     it('returns single element if no semicolon present', () => {
       expect(splitCompoundUtterance('crea clase Factura')).toEqual(['crea clase Factura']);
     });
