@@ -1536,6 +1536,68 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
       }
     });
 
+    it('links an existing class with "hace que Clase sea la clase de asociacion entre Profesor y Materia"', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeTwoClassDiagram();
+      const receiptId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagramWithAssoc: Diagram = {
+        ...diagram,
+        classes: [
+          ...diagram.classes,
+          {
+            id: receiptId,
+            diagramId: diagram.id,
+            name: 'Clase',
+            position: { x: 200, y: 200 },
+            attributes: [],
+            methods: [],
+            isAbstract: false,
+          },
+        ],
+        associations: [
+          {
+            id: assocId,
+            diagramId: diagram.id,
+            sourceClassId: diagram.classes[0]!.id,
+            targetClassId: diagram.classes[1]!.id,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '*',
+            directed: false,
+            aggregation: 'none',
+          },
+        ],
+      };
+
+      const result = await llm.interpret('hace que clase sea la clase de asociacion entre customer y order', {}, diagramWithAssoc);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('association');
+        const assocDelta = result.value as any;
+        expect(assocDelta.op).toBe('updateMultiplicity');
+        expect(assocDelta.associationId).toBe(assocId);
+        expect(assocDelta.newAssociationClassId).toBe(receiptId);
+      }
+    });
+
+    it('creates an anonymous association class when name is omitted: "agrega una clase de asociacion entre Customer y Order"', async () => {
+      const llm = new FakeLlm();
+      const diagram = makeTwoClassDiagram();
+      const result = await llm.interpret('agrega una clase de asociacion entre Customer y Order', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value.kind).toBe('batch');
+        const batch = result.value as { deltas: any[] };
+        expect(batch.deltas).toHaveLength(2);
+        expect(batch.deltas[0].kind).toBe('class');
+        expect(batch.deltas[0].name).toBe('CustomerOrder');
+        expect(batch.deltas[1].kind).toBe('association');
+        expect(batch.deltas[1].associationClassId).toBe(batch.deltas[0].classId);
+      }
+    });
+
     it('interprets typo-heavy utterance "agrg una clse Empleado cn los atrbutos nbre, sueldo y feha de ingreso" (S1)', async () => {
       const llm = new FakeLlm();
       const result = await llm.interpret('agrg una clse Empleado cn los atrbutos nbre, sueldo y feha de ingreso', {}, makeDiagram());

@@ -196,11 +196,11 @@ export function normalizeUmlUtterance(raw: string): string {
   // ── G. Miembros y propiedades del metamodelo UML
   s = s.replace(/(?<!\p{L})(?:atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedad(?:es)?|campos?|columnas?|columns?|attibutes?|attributs?|attribs?|attrs?|props?|properties|fields?)(?!\p{L})/giu, 'atributos');
   s = s.replace(/(?<!\p{L})(?:mtodos?|m[ée]todos?|funci[oó]n(?:es)?|operaci[oó]n(?:es)?|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
-  s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|asociaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
+  s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|asociaci[oó]n(?:es)?|asocici[oó]n(?:es)?|soacici[oó]n(?:es)?|asosiaci[oó]n(?:es)?|asociasi[oó]n(?:es)?|asocaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
 
   // ── G3. Clasificadores de asociación intermedia y tabla de asociación
   s = s.replace(
-    /(?<!\p{L})(?:tabla\s+de\s+asociaci[oó]n|tablas?\s+intermedias?|clases?\s+intermedias?|entidad(?:es)?\s+intermedias?|entidad(?:es)?\s+de\s+asociaci[oó]n|junction\s+tables?|join\s+tables?|intermediate\s+tables?|bridge\s+tables?|linking\s+tables?|association\s+tables?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:(?:tabla|calse|clase|entidad)\s+de\s+(?:asociaci[oó]n|asocici[oó]n|soacici[oó]n|asosiaci[oó]n|asociasi[oó]n)|tablas?\s+intermedias?|clases?\s+intermedias?|calses?\s+intermedias?|entidad(?:es)?\s+intermedias?|entidad(?:es)?\s+de\s+(?:asociaci[oó]n|asocici[oó]n|soacici[oó]n|asosiaci[oó]n|asociasi[oó]n)|junction\s+tables?|join\s+tables?|intermediate\s+tables?|bridge\s+tables?|linking\s+tables?|association\s+tables?)(?!\p{L})/giu,
     'clase de asociacion'
   );
 
@@ -213,6 +213,7 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:cdigo)(?!\p{L})/giu, 'codigo');
 
   // ── H. Conectores gramaticales y preposiciones
+  s = s.replace(/(?<!\p{L})hac[eé]\s+q(?!\p{L})/giu, 'hace que');
   s = s.replace(/(?<!\p{L})(?:cn|c\/)(?!\p{L})/giu, 'con');
   s = s.replace(/(?<!\p{L})e\s+(?=[ih])/giu, 'y ');
   s = s.replace(/(?<!\p{L})(?:llamda|llamd[ao])(?!\p{L})/giu, 'llamada');

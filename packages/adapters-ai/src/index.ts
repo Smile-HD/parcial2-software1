@@ -538,18 +538,47 @@ export class FakeLlm implements LlmPort {
     }
 
     // 6c. Asociación con CLASE DE ASOCIACIÓN / TABLA INTERMEDIA:
-    // "association class Enrollment between Student and Course" / "clase de asociacion Matricula entre Alumno y Curso"
-    // "tabla intermedia Matricula entre Alumno y Curso" / "crear tabla de asociacion Matricula entre Alumno y Curso"
-    const assocClassPattern =
-      /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_]\w*)\s+(?:between|entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    // Soporta:
+    // 1) Asignar clase existente o nueva: "hace que Clase sea la clase de asociacion entre Profesor y Materia", "converti Clase en tabla intermedia entre A y B"
+    // 2) Con nombre explícito: "clase de asociacion Inscripcion entre Estudiante y Curso"
+    // 3) Con nombre anónimo: "agrega clase de asociacion entre Profesor y Materia" -> genera ProfesorMateria
+    // 4) Vía conector: "conecta A con B mediante clase de asociacion C"
+    const assignAssocClassPattern =
+      /(?:(?:hac[eé]|haz|make|set|convert[ií]|volv[eé]|pon(?:e|ele)?|transform[aá]|marc[aá]|asign[aá]|link|connect|conecta|conectá|asocia|asociá)\s+(?:que\s+|q\s+)?(?:(?:la|una|el|un|the|an?)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:sea|en|como|to\s+be|as|a\s+la\s+asociaci[óo]n\s+entre|to\s+(?:the\s+)?association\s+between)\s+(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table)?\s*(?:entre|between)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)|^(?:(?:la|el|the)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:sea|es|is)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia)\s+(?:entre|between)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*))/i.exec(utterance);
 
-    const assocClassViaPattern = !assocClassPattern &&
-      /\b(?:link|connect|conecta|conectá|asocia|asociá)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)\s+(?:mediante|a\s+trav[eé]s\s+de|via|using|through)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table|association\s+table)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const assocClassPattern = !assignAssocClassPattern &&
+      /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:between|entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
 
-    if (assocClassPattern || assocClassViaPattern) {
-      const assocClassName = assocClassPattern ? assocClassPattern[1]! : assocClassViaPattern![3]!;
-      const srcName = assocClassPattern ? assocClassPattern[2]! : assocClassViaPattern![1]!;
-      const tgtName = assocClassPattern ? assocClassPattern[3]! : assocClassViaPattern![2]!;
+    const assocClassViaPattern = !assignAssocClassPattern && !assocClassPattern &&
+      /\b(?:link|connect|conecta|conectá|asocia|asociá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:mediante|a\s+trav[eé]s\s+de|via|using|through)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table|association\s+table)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+
+    const anonAssocClassPattern = !assignAssocClassPattern && !assocClassPattern && !assocClassViaPattern &&
+      /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele|sumale|mete|metele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:between|entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+
+    if (assignAssocClassPattern || assocClassPattern || assocClassViaPattern || anonAssocClassPattern) {
+      let assocClassName: string;
+      let srcName: string;
+      let tgtName: string;
+
+      if (assignAssocClassPattern) {
+        assocClassName = assignAssocClassPattern[1] || assignAssocClassPattern[4]!;
+        srcName = assignAssocClassPattern[2] || assignAssocClassPattern[5]!;
+        tgtName = assignAssocClassPattern[3] || assignAssocClassPattern[6]!;
+      } else if (assocClassPattern) {
+        assocClassName = assocClassPattern[1]!;
+        srcName = assocClassPattern[2]!;
+        tgtName = assocClassPattern[3]!;
+      } else if (assocClassViaPattern) {
+        assocClassName = assocClassViaPattern[3]!;
+        srcName = assocClassViaPattern[1]!;
+        tgtName = assocClassViaPattern[2]!;
+      } else {
+        // anónimo: sintetizar nombre uniendo origen y destino
+        srcName = anonAssocClassPattern![1]!;
+        tgtName = anonAssocClassPattern![2]!;
+        assocClassName = `${srcName.charAt(0).toUpperCase()}${srcName.slice(1)}${tgtName.charAt(0).toUpperCase()}${tgtName.slice(1)}`;
+      }
+
       const sourceClassId = classIdByName(currentIr, srcName);
       const targetClassId = classIdByName(currentIr, tgtName);
       if (sourceClassId === null) return refused(`Unknown class "${srcName}"`);
@@ -569,6 +598,36 @@ export class FakeLlm implements LlmPort {
         };
       }
 
+      // Si ya existe una asociación entre origen y destino, vincular la clase de asociación a ella
+      const existingAssoc = (currentIr.associations ?? []).find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId),
+      );
+
+      if (existingAssoc) {
+        const updateDelta: AssociationDelta = {
+          kind: 'association',
+          op: 'updateMultiplicity',
+          ...deltaBase(currentIr),
+          associationId: existingAssoc.id,
+          newAssociationClassId: assocClassId,
+        };
+
+        if (createClassDelta) {
+          return {
+            kind: 'delta',
+            value: {
+              kind: 'batch',
+              ...deltaBase(currentIr),
+              deltas: [createClassDelta, updateDelta],
+            },
+          };
+        }
+        return { kind: 'delta', value: updateDelta };
+      }
+
+      // Si no existe, crear la asociación con associationClassId
       const assocDelta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -597,7 +656,7 @@ export class FakeLlm implements LlmPort {
 
     // 6d. Vincular clase existente a asociación como clase de asociación:
     // "link class Grade to association between Student and Course"
-    const linkAssocClassPattern = /\b(?:link|connect|conecta|conectá|asocia|asociá)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)\s+(?:to\s+(?:association|relation)\s+between|a\s+(?:la\s+)?(?:asociaci[óo]n|relaci[óo]n)\s+entre)\s+([A-Za-z_]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_]\w*)/i.exec(utterance);
+    const linkAssocClassPattern = /\b(?:link|connect|conecta|conectá|asocia|asociá)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:to\s+(?:association|relation)\s+between|a\s+(?:la\s+)?(?:asociaci[óo]n|relaci[óo]n)\s+entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
     if (linkAssocClassPattern) {
       const className = linkAssocClassPattern[1]!;
       const srcName = linkAssocClassPattern[2]!;
@@ -702,8 +761,9 @@ export class FakeLlm implements LlmPort {
 
     // 8. asociación entre dos clases (simple o con cardinalidad)
     const isDeleteAssocIntent = /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá)\b/i.test(utterance);
-    const association = !isDeleteAssocIntent
-      ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_]\w*)/i.exec(utterance)
+    const isAssocClassIntent = /\b(?:clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|association\s+class|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table)\b/i.test(utterance);
+    const association = !isDeleteAssocIntent && !isAssocClassIntent
+      ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance)
       : null;
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
