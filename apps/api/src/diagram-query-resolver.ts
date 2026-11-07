@@ -40,10 +40,10 @@ export function resolveDiagramFactualQuery(
   // NUNCA debe ser tratada como consulta factual de lectura.
   // Abarca pronombres enclíticos (cambiame, cambiale, modificame, etc.) y sinónimos en inglés.
   const isImperativeAction =
-    /(?:^|\s)(?:cre[aáeé]|crear|agreg[aáeé]|agregar|a[ñn]ad[eé]|a[ñn]adir|dise[ñn][aáeé]|model[aáeé]|constru[yí]|arm[aáeé]|incorpor[aáeé]|insert[aáeé]|borr[aáeé]|elimin[aáeé]|quit[aáeé]|conect[aáeé]|vincul[aáeé]|relacion[aáeé]|cambi[aáeé]|modific[aáeé]|renombr[aáeé]|actualiz[aáeé]|edit[aáeé]|pon(?:e|ga|ed)?|hac[eé]|haz)(?:me|le|les|lo|la|los|las|nos)?\b/i.test(
+    /(?:^|\s)(?:cre[aáeé]|crear|agreg[aáeé]|agregar|a[ñn]ad[eé]|a[ñn]adir|dise[ñn][aáeé]|model[aáeé]|constru[yí]|arm[aáeé]|incorpor[aáeé]|insert[aáeé]|borr[aáeé]|elimin[aáeé]|quit[aáeé]|conect[aáeé]|vincul[aáeé]|desvincul[aáeé]?|desasoci[aáeé]?|relacion[aáeé]|cambi[aáeé]|modific[aáeé]|renombr[aáeé]|actualiz[aáeé]|edit[aáeé]|pon(?:e|ga|ed)?|hac[eé]|haz)(?:me|le|les|lo|la|los|las|nos)?\b/i.test(
       rawNorm
     ) ||
-    /\b(?:add|create|make|build|insert|delete|remove|drop|connect|link|change|modify|update|rename|switch|convert|transform|turn|set)\b/i.test(
+    /\b(?:add|create|make|build|insert|delete|remove|drop|connect|link|unlink|detach|change|modify|update|rename|switch|convert|transform|turn|set)\b/i.test(
       rawNorm
     );
 

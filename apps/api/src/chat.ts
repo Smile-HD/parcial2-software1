@@ -1257,9 +1257,15 @@ export async function processUnifiedAmongusTurn(
     if (explicitMutation) {
       const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
       if (mutationDelta && mutationDelta.deltas.length > 0) {
-        const defaultReply = isEn
+        let defaultReply = isEn
           ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
           : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
+        const hasUnlink = mutationDelta.deltas.some((d: any) => d.kind === 'association' && (d as any).newAssociationClassId === null);
+        if (hasUnlink) {
+          defaultReply = isEn
+            ? 'I have prepared the proposal to unlink the association class. The relationship and classes remain intact on the canvas.'
+            : 'Preparé la propuesta para desvincular la clase de asociación. La relación base y las clases se conservan intactas en el lienzo.';
+        }
         return {
           replyContent: defaultReply,
           batchDelta: mutationDelta,

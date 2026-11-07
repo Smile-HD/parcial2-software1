@@ -1211,6 +1211,108 @@ describe('processUnifiedAmongusTurn', () => {
       expect(res.replyContent).toContain('Estudiante');
       expect(res.replyContent).toContain('Curso');
     });
+
+    it('unlinks association class setting newAssociationClassId to null (E4)', async () => {
+      const mockDiagram = {
+        id: 'diag-pub',
+        classes: [
+          { id: 'c_pub', name: 'Publicacion', attributes: [] },
+          { id: 'c_aut', name: 'Autor', attributes: [] },
+          { id: 'c_edi', name: 'Edicion', attributes: [] },
+        ],
+        associations: [
+          {
+            id: 'a_pub_aut',
+            sourceClassId: 'c_pub',
+            targetClassId: 'c_aut',
+            associationClassId: 'c_edi',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'desvincula la clase de asociacion de Publicacion y Autor',
+        'Zovako',
+        'es',
+        'diag-pub',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const updateAssocDelta = res.batchDelta?.deltas.find(
+        (d: any) => d.kind === 'association' && d.op === 'updateMultiplicity'
+      );
+      expect(updateAssocDelta).toBeDefined();
+      expect((updateAssocDelta as any).newAssociationClassId).toBeNull();
+      expect(res.replyContent).toContain('desvincular la clase de asociación');
+    });
+
+    it('adds multiple attributes to an association class directly (E3)', async () => {
+      const mockDiagram = {
+        id: 'diag-pub',
+        classes: [
+          { id: 'c_pub', name: 'Publicacion', attributes: [] },
+          { id: 'c_aut', name: 'Autor', attributes: [] },
+          { id: 'c_edi', name: 'Edicion', attributes: [] },
+        ],
+        associations: [
+          {
+            id: 'a_pub_aut',
+            sourceClassId: 'c_pub',
+            targetClassId: 'c_aut',
+            associationClassId: 'c_edi',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'a la clase de asociacion Edicion agregale numeroEdicion:int y anio:int',
+        'Zovako',
+        'es',
+        'diag-pub',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeDefined();
+      const attrDeltas = res.batchDelta?.deltas.filter(
+        (d: any) => d.kind === 'member' && d.op === 'addAttribute' && d.classId === 'c_edi'
+      );
+      expect(attrDeltas?.length).toBe(2);
+      expect(attrDeltas?.map((d: any) => d.name)).toEqual(['numeroEdicion', 'anio']);
+    });
+
+    it('refuses to associate a class with its own association class (E1)', async () => {
+      const mockDiagram = {
+        id: 'diag-pub',
+        classes: [
+          { id: 'c_pub', name: 'Publicacion', attributes: [] },
+          { id: 'c_aut', name: 'Autor', attributes: [] },
+          { id: 'c_edi', name: 'Edicion', attributes: [] },
+        ],
+        associations: [
+          {
+            id: 'a_pub_aut',
+            sourceClassId: 'c_pub',
+            targetClassId: 'c_aut',
+            associationClassId: 'c_edi',
+          },
+        ],
+      };
+
+      const res = await processUnifiedAmongusTurn(
+        'agrega una clase de asociacion entre Publicacion y Edicion',
+        'Zovako',
+        'es',
+        'diag-pub',
+        undefined,
+        mockDiagram
+      );
+
+      expect(res.batchDelta).toBeUndefined();
+      expect(res.replyContent).toContain('ya es la clase de asociación que vincula');
+    });
   });
 });
 

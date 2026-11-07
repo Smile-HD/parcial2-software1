@@ -34,7 +34,7 @@ export interface SemanticAssociation {
   targetMultiplicity?: string;
   aggregation?: 'none' | 'shared' | 'composite';
   aggregationEnd?: 'source' | 'target';
-  associationClass?: string;
+  associationClass?: string | null;
   directed?: boolean;
   sourceRole?: string;
   targetRole?: string;
@@ -110,7 +110,7 @@ export interface SemanticAssociationUpdate {
   aggregationEnd?: 'source' | 'target';
   sourceRole?: string;
   targetRole?: string;
-  associationClass?: string;
+  associationClass?: string | null;
 }
 
 export interface SemanticGeneralizationUpdate {
@@ -856,6 +856,9 @@ export function expandSemanticDomainToDelta(
             if (assocClassId) {
               updateDelta.newAssociationClassId = assocClassId;
               updateDelta.associationClassId = assocClassId;
+            } else if (u.associationClass === null) {
+              updateDelta.newAssociationClassId = null;
+              updateDelta.associationClassId = null;
             }
             deltas.push(updateDelta);
             const pair = isRecursive ? `${sourceId}::${sourceId}` : getPairKey(sourceId, targetId);
@@ -1479,7 +1482,11 @@ export function expandSemanticDomainToDelta(
           if (assoc.name !== undefined) updateDelta.name = assoc.name;
           if (assoc.sourceRole !== undefined) updateDelta.sourceRole = assoc.sourceRole;
           if (assoc.targetRole !== undefined) updateDelta.targetRole = assoc.targetRole;
-          if (assocClassId) updateDelta.newAssociationClassId = assocClassId;
+          if (assocClassId) {
+            updateDelta.newAssociationClassId = assocClassId;
+          } else if (assoc.associationClass === null) {
+            updateDelta.newAssociationClassId = null;
+          }
 
           deltas.push(updateDelta);
         }
@@ -2173,7 +2180,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   if (classes.length === 0) return null;
 
   // 1. Borrado agnóstico determinista (clases, relaciones, atributos)
-  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin[aá]?(?:me|te|le|nos|les)?|borr[aá]?(?:me|te|le|nos|les)?|sac[aá]?(?:me|te|le|nos|les)?|quit[aá]?(?:me|te|le|nos|les)?)\b/i.test(normalized);
+  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin[aá]?(?:me|te|le|nos|les)?|borr[aá]?(?:me|te|le|nos|les)?|sac[aá]?(?:me|te|le|nos|les)?|quit[aá]?(?:me|te|le|nos|les)?|desvincul[aáeé]?(?:me|te|le|nos|les)?|desasoci[aáeé]?(?:me|te|le|nos|les)?|unlink|detach)\b/i.test(normalized);
   if (isDeleteIntent) {
     const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
     const mentionedClasses = classes.filter((c) => {
@@ -2217,6 +2224,54 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
             classes: [targetCls.name],
           },
         };
+      }
+    }
+
+    // 1b2. Desvinculación limpia de clase de asociación (E4: "desvincula la clase de asociacion de Publicacion y Autor" o "quita la clase de asociacion")
+    // Preserva la asociación binaria y las clases en el lienzo, restableciendo associationClassId a null.
+    const isUnlinkAssocClass =
+      /(?:desvincul[aáeé]|quit[aáeé]|elimin[aáeé]|remover?|sac[aáeé])\s+(?:la\s+)?clase\s+de\s+asociaci[oó]n/i.test(normalized) ||
+      /(?:unlink|detach|remove)\s+(?:the\s+)?association\s+class/i.test(normalized);
+
+    if (isUnlinkAssocClass) {
+      let targetAssoc: any = undefined;
+      if (mentionedClasses.length >= 2) {
+        const c1 = mentionedClasses[0]!;
+        const c2 = mentionedClasses[1]!;
+        targetAssoc = associations.find(
+          (a) =>
+            ((a.sourceClassId === c1.id && a.targetClassId === c2.id) ||
+             (a.sourceClassId === c2.id && a.targetClassId === c1.id)) &&
+            a.associationClassId
+        );
+      } else if (mentionedClasses.length === 1) {
+        const c1 = mentionedClasses[0]!;
+        targetAssoc = associations.find(
+          (a) =>
+            (a.sourceClassId === c1.id || a.targetClassId === c1.id || a.associationClassId === c1.id) &&
+            a.associationClassId
+        );
+      } else {
+        targetAssoc = associations.find((a) => a.associationClassId);
+      }
+
+      if (targetAssoc) {
+        const src = classes.find((c) => c.id === targetAssoc.sourceClassId);
+        const tgt = classes.find((c) => c.id === targetAssoc.targetClassId);
+        if (src && tgt) {
+          return {
+            action: 'modify',
+            updates: {
+              associations: [
+                {
+                  source: src.name,
+                  target: tgt.name,
+                  associationClass: null,
+                },
+              ],
+            },
+          };
+        }
       }
     }
 
@@ -2347,7 +2402,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   // - "renombra el atributo fechaDevolucion a fechaEntrega en Prestamo"
   const isAttrIntent =
     /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|set|cambi[aáeé]|modific[aáeé]|pas[aáeé]|change|modify|renombr[aáeé]|rename)/i.test(normalized) &&
-    /(?:atributo|campo|field|attribute|propiedad|property|tipo\s+de|un\s+id|el\s+id|id\b)/i.test(normalized);
+    /(?:atributo|campo|field|attribute|propiedad|property|tipo\s+de|un\s+id|el\s+id|id\b|:\s*(?:int|string|date|boolean|float|integer|texto|fecha|booleano|numero))/i.test(normalized);
 
   if (isAttrIntent) {
     const typeMap: Record<string, string> = {
@@ -2472,7 +2527,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       }
     }
     const targetClassMatch =
-      /(?:a\s+la\s+clase|en\s+la\s+clase|para\s+la\s+clase|de\s+la\s+clase|to\s+class|in\s+class|on\s+class|a|en|para)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+      /(?:a\s+la\s+clase|en\s+la\s+clase|para\s+la\s+clase|de\s+la\s+clase|to\s+class|in\s+class|on\s+class|a|en|para)\s+(?:de\s+asociaci[oó]n\s+)?["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
     if (targetClassMatch) {
       const cand = targetClassMatch[1]!;
       const match = findClosestClassName(cand, classes);
@@ -2506,61 +2561,90 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       }
     }
 
-    if (targetClass && attrName) {
-      const cleanAttrName = attrName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
+    if (targetClass) {
+      // Soporte para múltiples atributos simultáneos: ej. "agregale numeroEdicion:int y anio:int"
+      const allColonMatches = Array.from(
+        text.matchAll(/([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*:\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/g)
+      );
 
-      // Caso Renombrado de atributo
-      if (newAttrName) {
-        const cleanNewName = newAttrName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
+      if (allColonMatches.length > 1 && !/(?:cambi|modific|pas|renombr)/i.test(normalized)) {
+        const multiAttrs = allColonMatches.map((m) => {
+          const name = m[1]!.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
+          const rawType = stripAccents(m[2]!);
+          return {
+            name,
+            type: typeMap[rawType] || rawType,
+            visibility: '+',
+          };
+        });
+
         return {
           action: 'modify',
-          renames: {
-            attributes: [
-              {
-                class: targetClass.name,
-                from: cleanAttrName,
-                to: cleanNewName,
-              },
-            ],
-          },
+          classes: [
+            {
+              name: targetClass.name,
+              attributes: multiAttrs,
+            },
+          ],
         };
       }
 
-      // Comprobar si el atributo ya existe en la clase (en cuyo caso es una modificación de tipo)
-      const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetClass!.id);
-      const existingAttr = fullCls?.attributes?.find((a: any) => a.name && a.name.toLowerCase() === cleanAttrName.toLowerCase());
+      if (attrName) {
+        const cleanAttrName = attrName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
 
-      if (existingAttr || /(?:cambi|modific|pas|change|modify)/i.test(normalized)) {
+        // Caso Renombrado de atributo
+        if (newAttrName) {
+          const cleanNewName = newAttrName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_]/g, '');
+          return {
+            action: 'modify',
+            renames: {
+              attributes: [
+                {
+                  class: targetClass.name,
+                  from: cleanAttrName,
+                  to: cleanNewName,
+                },
+              ],
+            },
+          };
+        }
+
+        // Comprobar si el atributo ya existe en la clase (en cuyo caso es una modificación de tipo)
+        const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetClass!.id);
+        const existingAttr = fullCls?.attributes?.find((a: any) => a.name && a.name.toLowerCase() === cleanAttrName.toLowerCase());
+
+        if (existingAttr || /(?:cambi|modific|pas|change|modify)/i.test(normalized)) {
+          return {
+            action: 'modify',
+            updates: {
+              attributes: [
+                {
+                  class: targetClass.name,
+                  name: cleanAttrName,
+                  type: attrType,
+                },
+              ],
+            },
+          };
+        }
+
+        // Si es adición de nuevo atributo
         return {
           action: 'modify',
-          updates: {
-            attributes: [
-              {
-                class: targetClass.name,
-                name: cleanAttrName,
-                type: attrType,
-              },
-            ],
-          },
+          classes: [
+            {
+              name: targetClass.name,
+              attributes: [
+                {
+                  name: cleanAttrName,
+                  type: attrType,
+                  visibility: '+',
+                },
+              ],
+            },
+          ],
         };
       }
-
-      // Si es adición de nuevo atributo
-      return {
-        action: 'modify',
-        classes: [
-          {
-            name: targetClass.name,
-            attributes: [
-              {
-                name: cleanAttrName,
-                type: attrType,
-                visibility: '+',
-              },
-            ],
-          },
-        ],
-      };
     }
   }
 

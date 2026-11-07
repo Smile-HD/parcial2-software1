@@ -174,5 +174,112 @@ Una **Asociación N-aria** vincula simultáneamente 3 o más clases a través de
     };
   }
 
+  // 4. Invariantes Semánticas OOAD para Clases de Asociación y Asociaciones N-Arias
+  if (diagram && Array.isArray(diagram.classes) && Array.isArray(diagram.associations)) {
+    const diagClasses: Array<{ id: string; name: string }> = diagram.classes;
+    const diagAssocs: Array<any> = diagram.associations;
+
+    // 4a. Conexión inválida con su propia clase de asociación (E1)
+    // En UML, una clase de asociación modela el vínculo entre dos entidades participantes.
+    // Conectarla directamente con uno de sus extremos participantes es un error semántico.
+    const isConnectIntent =
+      /(?:asoci|conect|relacion|link|crea.*?asociaci|agrega.*?asociaci|une|junta|connect|associate)/i.test(normalized) &&
+      !/(?:desvincul|quit|elimin|remover|sac)/i.test(normalized);
+
+    if (isConnectIntent) {
+      const mentionedClasses = diagClasses.filter((c) => {
+        const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const regex = new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i');
+        return regex.test(normalized);
+      });
+
+      if (mentionedClasses.length >= 2) {
+        const c1 = mentionedClasses[0]!;
+        const c2 = mentionedClasses[1]!;
+
+        // Verificar si c1 es clase de asociación de c2, o viceversa
+        const assocWhereC1IsIntermediary = diagAssocs.find(
+          (a) => a.associationClassId === c1.id && (a.sourceClassId === c2.id || a.targetClassId === c2.id)
+        );
+        const assocWhereC2IsIntermediary = diagAssocs.find(
+          (a) => a.associationClassId === c2.id && (a.sourceClassId === c1.id || a.targetClassId === c1.id)
+        );
+
+        const violatingAssoc = assocWhereC1IsIntermediary || assocWhereC2IsIntermediary;
+        if (violatingAssoc) {
+          const assocClass = assocWhereC1IsIntermediary ? c1 : c2;
+          const participantClass = assocWhereC1IsIntermediary ? c2 : c1;
+          const otherParticipantId =
+            violatingAssoc.sourceClassId === participantClass.id
+              ? violatingAssoc.targetClassId
+              : violatingAssoc.sourceClassId;
+          const otherParticipant =
+            diagClasses.find((c) => c.id === otherParticipantId)?.name || 'su clase asociada';
+
+          const refusal = isEn
+            ? `In UML 2.5, class '${assocClass.name}' is already the association class linking '${participantClass.name}' and '${otherParticipant}'. An association class models the attributes and lifecycle of the relationship itself, so it must not be directly connected with its participant endpoints.`
+            : `En UML 2.5, la clase '${assocClass.name}' ya es la clase de asociación que vincula '${participantClass.name}' y '${otherParticipant}'. Una clase de asociación modela la relación en sí misma y no debe conectarse directamente con sus extremos participantes para evitar ciclos y enlaces parásitos.`;
+
+          return {
+            blocked: true,
+            replyContent: refusal,
+          };
+        }
+      }
+    }
+
+    // 4b. Validación de Asociación N-Aria (requiere >= 3 clases) (E5)
+    const isNaryCreate =
+      /(?:n-ari[ao]|ternari[ao]|nary|ternary)/i.test(normalized) &&
+      /(?:cre[aáeé]|agreg[aáeé]|a[ñn]ad[eé]|pon[eé]|conect[aáeé]|arm[aáeé]|hac[eé]|haz)/i.test(normalized);
+
+    if (isNaryCreate) {
+      const mentionedClasses = diagClasses.filter((c) => {
+        const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const regex = new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i');
+        return regex.test(normalized);
+      });
+
+      if (mentionedClasses.length < 3) {
+        const refusal = isEn
+          ? `An n-ary (or ternary) association connects 3 or more classes simultaneously through a central diamond. If you only want to connect 2 classes, you should use a standard binary association. Please specify at least 3 classes to create an n-ary association.`
+          : `Una asociación n-aria (o ternaria) vincula simultáneamente 3 o más clases a través de un rombo central. Si querés conectar solo 2 clases, en UML corresponde utilizar una asociación binaria común. Para armar una asociación n-aria, por favor especificá al menos 3 clases participantes.`;
+
+        return {
+          blocked: true,
+          replyContent: refusal,
+        };
+      }
+    }
+
+    // 4c. Validación de Clase de Asociación con clases inexistentes en el lienzo (E6)
+    const isAssocClassIntent =
+      /(?:clase\s+de\s+asociaci[oó]n|association\s+class)/i.test(normalized) &&
+      /(?:agreg[aáeé]|a[ñn]ad[eé]|cre[aáeé]|pon[eé]?|sum[aá]|add|insert|asoci[aáeé]|asign[aáeé]|convert)/i.test(normalized);
+
+    if (isAssocClassIntent) {
+      const betweenMatch = /(?:entre|between)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?:["']?)\s+(?:y|and)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+      if (betweenMatch) {
+        const rawC1 = betweenMatch[1]!.toLowerCase();
+        const rawC2 = betweenMatch[2]!.toLowerCase();
+        const foundC1 = diagClasses.some((c) => c.name.toLowerCase() === rawC1);
+        const foundC2 = diagClasses.some((c) => c.name.toLowerCase() === rawC2);
+
+        if (!foundC1 || !foundC2) {
+          const missing = [!foundC1 ? betweenMatch[1] : null, !foundC2 ? betweenMatch[2] : null].filter(Boolean);
+          const avail = diagClasses.map((c) => `"${c.name}"`).join(', ');
+          const refusal = isEn
+            ? `Cannot create association class: the class(es) ${missing.map((m) => `"${m}"`).join(', ')} do not exist in the diagram. Available classes: ${avail}.`
+            : `No se puede vincular la clase de asociación porque ${missing.length > 1 ? 'las clases' : 'la clase'} ${missing.map((m) => `"${m}"`).join(', ')} no existe(n) en el diagrama. Clases disponibles: ${avail}.`;
+
+          return {
+            blocked: true,
+            replyContent: refusal,
+          };
+        }
+      }
+    }
+  }
+
   return { blocked: false };
 }
