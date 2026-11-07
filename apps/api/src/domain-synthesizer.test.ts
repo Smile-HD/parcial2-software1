@@ -1156,6 +1156,63 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect((assocDelta as any).sourceMultiplicity).toBe('1');
     expect((assocDelta as any).targetMultiplicity).toBe('0..*');
   });
+
+  it('extracts method addition with parameters and return type deterministically', () => {
+    const diag: any = {
+      id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
+      classes: [
+        { id: 'c_pub', name: 'Publicacion', attributes: [], methods: [] },
+      ],
+      associations: [],
+    };
+
+    const mutation = extractExplicitModelMutations(
+      'a la clase Publicacion agregale el metodo calcularRegalias(porcentaje:float):float',
+      diag
+    );
+    expect(mutation).not.toBeNull();
+    expect(mutation?.action).toBe('modify');
+    expect(mutation?.classes?.[0]?.name).toBe('Publicacion');
+    expect(mutation?.classes?.[0]?.methods).toBeDefined();
+    expect(mutation?.classes?.[0]?.methods?.[0]?.name).toBe('calcularRegalias');
+    expect(mutation?.classes?.[0]?.methods?.[0]?.returnType).toBe('float');
+    expect(mutation?.classes?.[0]?.methods?.[0]?.parameters).toEqual([
+      { name: 'porcentaje', type: 'float' },
+    ]);
+
+    const delta = expandSemanticDomainToDelta(mutation!, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const methodDelta = delta!.deltas.find((d: any) => d.kind === 'member' && d.op === 'addMethod');
+    expect(methodDelta).toBeDefined();
+    expect((methodDelta as any).classId).toBe('c_pub');
+    expect((methodDelta as any).name).toBe('calcularRegalias');
+    expect((methodDelta as any).returnType).toBe('float');
+    expect((methodDelta as any).parameters).toEqual([
+      { name: 'porcentaje', type: 'float' },
+    ]);
+  });
+
+  it('extracts colloquial method without parentheses', () => {
+    const diag: any = {
+      id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
+      classes: [
+        { id: 'c_pub', name: 'Publicacion', attributes: [], methods: [] },
+      ],
+      associations: [],
+    };
+
+    const mutation = extractExplicitModelMutations(
+      'en Publicacion agrega el metodo calcularTotal que recibe x de tipo float y devuelve int',
+      diag
+    );
+    expect(mutation).not.toBeNull();
+    expect(mutation?.classes?.[0]?.name).toBe('Publicacion');
+    expect(mutation?.classes?.[0]?.methods?.[0]?.name).toBe('calcularTotal');
+    expect(mutation?.classes?.[0]?.methods?.[0]?.returnType).toBe('int');
+    expect(mutation?.classes?.[0]?.methods?.[0]?.parameters).toEqual([
+      { name: 'x', type: 'float' },
+    ]);
+  });
 });
 
 

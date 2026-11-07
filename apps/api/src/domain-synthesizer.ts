@@ -2402,6 +2402,183 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
+  // 3a. Adición / modificación / renombrado determinista de métodos en una clase existente
+  const isMethodIntent =
+    /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|cre[aáeé]|create|cambi[aáeé]|modific[aáeé]|renombr[aáeé])/i.test(normalized) &&
+    (/(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)\b/i.test(normalized) ||
+      /\b[A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*\s*\([^)]*\)\s*(?::\s*[A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)?/i.test(text));
+
+  if (isMethodIntent) {
+    const methodTypeMap: Record<string, string> = {
+      entero: 'int',
+      entera: 'int',
+      int: 'int',
+      integer: 'int',
+      numero: 'int',
+      number: 'int',
+      texto: 'string',
+      cadena: 'string',
+      string: 'string',
+      str: 'string',
+      booleano: 'boolean',
+      booleana: 'boolean',
+      bool: 'boolean',
+      boolean: 'boolean',
+      fecha: 'date',
+      date: 'date',
+      timestamp: 'date',
+      datetime: 'date',
+      decimal: 'float',
+      float: 'float',
+      double: 'float',
+      real: 'float',
+      void: 'void',
+      vacio: 'void',
+      vacío: 'void',
+      nada: 'void',
+    };
+
+    let targetClass: { id: string; name: string } | undefined;
+    for (const cls of classes) {
+      const cNorm = cls.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i').test(normalized)) {
+        targetClass = cls;
+        break;
+      }
+    }
+
+    // Renombrado de método: "renombra el metodo <A> a/por <B>"
+    const methodRenameMatch =
+      /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+del?\s+m[eé]todo)\s+(?:el\s+m[eé]todo\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(
+        text
+      );
+    if (methodRenameMatch && targetClass) {
+      const fromName = methodRenameMatch[1]!.trim();
+      const toName = methodRenameMatch[2]!.trim();
+      return {
+        action: 'modify',
+        renames: {
+          methods: [
+            {
+              class: targetClass.name,
+              from: fromName,
+              to: toName,
+            },
+          ],
+        },
+      };
+    }
+
+    let methodName = '';
+    let returnType = 'void';
+    let params: Array<{ name: string; type: string }> = [];
+
+    // Signature match: e.g. "calcularRegalias(porcentaje:float):float" or "calcular()"
+    const sigMatch =
+      /(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s*\(([^)]*)\)(?:\s*:\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*))?/i.exec(
+        text
+      );
+
+    if (sigMatch) {
+      methodName = sigMatch[1]!.trim();
+      const rawParams = sigMatch[2]?.trim();
+      const rawRet = sigMatch[3]?.trim();
+      if (rawRet) {
+        const normRet = stripAccents(rawRet.toLowerCase());
+        returnType = methodTypeMap[normRet] || rawRet;
+      }
+      if (rawParams) {
+        const paramItems = rawParams.split(',').map((p) => p.trim()).filter(Boolean);
+        for (const item of paramItems) {
+          const colonMatch = /([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s*:\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/.exec(item);
+          if (colonMatch) {
+            const pName = colonMatch[1]!.trim();
+            const pTypeRaw = stripAccents(colonMatch[2]!.trim().toLowerCase());
+            params.push({ name: pName, type: methodTypeMap[pTypeRaw] || pTypeRaw });
+          } else {
+            const spaceParts = item.split(/\s+/);
+            if (spaceParts.length >= 2) {
+              const pName = spaceParts[0]!.trim();
+              const pTypeRaw = stripAccents(spaceParts[1]!.trim().toLowerCase());
+              params.push({ name: pName, type: methodTypeMap[pTypeRaw] || pTypeRaw });
+            } else if (spaceParts[0]) {
+              params.push({ name: spaceParts[0].trim(), type: 'string' });
+            }
+          }
+        }
+      }
+    } else {
+      const nameMatch = /(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      if (nameMatch) {
+        methodName = nameMatch[1]!.trim();
+      }
+      const retMatch = /(?:devuelve|retorna|retorne|regrese|que\s+devuelva|returns?)\s+(?:un\s+|una\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      if (retMatch) {
+        const normRet = stripAccents(retMatch[1]!.toLowerCase());
+        returnType = methodTypeMap[normRet] || retMatch[1]!;
+      }
+      const paramMatch = /(?:recibe|con\s+par[aá]metro|par[aá]metro)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)(?:\s+(?:de\s+tipo|tipo|type|as)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*))?/i.exec(text);
+      if (paramMatch) {
+        const pName = paramMatch[1]!.trim();
+        const pTypeRaw = paramMatch[2] ? stripAccents(paramMatch[2].trim().toLowerCase()) : 'string';
+        params.push({ name: pName, type: methodTypeMap[pTypeRaw] || pTypeRaw });
+      }
+    }
+
+    const stopWords = new Set(['el', 'la', 'un', 'una', 'clase', 'class', 'metodo', 'método']);
+    if (stopWords.has(methodName.toLowerCase())) methodName = '';
+
+    if (!targetClass && methodName) {
+      for (const cls of classes) {
+        const fullCls = currentDiagram?.classes?.find((c: any) => c.id === cls.id);
+        if (fullCls && Array.isArray(fullCls.methods)) {
+          const hasM = fullCls.methods.some((m: any) => m.name && m.name.toLowerCase() === methodName.toLowerCase());
+          if (hasM) {
+            targetClass = cls;
+            break;
+          }
+        }
+      }
+    }
+
+    if (targetClass && methodName) {
+      const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetClass!.id);
+      const existingMethod = fullCls?.methods?.find((m: any) => m.name && m.name.toLowerCase().trim() === methodName.toLowerCase());
+      if (existingMethod || /(?:cambi|modific|pas|change|modify)/i.test(normalized)) {
+        return {
+          action: 'modify',
+          updates: {
+            methods: [
+              {
+                class: targetClass.name,
+                name: methodName,
+                returnType,
+                parameters: params.length > 0 ? params : (existingMethod?.parameters ?? []),
+              },
+            ],
+          },
+        };
+      }
+
+      return {
+        action: 'modify',
+        classes: [
+          {
+            name: targetClass.name,
+            methods: [
+              {
+                name: methodName,
+                returnType,
+                parameters: params,
+                visibility: '+',
+              },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
   // 3b. Adición / modificación / renombrado determinista de atributos en una clase existente
   // Ejemplos:
   // - "a la clase prestamo agregarle un id de tipo entero"
@@ -2409,6 +2586,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   // - "cambia el tipo de fechaDevolucion a string" (infiere que pertenece a Prestamo)
   // - "renombra el atributo fechaDevolucion a fechaEntrega en Prestamo"
   const isAttrIntent =
+    !isMethodIntent &&
     /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|set|cambi[aáeé]|modific[aáeé]|pas[aáeé]|change|modify|renombr[aáeé]|rename)/i.test(normalized) &&
     /(?:atributo|campo|field|attribute|propiedad|property|tipo\s+de|un\s+id|el\s+id|id\b|:\s*(?:int|string|date|boolean|float|integer|texto|fecha|booleano|numero))/i.test(normalized);
 

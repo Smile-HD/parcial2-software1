@@ -1279,7 +1279,7 @@ export async function processUnifiedAmongusTurn(
   // con un prompt estricto de traducción a AST para que devuelva ÚNICAMENTE el JSON atómico, evitando síntesis completa.
   if (diagram && diagram.classes && diagram.classes.length > 0 && isAction && llm && typeof llm.chat === 'function') {
     const isMutationColloquial =
-      /(?:cambi|modific|pon|sac|borr|elimin|renombr|pas|ajust|hered|generaliz|conect|relacion|multiplicidad|rol|campo|atributo|tipo)/i.test(cleanContent);
+      /(?:cambi|modific|pon|sac|borr|elimin|renombr|pas|ajust|hered|generaliz|conect|relacion|multiplicidad|rol|campo|atributo|tipo|m[eé]todo|operaci|funci|method|function)/i.test(cleanContent);
     if (isMutationColloquial) {
       try {
         const nlpMessages: Array<{ role: 'system' | 'user'; content: string }> = [
@@ -1297,11 +1297,13 @@ export async function processUnifiedAmongusTurn(
               '  "updates": {',
               '    "associations": [{ "source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "1..*", "aggregation": "composite"|"shared"|"none", "sourceRole": "rol", "targetRole": "rol" }],',
               '    "attributes": [{ "class": "Clase", "name": "attr", "type": "int"|"string"|"date"|"boolean"|"float", "newName": "nuevo" }],',
+              '    "methods": [{ "class": "Clase", "name": "calcular", "returnType": "float", "parameters": [{ "name": "x", "type": "int" }] }],',
               '    "classes": [{ "name": "Clase", "isAbstract": true, "classKind": "class"|"interface" }]',
               '  },',
+              '  "classes": [{ "name": "Clase", "methods": [{ "name": "calcular", "returnType": "float", "parameters": [{ "name": "x", "type": "int" }] }] }],',
               '  "generalizations": [{ "subclass": "Sub", "superclass": "Super" }],',
-              '  "renames": { "classes": [{ "from": "Viejo", "to": "Nuevo" }] },',
-              '  "deletions": { "classes": ["X"], "associations": [{"source": "A", "target": "B"}], "attributes": [{"class": "C", "attribute": "a"}] }',
+              '  "renames": { "classes": [{ "from": "Viejo", "to": "Nuevo" }], "methods": [{ "class": "C", "from": "viejo", "to": "nuevo" }] },',
+              '  "deletions": { "classes": ["X"], "associations": [{"source": "A", "target": "B"}], "attributes": [{"class": "C", "attribute": "a"}], "methods": [{"class": "C", "method": "m"}] }',
               '}',
               '```',
               'REGLAS CRÍTICAS: NUNCA generes clases ni atributos nuevos que no existan en el diagrama a menos que el usuario lo pida explícitamente.',
