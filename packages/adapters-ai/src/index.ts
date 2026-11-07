@@ -313,7 +313,10 @@ export class FakeLlm implements LlmPort {
     }
 
     // 2. renombrar clase
-    const rename = /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    const isRenameMember = /\b(?:attribute|atributo|campo|columna|method|m[ée]todo)\b/i.test(utterance);
+    const rename = !isRenameMember
+      ? /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
+      : null;
     if (rename) {
       const classId = classIdByName(currentIr, rename[1]!);
       if (classId === null) return refused(`Unknown class "${rename[1]}"`);
@@ -431,15 +434,25 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 5c. renombrar atributo / cambiar mayúsculas/minúsculas: "poné en minúsculas el atributo nombre en Autor"
-    const renameAttr = /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\b[\s\S]*?\b(?:attribute|atributo|campo|columna)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(utterance);
-    if (renameAttr) {
-      const classId = classIdByName(currentIr, renameAttr[2]!);
+    // 5c. renombrar atributo / cambiar mayúsculas/minúsculas
+    // Orden 1 (ToIn): "rename attribute fullName to nombreCompleto in Customer" / "renombrá el atributo nombre a name en Autor"
+    const renameAttrToIn = /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    // Orden 2 (InClass): "rename attribute fullName in Customer to nombreCompleto" / "poné en minúsculas el atributo nombre en Autor"
+    const renameAttrInClass = !renameAttrToIn && /\b(?:rename|renombr[aá]|cambi[aá]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\s+(?:(?:the|el|la)\s+)?(?:attribute|atributo|campo|columna)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(utterance);
+
+    const parsedRename = renameAttrToIn
+      ? { attrName: renameAttrToIn[1]!, className: renameAttrToIn[3]!, toName: renameAttrToIn[2]! }
+      : renameAttrInClass
+        ? { attrName: renameAttrInClass[1]!, className: renameAttrInClass[2]!, toName: renameAttrInClass[3] }
+        : null;
+
+    if (parsedRename) {
+      const classId = classIdByName(currentIr, parsedRename.className);
       if (classId !== null) {
         const cls = currentIr.classes.find((c) => c.id === classId)!;
-        const attr = cls.attributes.find((a) => a.name.toLowerCase() === renameAttr[1]!.toLowerCase());
+        const attr = cls.attributes.find((a) => a.name.toLowerCase() === parsedRename.attrName.toLowerCase());
         if (attr) {
-          const newName = /min[uú]sculas/i.test(utterance) ? attr.name.toLowerCase() : (renameAttr[3] ?? attr.name);
+          const newName = /min[uú]sculas/i.test(utterance) ? attr.name.toLowerCase() : (parsedRename.toName ?? attr.name);
           const delta: MemberDelta = {
             kind: 'member',
             op: 'editAttribute',

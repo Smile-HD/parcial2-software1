@@ -1782,6 +1782,40 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         });
       }
     });
+
+    it('renames attribute with "rename attribute X to Y in Class": "rename attribute fullName to nombreCompleto in Customer"', async () => {
+      const llm = new FakeLlm();
+      const custId = crypto.randomUUID();
+      const fnId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: custId,
+            name: 'Customer',
+            attributes: [
+              { id: fnId, name: 'fullName', type: 'string', visibility: '+', isStatic: false, isDerived: false },
+            ],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+      } as any;
+      const result = await llm.interpret('rename attribute fullName to nombreCompleto in Customer', {}, diagram);
+
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        expect(result.value).toMatchObject({
+          kind: 'member',
+          op: 'editAttribute',
+          classId: custId,
+          memberId: fnId,
+          name: 'nombreCompleto',
+        });
+      }
+    });
   });
 });
 

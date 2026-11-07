@@ -2412,16 +2412,25 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
   // 0d. Renombrar atributo o pasar a minúsculas
   // Ej: "poné en minúsculas el atributo nombre en Autor"
-  const renameAttrMatch = /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas)\s+(?:el\s+)?(?:atributo|campo)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
-  if (renameAttrMatch) {
-    const attrName = renameAttrMatch[1]!.trim();
-    const targetClassName = renameAttrMatch[2]!.trim();
+  // Ej: "rename attribute fullName to nombreCompleto in Customer"
+  const renameAttrInClass = /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas|rename)\s+(?:el\s+|the\s+)?(?:atributo|campo|attribute|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
+  const renameAttrToIn = !renameAttrInClass && /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|rename)\s+(?:el\s+|the\s+)?(?:atributo|campo|attribute|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+
+  const matchedRename = renameAttrInClass
+    ? { attrName: renameAttrInClass[1]!.trim(), className: renameAttrInClass[2]!.trim(), toName: renameAttrInClass[3]?.trim() }
+    : renameAttrToIn
+      ? { attrName: renameAttrToIn[1]!.trim(), className: renameAttrToIn[3]!.trim(), toName: renameAttrToIn[2]!.trim() }
+      : null;
+
+  if (matchedRename) {
+    const attrName = matchedRename.attrName;
+    const targetClassName = matchedRename.className;
     const targetCls = classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase());
     if (targetCls) {
       const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetCls.id);
       const existingAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === attrName.toLowerCase());
       if (existingAttr) {
-        const toName = /min[uú]sculas/i.test(text) ? existingAttr.name.toLowerCase() : (renameAttrMatch[3]?.trim() || existingAttr.name);
+        const toName = /min[uú]sculas/i.test(text) ? existingAttr.name.toLowerCase() : (matchedRename.toName || existingAttr.name);
         return {
           action: 'modify',
           renames: {
