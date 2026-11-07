@@ -260,9 +260,52 @@ export function ChatPanel({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
   const isSlashQuery = draft.startsWith('/') && !draft.includes(' ');
   const matchingCommands = isSlashQuery ? matchSlashCommands(draft) : [];
+
+  // Detección de menciones @ en cualquier posición del texto donde la última palabra empiece con @
+  const mentionMatch = /(?:^|\s)@([a-zA-Z0-9_ñÑáéíóúÁÉÍÓÚ]*)$/.exec(draft);
+  const isMentionQuery = Boolean(mentionMatch);
+  const mentionPrefix = mentionMatch ? mentionMatch[1]!.toLowerCase() : '';
+
+  const availableMentions = useMemo(() => {
+    const list: Array<{ name: string; role: string; isBot: boolean }> = [
+      { name: 'Amongus', role: isEn ? 'AI Tutor & Assistant' : 'Tutor y Asistente IA', isBot: true },
+    ];
+    if (Array.isArray(peerUsers)) {
+      for (const peer of peerUsers) {
+        const pName = typeof peer === 'string' ? peer : (peer as any)?.name;
+        if (
+          pName &&
+          pName.trim() &&
+          pName.trim().toLowerCase() !== (userName || '').toLowerCase() &&
+          !list.some((m) => m.name.toLowerCase() === pName.trim().toLowerCase())
+        ) {
+          list.push({ name: pName.trim(), role: isEn ? 'Team Member' : 'Miembro del equipo', isBot: false });
+        }
+      }
+    }
+    return list;
+  }, [peerUsers, userName, isEn]);
+
+  const matchingMentions = isMentionQuery
+    ? availableMentions.filter((m) => m.name.toLowerCase().startsWith(mentionPrefix))
+    : [];
+
+  useEffect(() => {
+    setSelectedMentionIndex(0);
+  }, [mentionPrefix]);
+
+  const handleSelectMention = (name: string) => {
+    if (!mentionMatch) return;
+    const matchIndex = mentionMatch.index + (mentionMatch[0].startsWith(' ') ? 1 : 0);
+    const beforeMention = draft.slice(0, matchIndex);
+    const newDraft = `${beforeMention}@${name} `;
+    setDraft(newDraft);
+    inputRef.current?.focus();
+  };
 
   useEffect(() => {
     setSelectedCommandIndex(0);
@@ -771,6 +814,32 @@ export function ChatPanel({
       }
     }
 
+    if (!isSlashQuery && isMentionQuery && matchingMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedMentionIndex((prev) => (prev + 1) % matchingMentions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedMentionIndex((prev) => (prev - 1 + matchingMentions.length) % matchingMentions.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        const selected = matchingMentions[selectedMentionIndex];
+        if (selected) {
+          handleSelectMention(selected.name);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedMentionIndex(0);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
@@ -1247,6 +1316,35 @@ export function ChatPanel({
                   <span className="chat-panel__command-desc">{isEn ? cmd.descriptionEn : cmd.description}</span>
                   <span className={`chat-panel__command-badge ${cmd.scope === 'server' ? 'chat-panel__command-badge--server' : ''}`}>
                     {cmd.scope === 'server' ? 'IA' : '0ms'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Popover de autocompletado de menciones @ */}
+        {!isSlashQuery && isMentionQuery && matchingMentions.length > 0 && (
+          <div className="chat-panel__command-popover" role="listbox" aria-label={isEn ? 'Mentions' : 'Menciones'}>
+            {matchingMentions.map((item, idx) => {
+              const isSelected = idx === selectedMentionIndex;
+              return (
+                <div
+                  key={item.name}
+                  className={`chat-panel__command-item ${isSelected ? 'chat-panel__command-item--active' : ''}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => handleSelectMention(item.name)}
+                >
+                  <span
+                    className="chat-panel__command-usage"
+                    style={{ fontWeight: 600, color: item.isBot ? '#7c3aed' : '#2563eb' }}
+                  >
+                    @{item.name}
+                  </span>
+                  <span className="chat-panel__command-desc">{item.role}</span>
+                  <span className={`chat-panel__command-badge ${item.isBot ? 'chat-panel__command-badge--server' : ''}`}>
+                    {item.isBot ? 'Bot' : 'User'}
                   </span>
                 </div>
               );

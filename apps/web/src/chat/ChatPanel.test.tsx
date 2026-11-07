@@ -466,4 +466,39 @@ describe('ChatPanel — Panel de Chat Colaborativo y Asistente Amongus (PR 24)',
     expect(card.textContent).toContain('Libro');
     expect(card.textContent).not.toContain('Destino');
   });
+
+  it('despliega el popover de menciones al escribir @ y autocompleta con Tab o clic', () => {
+    render(
+      <ChatPanel
+        diagramId={mockDiagramId}
+        userName={mockUserName}
+        isOpen={true}
+        onClose={mockOnClose}
+        peerUsers={[{ name: 'Erick' }]}
+      />
+    );
+
+    const input = screen.getByTestId('chat-input') as HTMLInputElement;
+
+    // Escribir @
+    fireEvent.change(input, { target: { value: '@' } });
+
+    // El popover debe aparecer con Amongus y Erick
+    const popover = screen.getByRole('listbox', { name: /menciones/i });
+    expect(popover).toBeDefined();
+    expect(screen.getByText('@Amongus')).toBeDefined();
+    expect(screen.getByText('@Erick')).toBeDefined();
+
+    // Presionar Tab para autocompletar el primer elemento (@Amongus)
+    fireEvent.keyDown(input, { key: 'Tab' });
+    expect(input.value).toBe('@Amongus ');
+
+    // Escribir más texto y luego @Er
+    fireEvent.change(input, { target: { value: '@Amongus creá una clase y avisale a @Er' } });
+    expect(screen.getByText('@Erick')).toBeDefined();
+
+    // Hacer clic en @Erick
+    fireEvent.click(screen.getByText('@Erick'));
+    expect(input.value).toBe('@Amongus creá una clase y avisale a @Erick ');
+  });
 });
