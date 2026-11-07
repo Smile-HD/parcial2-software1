@@ -38,10 +38,14 @@ export function evaluateChatGuard(
 
   // 1. Detección de Intentos de Jailbreak / Prompt Injection
   const isJailbreak =
-    /(?:ignora|olvida|descart[aá])\s+(?:todas\s+)?(?:las\s+|tus\s+)?(?:instrucciones|reglas|directrices|prompts?)/i.test(normalized) ||
-    /(?:ignore|forget|discard)\s+(?:all\s+)?(?:previous\s+|your\s+)?(?:instructions|rules|system\s+prompt|guidelines)/i.test(normalized) ||
-    /(?:act[uú]a\s+como|hacete\s+pasar\s+por|fing[eé]\s+que\s+sos|comportate\s+como)\s+(?!un\s+(?:tutor|arquitecto|dise[ñn]ador|profesor)\b)/i.test(normalized) ||
-    /(?:act\s+as|pretend\s+(?:to\s+be|you\s+are)|you\s+are\s+now)\s+(?!a\s+(?:tutor|software\s+architect|designer)\b)/i.test(normalized) ||
+    /(?:ignora|olvida|descart[aá]|anula)\s+(?:todas\s+)?(?:las\s+|tus\s+)?(?:instrucciones|reglas|directrices|prompts?)/i.test(normalized) ||
+    /(?:ignore|forget|discard|override|bypass)\s+(?:all\s+)?(?:previous\s+|your\s+)?(?:instructions|rules|system\s+prompt|guidelines)/i.test(normalized) ||
+    /(?:system\s+prompt\s+(?:override|reset|bypass|leak)|prompt\s+override)/i.test(normalized) ||
+    /\b(?:reset\s+server|reinicia(?:r)?\s+el\s+servidor|reboot\s+server)\b/i.test(normalized) ||
+    /(?:act[uú]a\s+como|hacete\s+pasar\s+por|fing[eé]\s+que\s+sos|comportate\s+como|imagin[aá]\s+(?:que\s+sos|que\s+eres))\s+(?!un\s+(?:tutor|arquitecto|dise[ñn]ador|profesor)\b)/i.test(normalized) ||
+    /(?:act\s+as|pretend\s+(?:to\s+be|you\s+are)|you\s+are\s+now|imagine\s+(?:you\s+are|you're|you\s+were))\s+/i.test(normalized) ||
+    /(?:simul[aá]|simulate)\s+(?:el\s+|an?\s+)?(?:ataque|attack|inyecci[oó]n|injection|vulnerabilidad|vulnerability)/i.test(normalized) ||
+    /(?:inyect|inject)[\s\S]*?(?:delta|json|payload)[\s\S]*?(?:borr|delet|purg)/i.test(normalized) ||
     /\b(?:dan\s+mode|jailbreak|developer\s+mode\s+enabled|modo\s+desarrollador|bypass\s+rules|rompe\s+las\s+reglas)\b/i.test(normalized) ||
     /(?:dame|mostra(?:me)?|repite|imprime|reveal|print|repeat)\s+(?:el|tu|the|your)?\s*(?:system\s+prompt|prompt\s+del\s+sistema|instrucciones\s+ocultas)/i.test(normalized);
 
