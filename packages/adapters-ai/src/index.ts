@@ -152,6 +152,63 @@ export class FakeLlm implements LlmPort {
     const directTypedAdd = !directAdd && !invertedAdd && !directToClassAdd &&
       /\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|añadile|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w.]*)\s+(?:to|into|in|a|en|para)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
 
+    // Soporte para múltiples atributos a una clase existente:
+    // "a la clase ProfesorMateria agregale atributo id de tipo entero, nombre de tipo string y profesor de tipo string"
+    const invertedMultiAdd = !directAdd && /\b(?:en|a|para|edit(?:a|ar|á|ame|áme)|modific(?:a|ar|á|ame|áme))\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:add|agrega|agregá|agregale|agregále|añade|añadí|pon|ponele|sumale|inserta|insertá)\b[\s\S]*?\b(?:attributes?|atributos?|campos?|columnas?|propiedades?|property|properties|fields?)\s+([\s\S]+)$/i.exec(utterance);
+
+    if (invertedMultiAdd && (invertedMultiAdd[2]!.includes(',') || /\s+(?:y|and)\s+/i.test(invertedMultiAdd[2]!))) {
+      const targetClass = invertedMultiAdd[1]!;
+      const classId = classIdByName(currentIr, targetClass);
+      if (classId !== null) {
+        const rawList = invertedMultiAdd[2]!;
+        const items = rawList.split(/\s*,\s*|\s+(?:and|y)\s+/i).map(s => s.trim()).filter(Boolean);
+        const memberDeltas: MemberDelta[] = [];
+        for (const item of items) {
+          const match = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b)\s*([A-Za-z_][\w\s.]*)$/i.exec(item);
+          if (match) {
+            const rawName = match[1]!.trim();
+            const camelName = rawName.split(/\s+/).map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+            const sanitizedType = sanitizeUmlType(match[2]!.trim(), camelName);
+            memberDeltas.push({
+              kind: 'member',
+              op: 'addAttribute',
+              ...deltaBase(currentIr),
+              classId,
+              memberId: crypto.randomUUID(),
+              name: camelName,
+              type: sanitizedType,
+              ...adornments,
+            });
+          } else {
+            const rawName = item.trim();
+            if (rawName) {
+              const camelName = rawName.split(/\s+/).map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+              memberDeltas.push({
+                kind: 'member',
+                op: 'addAttribute',
+                ...deltaBase(currentIr),
+                classId,
+                memberId: crypto.randomUUID(),
+                name: camelName,
+                type: inferAttributeType(camelName),
+                ...adornments,
+              });
+            }
+          }
+        }
+        if (memberDeltas.length > 0) {
+          return {
+            kind: 'delta',
+            value: {
+              kind: 'batch',
+              ...deltaBase(currentIr),
+              deltas: memberDeltas,
+            },
+          };
+        }
+      }
+    }
+
     const isCreateWithAttr = /\b(?:with|con)\s+(?:attribute|atributo|attributes|atributos)\b/i.test(utterance);
     const parsedAttr = !isCreateWithAttr && (directAdd
       ? { targetClass: directAdd[3]!, attrName: directAdd[1]!, attrType: directAdd[2] }
@@ -314,9 +371,14 @@ export class FakeLlm implements LlmPort {
 
     // 2. renombrar clase
     const isRenameMember = /\b(?:attribute|atributo|campo|columna|method|m[ée]todo)\b/i.test(utterance);
-    const rename = !isRenameMember
+    const renameDirect = !isRenameMember
       ? /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
       : null;
+    const renameInverted = !isRenameMember && !renameDirect
+      ? /\b(?:a\s+la\s+clase|a\s+la\s+tabla|a\s+la\s+entidad)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá])\s+(?:de\s+nombre|el\s+nombre)\s+(?:a|por)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) ||
+        /\b(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá])\s+(?:de\s+nombre|el\s+nombre)\s+(?:a|de)\s+(?:la\s+clase\s+|la\s+tabla\s+|la\s+entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
+      : null;
+    const rename = renameDirect || renameInverted;
     if (rename) {
       const classId = classIdByName(currentIr, rename[1]!);
       if (classId === null) return refused(`Unknown class "${rename[1]}"`);

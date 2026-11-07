@@ -360,11 +360,33 @@ export function sanitizeUmlType(rawType: string, attrName: string): string {
 // ── 3. Segmentación de Comandos Compuestos ────────────────────────────────────
 
 export function splitCompoundUtterance(raw: string): string[] {
-  if (!raw.includes(';')) return [raw.trim()];
-  return raw
-    .split(';')
-    .map((p) => p.trim().replace(/^(?:and|y|e)\s+/iu, '').trim())
-    .filter((p) => p.length > 0);
+  if (raw.includes(';')) {
+    return raw
+      .split(';')
+      .map((p) => p.trim().replace(/^(?:and|y|e)\s+/iu, '').trim())
+      .filter((p) => p.length > 0);
+  }
+
+  // Si no hay ';', dividir cuando hay una coma seguida de conjunción y un VERBO de acción imperativo
+  const actionVerbAhead = /,\s*(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\b)\s+(?=(?:agreg[aá]|cambi[aá]|cre[aá]|borr[aá]|elimin[aá]|conect[aá]|renombr[aá]|asoci[aá]|sum[aá]|met[eé]|pon[eé]|hac[eé]|haz|add|create|delete|remove|rename|link|connect)\b)/iu;
+
+  if (actionVerbAhead.test(raw)) {
+    const parts: string[] = [];
+    let remaining = raw;
+    while (true) {
+      const match = actionVerbAhead.exec(remaining);
+      if (!match) {
+        parts.push(remaining.trim());
+        break;
+      }
+      const part = remaining.slice(0, match.index).trim();
+      if (part) parts.push(part);
+      remaining = remaining.slice(match.index + match[0].length).trim();
+    }
+    return parts.filter((p) => p.length > 0);
+  }
+
+  return [raw.trim()];
 }
 
 // ── 4. Detección de Contradicciones ──────────────────────────────────────────
