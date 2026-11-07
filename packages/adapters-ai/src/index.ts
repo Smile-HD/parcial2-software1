@@ -51,6 +51,38 @@ function classIdByName(diagram: Diagram, name: string): string | null {
   return found?.id ?? null;
 }
 
+function parseMultiplicities(text: string): { source: string; target: string } | null {
+  const norm = text.trim().toLowerCase();
+  if (/^(?:muchos\s+(?:a|to)\s+muchos|muchos\s*:\s*muchos|[nm\*]\s+(?:a|to)\s+[nm\*]|[nm\*]\s*:\s*[nm\*])$/.test(norm)) {
+    return { source: '0..*', target: '0..*' };
+  }
+  if (/^(?:1\s+(?:a|to)\s+(?:muchos|[nm\*])|uno\s+(?:a|to)\s+muchos|1\s*:\s*(?:muchos|[nm\*]))$/.test(norm)) {
+    return { source: '1', target: '0..*' };
+  }
+  if (/^(?:(?:muchos|[nm\*])\s+(?:a|to)\s+1|muchos\s+(?:a|to)\s+uno|(?:muchos|[nm\*])\s*:\s*1)$/.test(norm)) {
+    return { source: '0..*', target: '1' };
+  }
+  if (/^(?:1\s+(?:a|to)\s+1|uno\s+(?:a|to)\s+uno|1\s*:\s*1)$/.test(norm)) {
+    return { source: '1', target: '1' };
+  }
+  if (/^(?:0\.\.1\s+(?:a|to)\s+1)$/.test(norm)) {
+    return { source: '0..1', target: '1' };
+  }
+  if (/^(?:0\.\.1\s+(?:a|to)\s+(?:0\.\.\*|[nm\*]))$/.test(norm)) {
+    return { source: '0..1', target: '0..*' };
+  }
+  const generic = /^([^\s:]+)\s*(?::|\s+(?:a|to)\s+)\s*([^\s:]+)$/.exec(norm);
+  if (generic) {
+    const mapOne = (val: string) => {
+      if (val === 'muchos' || val === 'n' || val === 'm' || val === '*') return '0..*';
+      if (val === 'uno') return '1';
+      return val;
+    };
+    return { source: mapOne(generic[1]!), target: mapOne(generic[2]!) };
+  }
+  return null;
+}
+
 function nextPosition(diagram: Diagram): { x: number; y: number } {
   const n = diagram.classes.length;
   return { x: 80 + n * 40, y: 80 + n * 40 };
@@ -186,7 +218,7 @@ export class FakeLlm implements LlmPort {
         for (const item of items) {
           const match = /^([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ\s]*?)\s*(?::|\bof type\b|\bde tipo\b|\btipo\b|\bque sea\b|\bcomo\b)\s*([A-Za-z_][\w\s.]*)$/i.exec(item);
           if (match) {
-            const rawName = match[1]!.trim();
+            const rawName = match[1]!.trim().replace(/^(?:de|llamado|llamada)\s+/i, '');
             const camelName = rawName.split(/\s+/).map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
             const sanitizedType = sanitizeUmlType(match[2]!.trim(), camelName);
             memberDeltas.push({
@@ -200,7 +232,7 @@ export class FakeLlm implements LlmPort {
               ...adornments,
             });
           } else {
-            const rawName = item.trim();
+            const rawName = item.trim().replace(/^(?:de|llamado|llamada)\s+/i, '');
             if (rawName) {
               const camelName = rawName.split(/\s+/).map((w, idx) => idx === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
               memberDeltas.push({
@@ -395,7 +427,7 @@ export class FakeLlm implements LlmPort {
       ? /\b(?:rename|renombra|renombrá|renombrar)\b[\s\S]*?\b(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:to|a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
       : null;
     const renameInverted = !isRenameMember && !renameDirect
-      ? /\b(?:a\s+la\s+clase|a\s+la\s+tabla|a\s+la\s+entidad)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá])\s+(?:de\s+nombre|el\s+nombre)\s+(?:a|por)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) ||
+      ? /\b(?:(?:y\s+a|ya|a)?\s*(?:la|el)?\s*(?:clase|tabla|entidad|class|table|entity))\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá]|rename)\s+(?:de\s+nombre|el\s+nombre|name)?\s*(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) ||
         /\b(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá])\s+(?:de\s+nombre|el\s+nombre)\s+(?:a|de)\s+(?:la\s+clase\s+|la\s+tabla\s+|la\s+entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance)
       : null;
     const rename = renameDirect || renameInverted;
@@ -810,6 +842,40 @@ export class FakeLlm implements LlmPort {
         targetMultiplicity: '0..*',
         directed: false,
         aggregation: 'none',
+      };
+      return { kind: 'delta', value: delta };
+    }
+
+    // 7b. ACTUALIZACIÓN de multiplicidad / cardinalidad entre dos clases:
+    // "cambia la multiplicidad entre materia y profesor a muchos a muchos", "actualiza la cardinalidad de X e Y a 1 a N"
+    const isMultiplicityUpdate = /\b(?:cambi[aá]le|cambi[aá]|cambiar|modific[aá]|modificar|actualiz[aá]|actualizar|update|change)\b[\s\S]*?\b(?:multiplicidad|cardinalidad|multiplicity|cardinality)\b[\s\S]*?\b(?:entre|between|de)?\s*(?:la\s+relaci[oó]n\s+entre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([^\s,;]+(?:\s+(?:a|to)\s+[^\s,;]+)?)/i.exec(utterance);
+    if (isMultiplicityUpdate) {
+      const srcName = isMultiplicityUpdate[1]!;
+      const tgtName = isMultiplicityUpdate[2]!;
+      const sourceClassId = classIdByName(currentIr, srcName);
+      const targetClassId = classIdByName(currentIr, tgtName);
+      if (sourceClassId === null) return refused(`Unknown class "${srcName}"`);
+      if (targetClassId === null) return refused(`Unknown class "${tgtName}"`);
+      const existingAssoc = (currentIr.associations ?? []).find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId),
+      );
+      if (!existingAssoc) {
+        return refused(`No association found between "${srcName}" and "${tgtName}".`);
+      }
+      const mults = parseMultiplicities(isMultiplicityUpdate[3]!);
+      if (!mults) {
+        return refused(`Invalid multiplicity format "${isMultiplicityUpdate[3]}".`);
+      }
+      const isDirect = existingAssoc.sourceClassId === sourceClassId;
+      const delta: AssociationDelta = {
+        kind: 'association',
+        op: 'updateMultiplicity',
+        ...deltaBase(currentIr),
+        associationId: existingAssoc.id,
+        newSourceMultiplicity: isDirect ? mults.source : mults.target,
+        newTargetMultiplicity: isDirect ? mults.target : mults.source,
       };
       return { kind: 'delta', value: delta };
     }

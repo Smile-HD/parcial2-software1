@@ -303,4 +303,56 @@ describe('20 Compound & Mixed Permutation Tests (C1-C20)', () => {
       expect(b.deltas[1].kind).toBe('member');
     }
   });
+
+  // User exact screenshot test:
+  it('User exact screenshot prompt', async () => {
+    const dId = crypto.randomUUID();
+    const c1Id = crypto.randomUUID();
+    const c2Id = crypto.randomUUID();
+    const c3Id = crypto.randomUUID();
+    const diag: Diagram = {
+      id: dId,
+      name: 'User Diagram',
+      classes: [
+        { id: c1Id, diagramId: dId, name: 'Profesor', position: { x: 0, y: 0 }, attributes: [{ id: crypto.randomUUID(), name: 'nombre', type: 'string' }], methods: [], isAbstract: false },
+        { id: c2Id, diagramId: dId, name: 'Materia', position: { x: 200, y: 0 }, attributes: [], methods: [], isAbstract: false },
+        { id: c3Id, diagramId: dId, name: 'ProfesorMateria', position: { x: 100, y: 200 }, attributes: [], methods: [], isAbstract: false }
+      ],
+      associations: [
+        { id: crypto.randomUUID(), diagramId: dId, sourceClassId: c1Id, targetClassId: c2Id, sourceMultiplicity: '1', targetMultiplicity: '1', isComposition: false, isAggregation: false, directed: false }
+      ],
+      generalizations: [], realizations: [], dependencies: [], naryAssociations: []
+    };
+
+    const text1 = 'a la clase profesormateria cambiale de nombre a clase; agregale atributo id de tipo entero, nombre de tipo string y profesor de tipo string';
+    const res1 = await llm.interpret(text1, {}, diag);
+    expect(res1.kind).toBe('delta');
+    if (res1.kind === 'delta') {
+      expect(res1.value.kind).toBe('batch');
+      const b = res1.value as any;
+      expect(b.deltas).toHaveLength(4);
+      expect(b.deltas[0].op).toBe('rename');
+      expect(b.deltas[0].newName).toBe('clase');
+    }
+
+    const text2 = 'cambia la multiplicidad entre materia y profesor a muchos a muchos, ya la clase profesormateria cambiale de nombre a clases, y agregale el atributo de nombre de tipo string y profesor de tipo string';
+    const res2 = await llm.interpret(text2, {}, diag);
+    expect(res2.kind).toBe('delta');
+    if (res2.kind === 'delta') {
+      expect(res2.value.kind).toBe('batch');
+      const b = res2.value as any;
+      expect(b.deltas).toHaveLength(4);
+      expect(b.deltas[0].op).toBe('updateMultiplicity');
+      expect(b.deltas[0].newSourceMultiplicity).toBe('0..*');
+      expect(b.deltas[0].newTargetMultiplicity).toBe('0..*');
+      expect(b.deltas[1].op).toBe('rename');
+      expect(b.deltas[1].newName).toBe('clases');
+      expect(b.deltas[2].op).toBe('addAttribute');
+      expect(b.deltas[2].name).toBe('nombre');
+      expect(b.deltas[2].type).toBe('string');
+      expect(b.deltas[3].op).toBe('addAttribute');
+      expect(b.deltas[3].name).toBe('profesor');
+      expect(b.deltas[3].type).toBe('string');
+    }
+  });
 });

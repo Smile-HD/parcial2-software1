@@ -198,6 +198,9 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:mtodos?|m[ée]todos?|funci[oó]n(?:es)?|operaci[oó]n(?:es)?|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
   s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|asociaci[oó]n(?:es)?|asocici[oó]n(?:es)?|soacici[oó]n(?:es)?|asosiaci[oó]n(?:es)?|asociasi[oó]n(?:es)?|asocaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
 
+  // Normalizar "atributo de <nombre> de tipo <tipo>" -> "atributo <nombre> de tipo <tipo>"
+  s = s.replace(/(?<!\p{L})(?:atributos?)\s+de\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:de\s+tipo|tipo|que\s+sea|como|:)/giu, 'atributos $1 de tipo ');
+
   // ── G3. Clasificadores de asociación intermedia y tabla de asociación
   s = s.replace(
     /(?<!\p{L})(?:(?:tabla|calse|clase|entidad)\s+de\s+(?:asociaci[oó]n|asocici[oó]n|soacici[oó]n|asosiaci[oó]n|asociasi[oó]n)|tablas?\s+intermedias?|clases?\s+intermedias?|calses?\s+intermedias?|entidad(?:es)?\s+intermedias?|entidad(?:es)?\s+de\s+(?:asociaci[oó]n|asocici[oó]n|soacici[oó]n|asosiaci[oó]n|asociasi[oó]n)|junction\s+tables?|join\s+tables?|intermediate\s+tables?|bridge\s+tables?|linking\s+tables?|association\s+tables?)(?!\p{L})/giu,
@@ -367,9 +370,9 @@ export function splitCompoundUtterance(raw: string): string[] {
       .filter((p) => p.length > 0);
   }
 
-  // 1) Si hay coma, dividir cuando va seguida de conjunción opcional y un VERBO de acción
-  // Ej: "agregame la clase peru, borra el atributo dureza" o "crea A, y agrega B"
-  const commaActionVerb = /,\s*(?:(?:y\s+adem[aá]s|y\s+tambi[eé]n|y|e)\s+)?(?=(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
+  // 1) Si hay coma, dividir cuando va seguida de conjunción opcional y un VERBO de acción o sujeto+verbo
+  // Ej: "agregame la clase peru, borra el atributo dureza" o "crea A, y agrega B" o "..., ya la clase X cambiale de nombre a Y"
+  const commaActionVerb = /,\s*(?:(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\s+despu[eé]s|y\s+a|ya|y|e|and)\s+)?(?=(?:(?:(?:a|en|para|de)\s+)?(?:(?:la|el|las|los|the)\s+)?(?:clase|tabla|entidad|class|table|entity)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*\s+)?(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
 
   if (commaActionVerb.test(raw)) {
     const parts: string[] = [];
@@ -405,10 +408,28 @@ export function splitCompoundUtterance(raw: string): string[] {
     return parts.filter((p) => p.length > 0);
   }
 
+  // 1c) Conectores con sujeto sin coma: "ya la clase ... cambiale" o "y la clase ... agregale"
+  const andSubjectVerb = /\s+(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\s+despu[eé]s|y\s+a|ya|y|e|and)\s+(?=(?:(?:(?:a|en|para|de)\s+)?(?:(?:la|el|las|los|the)\s+)?(?:clase|tabla|entidad|class|table|entity)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*\s+)(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
+  if (andSubjectVerb.test(raw)) {
+    const parts: string[] = [];
+    let remaining = raw;
+    while (true) {
+      const match = andSubjectVerb.exec(remaining);
+      if (!match) {
+        parts.push(remaining.trim());
+        break;
+      }
+      const part = remaining.slice(0, match.index).trim();
+      if (part) parts.push(part);
+      remaining = remaining.slice(match.index + match[0].length).trim();
+    }
+    return parts.filter((p) => p.length > 0);
+  }
+
   // 2) Sin coma ni punto y coma: dos órdenes imperativas consecutivas
   // Ej: "agregame la clase peru borra el atributo dureza"
   // Protegido: no divide si el verbo está precedido por preposiciones ('para', 'en', 'a', 'de', 'con', 'sin', 'como')
-  const spaceActionVerb = /(?<!\b(?:para|en|a|de|con|sin|como)\s+)\s+(?=(?:borra|borrá|borrame|borráme|elimina|eliminá|eliminame|elimináme|renombra|renombrá|renombrame|renombráme|crea|creá|creame|creáme|agrega|agregá|agregame|agregáme)\b)/iu;
+  const spaceActionVerb = /(?<!\b(?:para|en|a|de|con|sin|como)\s+)\s+(?=(?:borra|borrá|borrame|borráme|elimina|eliminá|eliminame|elimináme|renombra|renombrá|renombrame|renombráme|crea|creá|creame|creáme|agrega|agregá|agregame|agregáme|cambia|cambiá|cambiale|cambiále|modifica|modificá|conecta|conectá|asocia|asociá)\b)/iu;
 
   if (spaceActionVerb.test(raw)) {
     const parts = raw.split(spaceActionVerb).map((p) => p.trim()).filter(Boolean);
