@@ -881,8 +881,8 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         }
       }
 
-      // Nivel 1.5: Canonicador Zero-Shot de alta velocidad con Groq (si el determinista estricto no cazó la sintaxis)
-      if (!replyContent && diagram) {
+      // Nivel 1.5: Canonicador Zero-Shot de alta velocidad con Groq (solo para órdenes de modelado cuando el determinista estricto no cazó la sintaxis)
+      if (!replyContent && diagram && hasModelingIntent) {
         const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
         if (groqApiKey && groqApiKey.startsWith('gsk_')) {
           try {
