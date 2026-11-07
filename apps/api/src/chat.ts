@@ -1252,7 +1252,7 @@ export async function processUnifiedAmongusTurn(
   // resolverla de forma 100% determinista e inmediata ANTES de llamar al LLM.
   // Esto previene que el LLM alucine clases o relaciones viejas en turnos de edición de grafo.
   if (diagram) {
-    const explicitMutation = extractExplicitModelMutations(userContent, diagram);
+    const explicitMutation = extractExplicitModelMutations(cleanContent, diagram);
     if (explicitMutation) {
       const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
       if (mutationDelta && mutationDelta.deltas.length > 0) {
@@ -1525,7 +1525,7 @@ export async function processUnifiedAmongusTurn(
     // 2b. Resiliencia: si el usuario solicitó modelar, cambiar relaciones o mutar clases pero el modelo no devolvió JSON
     if (!hasAnyContent && isAction) {
       // 2b.1 Extraer mutación determinista directa (cambio de tipo de relación a composición/agregación, clase abstracta, renombre, borrado, etc.)
-      const explicitMutation = extractExplicitModelMutations(userContent, diagram);
+      const explicitMutation = extractExplicitModelMutations(cleanContent, diagram);
       if (explicitMutation) {
         const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
         if (mutationDelta && mutationDelta.deltas.length > 0) {

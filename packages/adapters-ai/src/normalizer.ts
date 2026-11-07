@@ -15,7 +15,7 @@
 
 export function normalizeUmlUtterance(raw: string): string {
   if (!raw) return '';
-  let s = raw;
+  let s = raw.replace(/@\w+\s*/g, '');
 
   // ── 0. Desaglutinación de términos UML comunes
   s = s.replace(/(?<!\p{L})larelaci[oó]n(?!\p{L})/giu, 'la relacion');
@@ -264,6 +264,12 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(
     /(?<!\p{L})(?:reflexively|reflexive\s+association|self-referencing)(?!\p{L})/giu,
     'to itself'
+  );
+
+  // Clase abstracta: estandarizar a "make class X abstract"
+  s = s.replace(
+    /(?<!\p{L})(?:marca|marcá|hace|haz|pon|ponele)\s+(?:la\s+)?(?:clase\s+|calse\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:como\s+)?abstract[ao]/giu,
+    'make class $1 abstract'
   );
 
   // ── J. Multiplicidades y Cardinalidades (Estandarización léxica en español e inglés)

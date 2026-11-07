@@ -397,7 +397,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 5. eliminar atributo / método
-    const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo|campo|columna|propiedad|property|field|operaci[oó]n|funci[oó]n|operation|function)s?\s+([A-Za-z_]\w*)\s+(?:from|de|en)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)/i.exec(utterance);
+    const removeMember = /\b(?:remove|delete|elimina|eliminá|borra|borrá|sacar?|sac[aá]le?|quit[aá]le?)\b[\s\S]*?\b(?:attribute|atributo|method|m[ée]todo|campo|columna|propiedad|property|field|operaci[oó]n|funci[oó]n|operation|function)s?\s+([A-Za-z_]\w*)\s+(?:from|de|en|a)\s+(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_]\w*)/i.exec(utterance);
     if (removeMember) {
       const classId = classIdByName(currentIr, removeMember[2]!);
       if (classId === null) return refused(`Unknown class "${removeMember[2]}"`);
@@ -415,7 +415,7 @@ export class FakeLlm implements LlmPort {
     }
 
     // 5b. cambiar tipo de atributo: "cambiá el tipo de anio en Tirada a string"
-    const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+de|type\s+of|tipo\s+del\s+atributo)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
+    const changeAttrType = /\b(?:cambi[aá]|modific[aá]|edit[aá]|change|modify|update|set)\b[\s\S]*?\b(?:tipo\s+del?\s*(?:atributo|campo|columna|propiedad|property|field)?|type\s+of)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in|for)\s+(?:(?:the|la|el)\s+)?(?:class\s+|clase\s+|tabla\s+|table\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(utterance);
     if (changeAttrType) {
       const classId = classIdByName(currentIr, changeAttrType[2]!);
       if (classId === null) return refused(`Unknown class "${changeAttrType[2]}"`);
@@ -935,9 +935,8 @@ export class FakeLlm implements LlmPort {
       return { kind: 'delta', value: delta };
     }
 
-    // 14. marcado abstracto (unidad 12.5, mitad 12a): "make X abstract" /
-    // "mark X abstract" — delta de actualización de clase que incluye isAbstract.
-    const makeAbstract = /\b(?:make|mark)\s+(?:the\s+)?(?:class\s+|clase\s+)?([A-Za-z_]\w*)\s+abstract/i.exec(utterance);
+    // 14. marcado abstracto (unidad 12.5, mitad 12a): "make X abstract" / "marca la clase X como abstracta"
+    const makeAbstract = /\b(?:make|mark|marca|marcá|hace|haz|pon|ponele)\s+(?:the\s+|la\s+)?(?:class\s+|clase\s+|calse\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:como\s+)?abstract(?:a|o)?/i.exec(utterance);
     if (makeAbstract) {
       const classId = classIdByName(currentIr, makeAbstract[1]!);
       if (classId === null) return refused(`Unknown class "${makeAbstract[1]}"`);
