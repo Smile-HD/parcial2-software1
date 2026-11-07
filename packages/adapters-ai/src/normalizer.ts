@@ -387,6 +387,24 @@ export function splitCompoundUtterance(raw: string): string[] {
     return parts.filter((p) => p.length > 0);
   }
 
+  // 1b) Conectores compuestos sin coma: "y además", "y también", "y después" seguidos de un verbo de acción
+  const multiWordConjunction = /\s+(?:y\s+adem[aá]s|y\s+tambi[eé]n|y\s+despu[eé]s)\s+(?=(?:agreg|cambi|cre|borr|elimin|conect|renombr|asoci|sum|met|pon|hac|haz|add|create|delete|remove|rename|link|connect))/iu;
+  if (multiWordConjunction.test(raw)) {
+    const parts: string[] = [];
+    let remaining = raw;
+    while (true) {
+      const match = multiWordConjunction.exec(remaining);
+      if (!match) {
+        parts.push(remaining.trim());
+        break;
+      }
+      const part = remaining.slice(0, match.index).trim();
+      if (part) parts.push(part);
+      remaining = remaining.slice(match.index + match[0].length).trim();
+    }
+    return parts.filter((p) => p.length > 0);
+  }
+
   // 2) Sin coma ni punto y coma: dos órdenes imperativas consecutivas
   // Ej: "agregame la clase peru borra el atributo dureza"
   // Protegido: no divide si el verbo está precedido por preposiciones ('para', 'en', 'a', 'de', 'con', 'sin', 'como')
