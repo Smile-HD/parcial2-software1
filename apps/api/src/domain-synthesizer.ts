@@ -2910,7 +2910,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       normalized
     ) ||
     ((isGeneralization || isRealization || isDependency) &&
-      /(?:cambi|modific|pas[aá]|convert|turn|relaci[oó]n)/i.test(normalized)));
+      /(?:cambi|modific|pas[aá]|convert|turn|relaci[oó]n|hac|haz|sea|hered|subclase|superclase|extends|implement|depend)/i.test(normalized)));
 
   if (isRelationChange) {
     let targetAggregation: 'composite' | 'shared' | 'none' = 'none';
@@ -2974,10 +2974,10 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       const aNorm = clsA.name.toLowerCase();
       const bNorm = clsB.name.toLowerCase();
       // "A hereda de B" o "A es subclase de B"
-      if (new RegExp(`${aNorm}\\s+(?:hereda\\s+de|sea\\s+subclase\\s+de|subclase\\s+de|extends)\\s+${bNorm}`, 'i').test(normalized)) {
+      if (new RegExp(`${aNorm}\\s+(?:hereda\\s+de|herede\\s+de|sea\\s+subclase\\s+de|subclase\\s+de|extends)\\s+${bNorm}`, 'i').test(normalized)) {
         return { subclass: clsA, superclass: clsB };
       }
-      if (new RegExp(`${bNorm}\\s+(?:hereda\\s+de|sea\\s+subclase\\s+de|subclase\\s+de|extends)\\s+${aNorm}`, 'i').test(normalized)) {
+      if (new RegExp(`${bNorm}\\s+(?:hereda\\s+de|herede\\s+de|sea\\s+subclase\\s+de|subclase\\s+de|extends)\\s+${aNorm}`, 'i').test(normalized)) {
         return { subclass: clsB, superclass: clsA };
       }
       // "B es padre de A" o "B es superclase de A"

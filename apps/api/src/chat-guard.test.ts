@@ -143,4 +143,39 @@ describe('evaluateChatGuard - Anti-Jailbreak and Out-of-Domain Guard', () => {
     expect(res.replyContent).toContain('no existe(n) en el diagrama');
     expect(res.replyContent).toContain('Publicacion');
   });
+
+  it('rejects reflexive self-inheritance requests (ADV-1)', () => {
+    const mockDiagram = {
+      classes: [{ id: 'c1', name: 'Publicacion' }],
+      generalizations: [],
+    };
+
+    const res = evaluateChatGuard(
+      'hace que Publicacion herede de Publicacion',
+      mockDiagram,
+      'es'
+    );
+    expect(res.blocked).toBe(true);
+    expect(res.replyContent).toContain('no puede heredar de sí misma');
+  });
+
+  it('rejects direct cyclic inheritance (ADV-2)', () => {
+    const mockDiagram = {
+      classes: [
+        { id: 'c1', name: 'Publicacion' },
+        { id: 'c2', name: 'Autor' },
+      ],
+      generalizations: [
+        { id: 'g1', subClassId: 'c1', superClassId: 'c2' }, // Publicacion hereda de Autor
+      ],
+    };
+
+    const res = evaluateChatGuard(
+      'hace que Autor herede de Publicacion',
+      mockDiagram,
+      'es'
+    );
+    expect(res.blocked).toBe(true);
+    expect(res.replyContent).toContain('herencia cíclica');
+  });
 });

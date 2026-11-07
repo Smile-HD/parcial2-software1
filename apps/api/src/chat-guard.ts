@@ -174,10 +174,10 @@ Una **Asociación N-aria** vincula simultáneamente 3 o más clases a través de
     };
   }
 
-  // 4. Invariantes Semánticas OOAD para Clases de Asociación y Asociaciones N-Arias
-  if (diagram && Array.isArray(diagram.classes) && Array.isArray(diagram.associations)) {
+  // 4. Invariantes Semánticas OOAD para Clases de Asociación, Generalizaciones y N-Arias
+  if (diagram && Array.isArray(diagram.classes)) {
     const diagClasses: Array<{ id: string; name: string }> = diagram.classes;
-    const diagAssocs: Array<any> = diagram.associations;
+    const diagAssocs: Array<any> = Array.isArray(diagram.associations) ? diagram.associations : [];
 
     // 4a. Conexión inválida con su propia clase de asociación (E1)
     // En UML, una clase de asociación modela el vínculo entre dos entidades participantes.
@@ -271,6 +271,67 @@ Una **Asociación N-aria** vincula simultáneamente 3 o más clases a través de
           const refusal = isEn
             ? `Cannot create association class: the class(es) ${missing.map((m) => `"${m}"`).join(', ')} do not exist in the diagram. Available classes: ${avail}.`
             : `No se puede vincular la clase de asociación porque ${missing.length > 1 ? 'las clases' : 'la clase'} ${missing.map((m) => `"${m}"`).join(', ')} no existe(n) en el diagrama. Clases disponibles: ${avail}.`;
+
+          return {
+            blocked: true,
+            replyContent: refusal,
+          };
+        }
+      }
+    }
+
+    // 4d. Validación de Herencia (Generalización): Prohibir Auto-herencia y Herencia Cíclica (ADV-1 y ADV-2)
+    const isGenIntent =
+      /(?:generalizaci[oó]n|generalization|herencia|hered[aáeé]|extends|subclase|superclase)/i.test(normalized) &&
+      !/(?:diferencia|que\s+es|ejemplo|explain)/i.test(normalized);
+
+    if (isGenIntent) {
+      const isSelfInheritance =
+        /(?:hered[aáeé]|extends|subclase)\s+(?:de\s+)?(?:s[ií]\s+mism[ao]|itself)/i.test(normalized);
+
+      const mentionedClasses = diagClasses.filter((c) => {
+        const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const regex = new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'i');
+        return regex.test(normalized);
+      });
+
+      const mentionsSameTwice = mentionedClasses.some((c) => {
+        const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const matches = Array.from(normalized.matchAll(new RegExp(`(?:\\b|["'])${cNorm}(?:\\b|["'])`, 'gi')));
+        return matches.length >= 2;
+      });
+
+      if (isSelfInheritance || (mentionsSameTwice && mentionedClasses.length === 1)) {
+        const clsName = mentionedClasses[0]?.name || 'la clase';
+        const refusal = isEn
+          ? `In UML and OOAD, class '${clsName}' cannot inherit from itself. Generalization is strictly irreflexive and anti-symmetric.`
+          : `En UML y OOAD, la clase '${clsName}' no puede heredar de sí misma. La relación de generalización es estrictamente irreflexiva y acíclica.`;
+
+        return {
+          blocked: true,
+          replyContent: refusal,
+        };
+      }
+
+      // Herencia Cíclica Directa (A hereda de B cuando B ya hereda de A)
+      if (mentionedClasses.length >= 2 && Array.isArray(diagram.generalizations)) {
+        const c1 = mentionedClasses[0]!;
+        const c2 = mentionedClasses[1]!;
+        const diagGens: Array<any> = diagram.generalizations;
+
+        const c1InheritsFromC2 = diagGens.some(
+          (g) => (g.subClassId === c1.id || g.sourceClassId === c1.id) && (g.superClassId === c2.id || g.targetClassId === c2.id)
+        );
+        const c2InheritsFromC1 = diagGens.some(
+          (g) => (g.subClassId === c2.id || g.sourceClassId === c2.id) && (g.superClassId === c1.id || g.targetClassId === c1.id)
+        );
+
+        if (c1InheritsFromC2 || c2InheritsFromC1) {
+          const sub = c1InheritsFromC2 ? c1 : c2;
+          const sup = c1InheritsFromC2 ? c2 : c1;
+          const refusal = isEn
+            ? `Cannot create cyclic inheritance: class '${sub.name}' already inherits from '${sup.name}'. Generalization in UML must form a Directed Acyclic Graph (DAG) without circular dependencies.`
+            : `No es posible crear esta herencia porque causaría una herencia cíclica: '${sub.name}' ya hereda de '${sup.name}'. En UML, la jerarquía de generalización debe ser estrictamente un Grafo Acíclico Dirigido (DAG).`;
 
           return {
             blocked: true,
