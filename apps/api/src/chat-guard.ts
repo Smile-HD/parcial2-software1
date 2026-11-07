@@ -155,13 +155,13 @@ Una **Asociación N-aria** vincula simultáneamente 3 o más clases a través de
 
   // 3. Filtro Estricto de Temas Ajenos (Out of Domain: recetas, poemas, política, chistes)
   const isOutOfDomainStrict =
-    /(?:receta|torta|cocin[aá]|pastel|pizza|asado|comida|postre|ingredientes\s+para)/i.test(normalized) ||
-    /(?:poema|poes[ií]a|canci[oó]n|rimas?|estrofa|cancion)/i.test(normalized) ||
-    /(?:chiste|broma|cuento|historieta|adivinanza)/i.test(normalized) ||
-    /(?:qui[eé]n\s+(?:es|fue)\s+(?:messi|maradona|cristiano|ronaldo|shakira|bad\s+bunny|el\s+presidente))/i.test(normalized) ||
-    /(?:qui[eé]n\s+gan[oó]\s+(?:el\s+mundial|la\s+copa|el\s+partido|las\s+elecciones))/i.test(normalized) ||
-    /(?:qu[eé]\s+opinas?\s+(?:de\s+la\s+vida|de\s+dios|de\s+pol[ií]tica|del\s+amor|del\s+aborto|de\s+religi[oó]n))/i.test(normalized) ||
-    /(?:how\s+to\s+cook|recipe\s+for|bake\s+a\s+cake|write\s+a\s+poem|tell\s+me\s+a\s+joke|who\s+won\s+the\s+world\s+cup)/i.test(normalized);
+    /\b(?:receta|torta|cocin[aá]|pastel|pizza|asado|comida|postre|ingredientes\s+para)\b/i.test(normalized) ||
+    /\b(?:poema|poes[ií]a|canci[oó]n|rimas?|estrofa|cancion)\b/i.test(normalized) ||
+    /\b(?:chiste|broma|cuento|historieta|adivinanza)\b/i.test(normalized) ||
+    /\b(?:qui[eé]n\s+(?:es|fue)\s+(?:messi|maradona|cristiano|ronaldo|shakira|bad\s+bunny|el\s+presidente))\b/i.test(normalized) ||
+    /\b(?:qui[eé]n\s+gan[oó]\s+(?:el\s+mundial|la\s+copa|el\s+partido|las\s+elecciones))\b/i.test(normalized) ||
+    /\b(?:qu[eé]\s+opinas?\s+(?:de\s+la\s+vida|de\s+dios|de\s+pol[ií]tica|del\s+amor|del\s+aborto|de\s+religi[oó]n))\b/i.test(normalized) ||
+    /\b(?:how\s+to\s+cook|recipe\s+for|bake\s+a\s+cake|write\s+a\s+poem|tell\s+me\s+a\s+joke|who\s+won\s+the\s+world\s+cup)\b/i.test(normalized);
 
   // Comprobar si el texto contiene alguna clase ya existente en el diagrama
   const hasExistingDiagramClass =
