@@ -214,6 +214,7 @@ export function normalizeUmlUtterance(raw: string): string {
 
   // ── H. Conectores gramaticales y preposiciones
   s = s.replace(/(?<!\p{L})(?:cn|c\/)(?!\p{L})/giu, 'con');
+  s = s.replace(/(?<!\p{L})e\s+(?=[ih])/giu, 'y ');
   s = s.replace(/(?<!\p{L})(?:llamda|llamd[ao])(?!\p{L})/giu, 'llamada');
   s = s.replace(/(?<!\p{L})(?:d|del)\s+tipo(?!\p{L})/giu, 'de tipo');
 
