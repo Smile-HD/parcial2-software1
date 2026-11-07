@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expandSemanticDomainToDelta, synthesizeDomainModel, robustParseDomainJson, type SemanticDomainModel } from './domain-synthesizer.js';
+import { expandSemanticDomainToDelta, synthesizeDomainModel, robustParseDomainJson, extractExplicitModelMutations, type SemanticDomainModel } from './domain-synthesizer.js';
 import { applyDelta, type Diagram } from '@app/core';
 
 describe('AI Domain Synthesizer & Dynamic Generation', () => {
@@ -1123,6 +1123,38 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       const factura = applied.value.classes.find(c => c.name === 'Factura');
       expect(factura!.attributes).toHaveLength(3);
     }
+  });
+
+  it('extracts connection between two existing classes with explicit multiplicities', () => {
+    const diag: any = {
+      id: '01925b42-d690-7c28-9f12-9c98a3f80c65',
+      classes: [
+        { id: 'c_edit', name: 'Editorial', attributes: [] },
+        { id: 'c_pub', name: 'Publicacion', attributes: [] },
+      ],
+      associations: [],
+      generalizations: [],
+      realizations: [],
+      dependencies: [],
+    };
+
+    const mutation = extractExplicitModelMutations('conecta Editorial con Publicacion con asociacion 1 a 0..*', diag);
+    expect(mutation).not.toBeNull();
+    expect(mutation?.action).toBe('modify');
+    expect(mutation?.associations).toBeDefined();
+    expect(mutation?.associations?.[0]?.source).toBe('Editorial');
+    expect(mutation?.associations?.[0]?.target).toBe('Publicacion');
+    expect(mutation?.associations?.[0]?.sourceMultiplicity).toBe('1');
+    expect(mutation?.associations?.[0]?.targetMultiplicity).toBe('0..*');
+
+    const delta = expandSemanticDomainToDelta(mutation!, diag.id, diag);
+    expect(delta).not.toBeNull();
+    const assocDelta = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'create');
+    expect(assocDelta).toBeDefined();
+    expect((assocDelta as any).sourceClassId).toBe('c_edit');
+    expect((assocDelta as any).targetClassId).toBe('c_pub');
+    expect((assocDelta as any).sourceMultiplicity).toBe('1');
+    expect((assocDelta as any).targetMultiplicity).toBe('0..*');
   });
 });
 

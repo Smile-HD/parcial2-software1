@@ -351,6 +351,15 @@ export function extractExplicitMultiplicities(
   } else if (/\b(?:muchos\s+a\s+muchos|n\s*:\s*m|m\s*:\s*n|\*\s*a\s*\*|\*\s*:\s*\*)\b/i.test(lower)) {
     multForSource = '0..*';
     multForTarget = '0..*';
+  } else {
+    // Direct numeric UML multiplicity ranges: e.g. "1 a 0..*", "1 a 1..*", "0..1 a *", "1 a n", "1 a 0..n"
+    const directRangeMatch = lower.match(/(?:^|[^\w.])(0\.\.1|0\.\.\*|1\.\.\*|0\.\.n|1\.\.n|1|0|\*)\s*(?:a|to|:)\s*(0\.\.1|0\.\.\*|1\.\.\*|0\.\.n|1\.\.n|1|0|\*|n|m)(?=$|[^\w.])/i);
+    if (directRangeMatch) {
+      let rawSrc = directRangeMatch[1]!.replace(/n/gi, '*');
+      let rawTgt = directRangeMatch[2]!.replace(/n/gi, '*');
+      multForSource = rawSrc === '*' ? '0..*' : rawSrc;
+      multForTarget = rawTgt === '*' ? '0..*' : rawTgt;
+    }
   }
 
   // 1. Patrón: "[X] <verbo> (muchos|muchas|varios|varias|uno o muchos|uno o mas|1 o mas|1 o muchos|0..*|1..*) [Y]"
@@ -2897,7 +2906,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   const isDependency = /(?:dependencia|dependency|depend[eé])/i.test(normalized);
 
   const isRelationChange =
-    ((/(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link)/i.test(
+    ((/(?:cambi|modific|hac|haz|convert|set|poner?|pon\b|que\s+sea|renombr|change|modify|switch|turn|make|conect|asoci|vincul|relacion|cre|agreg|a[ñn]ad).*?(?:relaci[oó]n|asociaci[oó]n|tipo\s+de\s+relaci[oó]n|v[ií]nculo|relation|relationship|association|link)/i.test(
       normalized
     ) && /(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|generalization|inheritance|realization|dependency|shared|composite|none)/i.test(normalized)) ||
     /(?:tipo\s+de\s+relaci[oó]n|cambia\s+el\s+tipo|relationship\s+type|change\s+type)\s+(?:a|por|to)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|generalization|inheritance)/i.test(
@@ -2907,6 +2916,9 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
       text
     ) ||
     /(?:a|por|to|into)\s+(?:una?\s+|an?\s+)?(?:composici[oó]n|agregaci[oó]n|asociaci[oó]n|generalizaci[oó]n|herencia|realizaci[oó]n|dependencia|composition|aggregation|generalization|inheritance)/i.test(
+      normalized
+    ) ||
+    /(?:conect[aáeé]|asoci[aáeé]|vincul[aáeé]|relacion[aáeé]|connect|link|associate)\s+.*?(?:con\b|entre|between|y\b|and\b)/i.test(
       normalized
     ) ||
     ((isGeneralization || isRealization || isDependency) &&
@@ -3033,8 +3045,20 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         if (matchingAssoc || matchingGen) break;
       }
 
-      const c1 = sourceCls || mentionedClasses[0]!;
-      const c2 = targetCls || mentionedClasses[1]!;
+      let c1 = sourceCls || mentionedClasses[0]!;
+      let c2 = targetCls || mentionedClasses[1]!;
+
+      // Si no existe asociación/generalización previa, respetar el orden de aparición en el texto
+      // (el primer mencionado es source y el segundo target)
+      if (!sourceCls && !targetCls && mentionedClasses.length >= 2) {
+        const pos1 = normalized.indexOf(c1.name.toLowerCase());
+        const pos2 = normalized.indexOf(c2.name.toLowerCase());
+        if (pos1 !== -1 && pos2 !== -1 && pos1 > pos2) {
+          const temp = c1;
+          c1 = c2;
+          c2 = temp;
+        }
+      }
 
       // Caso 4A: El usuario pide GENERALIZACIÓN / HERENCIA
       if (isGeneralization) {
@@ -3127,31 +3151,41 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
       if (matchingAssoc && sourceCls && targetCls) {
         const calcEnd = resolveAggregationEnd(sourceCls, targetCls, matchingAssoc);
+        const explicit = extractExplicitMultiplicities(text, sourceCls.name, targetCls.name);
+        const updateAssoc: any = {
+          source: sourceCls.name,
+          target: targetCls.name,
+          aggregation: targetAggregation,
+          aggregationEnd: calcEnd,
+        };
+        if (explicit?.sourceMultiplicity) updateAssoc.sourceMultiplicity = explicit.sourceMultiplicity;
+        if (explicit?.targetMultiplicity) updateAssoc.targetMultiplicity = explicit.targetMultiplicity;
+
         return {
           action: 'modify',
           updates: {
-            associations: [
-              {
-                source: sourceCls.name,
-                target: targetCls.name,
-                aggregation: targetAggregation,
-                aggregationEnd: calcEnd,
-              },
-            ],
+            associations: [updateAssoc],
           },
         };
       }
 
       // Si no existe asociación previa entre las dos clases, creamos la asociación con el tipo de agregación requerido
       const calcEnd = resolveAggregationEnd(c1, c2);
+      let srcMult = '1';
+      let tgtMult = '1..*';
+      const explicit = extractExplicitMultiplicities(text, c1.name, c2.name);
+      if (explicit) {
+        if (explicit.sourceMultiplicity) srcMult = explicit.sourceMultiplicity;
+        if (explicit.targetMultiplicity) tgtMult = explicit.targetMultiplicity;
+      }
       return {
         action: 'modify',
         associations: [
           {
             source: c1.name,
             target: c2.name,
-            sourceMultiplicity: '1',
-            targetMultiplicity: '1..*',
+            sourceMultiplicity: srcMult,
+            targetMultiplicity: tgtMult,
             aggregation: targetAggregation,
             aggregationEnd: calcEnd,
           },
