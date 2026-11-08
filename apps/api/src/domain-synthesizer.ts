@@ -1419,6 +1419,22 @@ export function expandSemanticDomainToDelta(
     const pair = getPairKey(subId, superId);
     if (seenConnectedPairs.has(pair)) continue;
 
+    // Prune existing associations between sub and super to prevent zombie lines
+    const existingAssocsForGen = currentDiagram?.associations?.filter((a: any) =>
+      (a.sourceClassId === subId && a.targetClassId === superId) ||
+      (a.sourceClassId === superId && a.targetClassId === subId)
+    ) || [];
+    for (const ea of existingAssocsForGen) {
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'association',
+        op: 'delete',
+        associationId: ea.id,
+      });
+    }
+
     deltas.push({
       id: crypto.randomUUID(),
       diagramId,
@@ -1442,6 +1458,21 @@ export function expandSemanticDomainToDelta(
       const pair = getPairKey(client, supplier);
       if (seenConnectedPairs.has(pair)) return;
 
+      const existingAssocsForRealiz = currentDiagram?.associations?.filter((a: any) =>
+        (a.sourceClassId === client && a.targetClassId === supplier) ||
+        (a.sourceClassId === supplier && a.targetClassId === client)
+      ) || [];
+      for (const ea of existingAssocsForRealiz) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'association',
+          op: 'delete',
+          associationId: ea.id,
+        });
+      }
+
       deltas.push({
         id: crypto.randomUUID(),
         diagramId,
@@ -1458,6 +1489,43 @@ export function expandSemanticDomainToDelta(
   }
 
   // 4. Dependencias explícitas
+  if (Array.isArray(model.dependencies)) {
+    model.dependencies.forEach((d) => {
+      const client = resolveClassId(d.clientClass);
+      const supplier = resolveClassId(d.supplierClass);
+      if (!client || !supplier || client === supplier) return;
+      const pair = getPairKey(client, supplier);
+      if (seenConnectedPairs.has(pair)) return;
+
+      const existingAssocsForDep = currentDiagram?.associations?.filter((a: any) =>
+        (a.sourceClassId === client && a.targetClassId === supplier) ||
+        (a.sourceClassId === supplier && a.targetClassId === client)
+      ) || [];
+      for (const ea of existingAssocsForDep) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'association',
+          op: 'delete',
+          associationId: ea.id,
+        });
+      }
+
+      deltas.push({
+        id: crypto.randomUUID(),
+        diagramId,
+        timestamp,
+        kind: 'dependency',
+        op: 'create',
+        dependencyId: crypto.randomUUID(),
+        clientClassId: client,
+        supplierClassId: supplier,
+        name: d.name,
+      });
+      seenConnectedPairs.add(pair);
+    });
+  }
   if (Array.isArray(model.dependencies)) {
     model.dependencies.forEach((d) => {
       const client = resolveClassId(d.client);
@@ -1557,7 +1625,7 @@ export function expandSemanticDomainToDelta(
       const isRequestedComposite = assoc.aggregation === 'composite' || (assoc as any).type === 'composition';
       const isRequestedShared = assoc.aggregation === 'shared' || (assoc as any).type === 'aggregation';
 
-      const isExplicitInText = !!originText && /(?:composici[oó]n|composite)\b/i.test(originText);
+      const isExplicitInText = !!originText && /(?:composici[oó]n|composision|composite)\b/i.test(originText);
       const canBeComposite = isRequestedComposite && !isRecursive && (isExplicitInText || isHeuristicComposition(sourceName, targetName, !!assocClassId || !!assoc.associationClass) || isHeuristicComposition(targetName, sourceName, !!assocClassId || !!assoc.associationClass));
       const targetAggregation = canBeComposite ? 'composite' : (isRequestedShared ? 'shared' : 'none');
       const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte|asistencia)/i;
@@ -1577,6 +1645,27 @@ export function expandSemanticDomainToDelta(
       });
 
       if (existingAssoc) {
+        // Cero duplicados: Si existían múltiples asociaciones paralelas entre este mismo par, eliminamos los zombies
+        const duplicateAssocs = currentDiagram?.associations?.filter((a: any) =>
+          a.id !== existingAssoc.id &&
+          ((a.sourceClassId === sourceId && a.targetClassId === targetId) ||
+           (a.sourceClassId === targetId && a.targetClassId === sourceId))
+        ) || [];
+        for (const dup of duplicateAssocs) {
+          deltas.push({
+            id: crypto.randomUUID(),
+            diagramId,
+            timestamp,
+            kind: 'association',
+            op: 'delete',
+            associationId: dup.id,
+          });
+        }
+
+        // Sanitizar nombres inválidos que son palabras funcionales o tipos de relación (ej. "una", "generalizacion")
+        const invalidAssocNames = /^(?:un|una|el|la|los|las|por|de|a|con|para|generalizaci[oó]n|composici[oó]n|agregaci[oó]n|asociaci[oó]n|realizaci[oó]n|dependencia|inheritance|composition|aggregation|association|dependency|realization)$/i;
+        const sanitizedAssocName = (assoc.name && !invalidAssocNames.test(assoc.name.trim())) ? assoc.name : undefined;
+
         // Verificar si la relación propuesta realmente introduce cambios respecto a la del lienzo
         let newSourceMult = assoc.sourceMultiplicity ? cleanMultiplicity(assoc.sourceMultiplicity, isRecursive ? '0..1' : '1') : undefined;
         let newTargetMult = assoc.targetMultiplicity ? cleanMultiplicity(assoc.targetMultiplicity, isRecursive ? '0..*' : '0..*') : undefined;
@@ -1596,14 +1685,15 @@ export function expandSemanticDomainToDelta(
         }
 
         const aggregationChanged = targetAggregation !== (existingAssoc.aggregation ?? 'none');
+        const endChanged = targetEnd !== existingAssoc.aggregationEnd;
         const multChanged = (newSourceMult !== undefined && newSourceMult !== existingAssoc.sourceMultiplicity) ||
                             (newTargetMult !== undefined && newTargetMult !== existingAssoc.targetMultiplicity);
-        const metaChanged = (assoc.name !== undefined && assoc.name !== existingAssoc.name) ||
+        const metaChanged = (sanitizedAssocName !== undefined && sanitizedAssocName !== existingAssoc.name) ||
                             (assoc.sourceRole !== undefined && assoc.sourceRole !== existingAssoc.sourceRole) ||
                             (assoc.targetRole !== undefined && assoc.targetRole !== existingAssoc.targetRole) ||
                             (assocClassId !== undefined && assocClassId !== existingAssoc.associationClassId);
 
-        if (aggregationChanged || multChanged || metaChanged) {
+        if (aggregationChanged || endChanged || multChanged || metaChanged) {
           const updateDelta: any = {
             id: crypto.randomUUID(),
             diagramId,
@@ -1617,7 +1707,7 @@ export function expandSemanticDomainToDelta(
 
           if (newSourceMult) updateDelta.newSourceMultiplicity = newSourceMult;
           if (newTargetMult) updateDelta.newTargetMultiplicity = newTargetMult;
-          if (assoc.name !== undefined) updateDelta.name = assoc.name;
+          if (sanitizedAssocName !== undefined) updateDelta.name = sanitizedAssocName;
           if (assoc.sourceRole !== undefined) updateDelta.sourceRole = assoc.sourceRole;
           if (assoc.targetRole !== undefined) updateDelta.targetRole = assoc.targetRole;
           if (assocClassId) {
@@ -2308,7 +2398,16 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   const normalized = text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\bcomposision\b/g, 'composicion')
+    .replace(/\bgeneralizasion\b/g, 'generalizacion')
+    .replace(/\bagregasion\b/g, 'agregacion')
+    .replace(/\brealizasion\b/g, 'realizacion')
+    .replace(/\brelasion\b/g, 'relacion')
+    .replace(/\basosia\b/g, 'asocia')
+    .replace(/\b(asisetncia|asistensia)\b/g, 'asistencia')
+    .replace(/\balunmo\b/g, 'alumno')
+    .replace(/\bnodo\s+de\s+relaci[oó]n\b/gi, 'relacion');
 
   const classes: Array<{ id: string; name: string }> = currentDiagram.classes || [];
   const associations: Array<any> = currentDiagram.associations || [];
@@ -3498,6 +3597,118 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
           },
         ],
       };
+    }
+  }
+
+  // 3d. Inversión de relación / rombo / dirección
+  const isRelationInvert =
+    /(?:inverti|invierte|invierta|invertir|voltea|voltee|voltear|gira|gire|girar|da\s+vuelta|cambia\s+de\s+lado|flip|reverse|swap)\b/i.test(normalized) &&
+    /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|generalizaci[oó]n|rombo|nodo|flecha|lado|sentido|direccion|direcci[oó]n|diamond|arrow|relation|association|composition|aggregation|generalization)/i.test(normalized);
+
+  if (isRelationInvert) {
+    const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
+    const tokens = normalized.split(/[^a-z0-9áéíóúñ]+/i).filter(Boolean);
+    const mentionedClasses = classes.filter((c) => {
+      const cNameNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const regex = new RegExp(`(?:\\b|["'])${cNameNorm}(?:\\b|["'])`, 'i');
+      if (regex.test(normalized)) return true;
+      if (tokens.some((t) => classExactOrPluralMatches(t, cNameNorm))) return true;
+      if (cleanedTextWithoutSpaces.includes(cNameNorm)) return true;
+      return false;
+    });
+
+    let targetAssoc: any = null;
+    let targetGen: any = null;
+
+    if (mentionedClasses.length >= 2) {
+      for (let i = 0; i < mentionedClasses.length; i++) {
+        for (let j = i + 1; j < mentionedClasses.length; j++) {
+          const ci = mentionedClasses[i]!;
+          const cj = mentionedClasses[j]!;
+          const fa = associations.find(
+            (a) =>
+              (a.sourceClassId === ci.id && a.targetClassId === cj.id) ||
+              (a.sourceClassId === cj.id && a.targetClassId === ci.id)
+          );
+          if (fa) {
+            targetAssoc = fa;
+            break;
+          }
+          const fg = (currentDiagram.generalizations || []).find(
+            (g: any) =>
+              (g.subClassId === ci.id && g.superClassId === cj.id) ||
+              (g.subClassId === cj.id && g.superClassId === ci.id)
+          );
+          if (fg) {
+            targetGen = fg;
+            break;
+          }
+        }
+        if (targetAssoc || targetGen) break;
+      }
+    } else if (mentionedClasses.length === 1) {
+      const c = mentionedClasses[0]!;
+      const fa = associations.find(
+        (a) => a.sourceClassId === c.id || a.targetClassId === c.id
+      );
+      if (fa) targetAssoc = fa;
+      const fg = (currentDiagram.generalizations || []).find(
+        (g: any) => g.subClassId === c.id || g.superClassId === c.id
+      );
+      if (fg) targetGen = fg;
+    }
+
+    if (!targetAssoc && !targetGen) {
+      if (associations.length === 1) targetAssoc = associations[0];
+      else if ((currentDiagram.generalizations || []).length === 1) targetGen = currentDiagram.generalizations[0];
+    }
+
+    if (targetAssoc) {
+      const currentAgg = targetAssoc.aggregation ?? 'composite';
+      const currentEnd = targetAssoc.aggregationEnd ?? 'source';
+      const newEnd = currentEnd === 'source' ? 'target' : 'source';
+      const srcCls = classes.find((c) => c.id === targetAssoc.sourceClassId);
+      const tgtCls = classes.find((c) => c.id === targetAssoc.targetClassId);
+      if (srcCls && tgtCls) {
+        let newSrcMult = targetAssoc.targetMultiplicity || '1';
+        let newTgtMult = targetAssoc.sourceMultiplicity || '0..*';
+        if (newSrcMult === '*' || newSrcMult.includes('*')) {
+          newSrcMult = '1';
+          newTgtMult = '0..*';
+        }
+        return {
+          action: 'modify',
+          updates: {
+            associations: [
+              {
+                source: srcCls.name,
+                target: tgtCls.name,
+                aggregation: currentAgg,
+                aggregationEnd: newEnd,
+                sourceMultiplicity: newSrcMult,
+                targetMultiplicity: newTgtMult,
+              },
+            ],
+          },
+        };
+      }
+    } else if (targetGen) {
+      const subCls = classes.find((c) => c.id === targetGen.subClassId);
+      const supCls = classes.find((c) => c.id === targetGen.superClassId);
+      if (subCls && supCls) {
+        return {
+          action: 'modify',
+          deletions: {
+            generalizations: [{ subclass: subCls.name, superclass: supCls.name }],
+          },
+          generalizations: [
+            {
+              subclass: supCls.name,
+              superclass: subCls.name,
+            },
+          ],
+        };
+      }
     }
   }
 

@@ -1382,6 +1382,295 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
     expect((renameDelta as any).name).toBe('id_materia');
     expect((renameDelta as any).type).toBe('int');
   });
+
+  describe('Suite de 15 pruebas: Mutación limpia de relaciones, inversión de rombos/flechas y tolerancia tipográfica', () => {
+    const makeBaseDiagram = () => ({
+      id: 'diag_suite',
+      classes: [
+        { id: 'c_materia', name: 'Materia', attributes: [], methods: [] },
+        { id: 'c_asistencia', name: 'Asistencia', attributes: [], methods: [] },
+        { id: 'c_alumno', name: 'Alumno', attributes: [], methods: [] },
+        { id: 'c_persona', name: 'Persona', attributes: [], methods: [] },
+        { id: 'c_factura', name: 'Factura', attributes: [], methods: [] },
+        { id: 'c_detalle', name: 'Detalle', attributes: [], methods: [] },
+        { id: 'c_cliente', name: 'Cliente', attributes: [], methods: [] },
+        { id: 'c_servicio', name: 'Servicio', attributes: [], methods: [] },
+        { id: 'c_contrato', name: 'Contrato', attributes: [], methods: [] },
+        { id: 'c_pedido', name: 'Pedido', attributes: [], methods: [] },
+        { id: 'c_producto', name: 'Producto', attributes: [], methods: [] },
+        { id: 'c_usuario', name: 'Usuario', attributes: [], methods: [] },
+        { id: 'c_perfil', name: 'Perfil', attributes: [], methods: [] },
+        { id: 'c_curso', name: 'Curso', attributes: [], methods: [] },
+        { id: 'c_profesor', name: 'Profesor', attributes: [], methods: [] },
+        { id: 'c_order', name: 'Order', attributes: [], methods: [] },
+        { id: 'c_item', name: 'Item', attributes: [], methods: [] },
+        { id: 'c_customer', name: 'Customer', attributes: [], methods: [] },
+        { id: 'c_invoice', name: 'Invoice', attributes: [], methods: [] },
+      ],
+      associations: [
+        {
+          id: 'a_mat_asis',
+          sourceClassId: 'c_materia',
+          targetClassId: 'c_asistencia',
+          aggregation: 'none',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+        {
+          id: 'a_al_asis',
+          sourceClassId: 'c_alumno',
+          targetClassId: 'c_asistencia',
+          aggregation: 'none',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+        {
+          id: 'a_fac_det',
+          sourceClassId: 'c_factura',
+          targetClassId: 'c_detalle',
+          aggregation: 'none',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '1..*',
+        },
+        {
+          id: 'a_cli_fac',
+          sourceClassId: 'c_cliente',
+          targetClassId: 'c_factura',
+          aggregation: 'none',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+        {
+          id: 'a_ser_con',
+          sourceClassId: 'c_servicio',
+          targetClassId: 'c_contrato',
+          aggregation: 'none',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '1..*',
+        },
+        {
+          id: 'a_ped_prod',
+          sourceClassId: 'c_pedido',
+          targetClassId: 'c_producto',
+          aggregation: 'shared',
+          aggregationEnd: 'source',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+        {
+          id: 'a_ord_itm',
+          sourceClassId: 'c_order',
+          targetClassId: 'c_item',
+          aggregation: 'composite',
+          aggregationEnd: 'source',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+        {
+          id: 'a_cus_inv',
+          sourceClassId: 'c_customer',
+          targetClassId: 'c_invoice',
+          aggregation: 'composite',
+          aggregationEnd: 'source',
+          sourceMultiplicity: '1',
+          targetMultiplicity: '0..*',
+        },
+      ],
+      generalizations: [
+        {
+          id: 'g_al_per',
+          subClassId: 'c_alumno',
+          superClassId: 'c_persona',
+        },
+      ],
+      realizations: [],
+      dependencies: [],
+    });
+
+    // 1. Reemplazo por composición sin ensuciar label con "una"
+    it('1. cambia la relacion entre materia y asistencia por una composicion', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('cambia la relacion entre materia y asistencia por una composicion', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag, 'cambia la relacion entre materia y asistencia por una composicion');
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregation).toBe('composite');
+      expect((update as any).name).toBeUndefined(); // no "una"
+    });
+
+    // 2. Reemplazo por generalización limpia (elimina asociación previa, no pone label "generalizacion")
+    it('2. cambiame la relacion entre alumno y asistencia por una generalizacion', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('cambiame la relacion entre alumno y asistencia por una generalizacion', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const delAssoc = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'delete');
+      const genCreate = delta!.deltas.find((d: any) => d.kind === 'generalization' && d.op === 'create');
+      expect(delAssoc).toBeDefined();
+      expect(genCreate).toBeDefined();
+      expect((genCreate as any).subClassId).toBe('c_alumno');
+      expect((genCreate as any).superClassId).toBe('c_asistencia');
+    });
+
+    // 3. Creación/asociación con typo en nombre de clase (asisetncia)
+    it('3. asocia asisetncia y materia con una relacion de composicion', () => {
+      const diag = makeBaseDiagram();
+      // eliminar la asociacion previa para probar creacion
+      diag.associations = [];
+      const mut = extractExplicitModelMutations('asocia asisetncia y materia con una relacion de composicion', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag, 'asocia asisetncia y materia con una relacion de composicion');
+      const createAssoc = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'create');
+      expect(createAssoc).toBeDefined();
+      expect((createAssoc as any).aggregation).toBe('composite');
+      expect((createAssoc as any).name).toBeUndefined();
+    });
+
+    // 4. Inversión de rombo de composición
+    it('4. inverti el nodo de relacion de composicion entre asistencia y materia', () => {
+      const diag = makeBaseDiagram();
+      diag.associations[0]!.aggregation = 'composite';
+      diag.associations[0]!.aggregationEnd = 'source'; // materia tiene el rombo
+      const mut = extractExplicitModelMutations('inverti el nodo de relacion de composicion entre asistencia y materia', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregationEnd).toBe('target'); // invertido a target
+    });
+
+    // 5. Da vuelta el rombo (sinónimo coloquial)
+    it('5. da vuelta el rombo entre Materia y Asistencia', () => {
+      const diag = makeBaseDiagram();
+      diag.associations[0]!.aggregation = 'composite';
+      diag.associations[0]!.aggregationEnd = 'target';
+      const mut = extractExplicitModelMutations('da vuelta el rombo entre Materia y Asistencia', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregationEnd).toBe('source');
+    });
+
+    // 6. Cambiar de lado la composición
+    it('6. cambia de lado la composicion entre Asistencia y Materia', () => {
+      const diag = makeBaseDiagram();
+      diag.associations[0]!.aggregation = 'composite';
+      diag.associations[0]!.aggregationEnd = 'source';
+      const mut = extractExplicitModelMutations('cambia de lado la composicion entre Asistencia y Materia', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregationEnd).toBe('target');
+    });
+
+    // 7. Reemplazo de relación por agregación
+    it('7. cambia la relacion entre Factura y Detalle por agregacion', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('cambia la relacion entre Factura y Detalle por agregacion', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregation).toBe('shared');
+    });
+
+    // 8. Reemplazo de relación por dependencia (borra asociación previa)
+    it('8. remplaza la relacion de Cliente y Factura con dependencia', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('remplaza la relacion de Cliente y Factura con dependencia', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const del = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'delete');
+      const dep = delta!.deltas.find((d: any) => d.kind === 'dependency' && d.op === 'create');
+      expect(del).toBeDefined();
+      expect(dep).toBeDefined();
+    });
+
+    // 9. Reemplazo por realización
+    it('9. cambia la asociacion entre Servicio y Contrato por realizacion', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('cambia la asociacion entre Servicio y Contrato por realizacion', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const del = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'delete');
+      const rel = delta!.deltas.find((d: any) => d.kind === 'realization' && d.op === 'create');
+      expect(del).toBeDefined();
+      expect(rel).toBeDefined();
+    });
+
+    // 10. Voltea rombo de agregación
+    it('10. voltea el rombo de agregacion entre Pedido y Producto', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('voltea el rombo de agregacion entre Pedido y Producto', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregationEnd).toBe('target');
+    });
+
+    // 11. Errores tipográficos fonéticos ("relasion", "composision")
+    it('11. cambia la relasion entre Usuario y Perfil por una composision', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('cambia la relasion entre Usuario y Perfil por una composision', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag, 'cambia la relasion entre Usuario y Perfil por una composision');
+      const create = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'create');
+      expect(create).toBeDefined();
+      expect((create as any).aggregation).toBe('composite');
+      expect((create as any).name).toBeUndefined();
+    });
+
+    // 12. Inversión de generalización con error tipográfico ("generalizasion")
+    it('12. inverti la generalizasion entre Alumno y Persona', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('inverti la generalizasion entre Alumno y Persona', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const delGen = delta!.deltas.find((d: any) => d.kind === 'generalization' && d.op === 'delete');
+      const createGen = delta!.deltas.find((d: any) => d.kind === 'generalization' && d.op === 'create');
+      expect(delGen).toBeDefined();
+      expect(createGen).toBeDefined();
+      expect((createGen as any).subClassId).toBe('c_persona');
+      expect((createGen as any).superClassId).toBe('c_alumno');
+    });
+
+    // 13. Errores tipográficos "asosia", "agregasion"
+    it('13. asosia con agregasion Curso y Profesor', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('asosia con agregasion Curso y Profesor', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const create = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'create');
+      expect(create).toBeDefined();
+      expect((create as any).aggregation).toBe('shared');
+    });
+
+    // 14. Inversión en inglés ("flip composition between Order and Item")
+    it('14. flip composition between Order and Item', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('flip composition between Order and Item', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregationEnd).toBe('target');
+    });
+
+    // 15. Inversión en inglés ("reverse the relationship between Customer and Invoice")
+    it('15. reverse the relationship between Customer and Invoice', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('reverse the relationship between Customer and Invoice', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).aggregationEnd).toBe('target');
+    });
+  });
 });
 
 
