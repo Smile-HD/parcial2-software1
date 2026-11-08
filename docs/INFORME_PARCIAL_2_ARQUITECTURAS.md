@@ -30,7 +30,7 @@
 
 El presente documento constituye la defensa formal y memoria arquitectónica de la herramienta CASE desarrollada para el Segundo Examen Parcial de Ingeniería de Software. El sistema aborda la problemática del modelado conceptual y de diseño UML 2.5.1 mediante una arquitectura desacoplada, colaborativa en tiempo real (CRDTs), con soporte de síntesis y asistencia semántica por Inteligencia Artificial (LLM offline/online y Vision Reader) y generación automática de código backend en Spring Boot 3 con JPA y Flyway.
 
-Para garantizar alta cohesión, bajo acoplamiento y mantenibilidad a largo plazo, el sistema ha sido refactorizado y verificado eliminando archivos monolíticos (*God Files* > 400 líneas), estructurando la base de código bajo cuatro paradigmas arquitectónicos formales consolidados y demostrando cero regresiones mediante una suite de 321 pruebas automatizadas ejecutadas al 100% en verde.
+Para garantizar alta cohesión, bajo acoplamiento y mantenibilidad a largo plazo, el sistema ha sido refactorizado y verificado eliminando archivos monolíticos (*God Files* > 400 líneas), estructurando la base de código bajo cuatro paradigmas arquitectónicos formales consolidados y demostrando cero regresiones mediante una suite de 1.231 pruebas automatizadas ejecutadas al 100% en verde.
 
 ---
 
@@ -134,15 +134,19 @@ Toda la trazabilidad de esta remediación arquitectónica se encuentra versionad
 ### 3.2. Frontend (`apps/web`)
 | Archivo Monolítico Original | Líneas | Módulos Desacoplados Resultantes | Líneas Promedio | Cohesión / Beneficio |
 | :--- | :---: | :--- | :---: | :--- |
-| `DiagramCanvas.tsx` | 2.919 | `canvas/operations/nodeOperations.ts`<br>`canvas/operations/edgeOperations.ts`<br>`canvas/operations/naryOperations.ts`<br>`canvas/operations/zoomOperations.ts`<br>`canvas/operations/index.ts` | 100 – 400 l. | **Reducción de >820 líneas**. Lógica pura de manipulación de Y.Doc extraída y testeable sin requerir renderizado DOM completo. |
-| `ChatPanel.tsx` | 1.444 | `chat/chatFormatters.tsx`<br>`chat/useAudioRecorder.ts`<br>`chat/ProposalCard.tsx`<br>`chat/useSlashCommands.ts`<br>`chat/ChatMessageItem.tsx` | 120 – 200 l. | Desacoplamiento de la captura y transcripción de audio (Web Speech + Whisper) y formateo de tarjetas interactivas de UML. |
+| `DiagramCanvas.tsx` | 1.531 | `hooks/useGhostDeltas.ts`<br>`hooks/useCanvasKeyboard.ts`<br>`hooks/useCanvasProjection.ts`<br>`hooks/useCanvasZoom.ts`<br>`components/CanvasZoomControls.tsx`<br>`components/EdgeEditorPanel.tsx`<br>`components/NaryEditorPanel.tsx`<br>`components/ClassDetailsPanel.tsx`<br>`DiagramCanvas.tsx` | 80 – 330 l. | **Reducción de >740 líneas**. Separación del estado de proyección ReactFlow, atajos de teclado y controles interactivos en hooks cohesivos. |
+| `ChatPanel.tsx` | 1.024 | `chat/components/ChatHeader.tsx`<br>`chat/components/ChatMessagesList.tsx`<br>`chat/components/ChatInputBar.tsx`<br>`ChatPanel.tsx` | 70 – 220 l. | **Reducción a 664 l.** Desacoplamiento de la entrada de comandos/voz, renderizado virtualizado de mensajes y orquestación del chat. |
+| `ClassNode.tsx` | 858 | `canvas/components/ClassNodeHeader.tsx`<br>`canvas/components/ClassNodeAttributes.tsx`<br>`canvas/components/ClassNodeMethods.tsx`<br>`canvas/components/ClassNodeHandles.tsx`<br>`ClassNode.tsx` | 80 – 250 l. | **Reducción a 92 l. (89% reducción)**. Separación atómica de la cabecera del clasificador, lista de atributos, operaciones y puertos de conexión. |
+| `App.tsx` | 828 | `components/AppToolbar.tsx`<br>`hooks/useDiagramSession.ts`<br>`hooks/useDiagramInterpreter.ts`<br>`App.tsx` | 100 – 350 l. | **Reducción a 202 l. (75% reducción)**. Aislamiento de la barra de acciones globales, sincronización colaborativa y procesamiento del bot. |
 
-### 3.3. Paquetes del Monorepo (`packages/`)
+### 3.3. Paquetes del Monorepo (`packages/`) y Backend (`apps/api/`)
 | Archivo Monolítico Original | Líneas | Módulos Desacoplados Resultantes | Líneas Promedio | Cohesión / Beneficio |
 | :--- | :---: | :--- | :---: | :--- |
 | `packages/core/src/apply.ts` | 977 | `apply/apply-class.ts`<br>`apply/apply-member.ts`<br>`apply/apply-association.ts`<br>`apply/apply-hierarchy.ts`<br>`apply/apply-nary.ts`<br>`apply/apply-batch.ts`<br>`apply/cascade.ts`<br>`apply.ts` (barrel) | 60 – 260 l. | Desacoplamiento del motor puro de aplicación de deltas por tipo de mutación e invariantes de grafo. |
-| `packages/codegen/src/generate.ts` | 1.611 | `generators/relationships.ts`<br>`generators/members.ts`<br>`generators/postman.ts`<br>`type-mapper.ts`<br>`types.ts`<br>`generate.ts` (orquestador) | 120 – 400 l. | Separación de responsabilidades entre tablas de mapeo UML→Java, generación de entidades JPA, contratos de interfaces y colecciones Postman. |
-| `packages/adapters-ai/src/index.ts` | 1.975 | `fake-llm.ts`<br>`openai-llm.ts`<br>`index.ts` (barrel) | 300 – 1.600 l. | Separación estricta entre el intérprete determinista offline para testing y el cliente productivo streaming con OpenAI/Ollama. |
+| `packages/codegen/src/generate.ts` | 1.611 | `generators/relationships.ts`<br>`generators/members.ts`<br>`generators/postman.ts`<br>`type-mapper.ts`<br>`types.ts`<br>`generate.ts` (barrel) | 70 – 400 l. | Separación de responsabilidades entre tablas de mapeo UML→Java, generación de entidades JPA, contratos de interfaces y colecciones Postman. |
+| `packages/adapters-import/src/xmi21.ts` & `xmi21-export.ts` | 1.752 | `xmi/parser.ts`<br>`xmi/delta-builder.ts`<br>`xmi/exporter-types.ts`<br>`xmi/exporter-extension.ts`<br>`xmi/types.ts`<br>`xmi21.ts` & `xmi21-export.ts` (barrels) | 80 – 300 l. | Modularización completa de parser XML, normalización a lote `BatchDelta` y serialización compatible con Enterprise Architect. |
+| `packages/adapters-ai/src/fake-llm.ts` & `vision.ts` | 2.709 | `fake-llm/class-handlers.ts`<br>`fake-llm/member-handlers.ts`<br>`fake-llm/relationship-handlers.ts`<br>`vision/heuristics.ts`<br>`vision/openai-vision.ts`<br>`fake-llm.ts` & `vision.ts` (barrels) | 100 – 370 l. | Separación del motor offline determinista para testing y del extractor de visión con heurísticas de matching espacial. |
+| `apps/api/src/chat/chat-pipeline.ts` & `src/index.ts` | 2.179 | `chat/pipeline/intent-guardrails.ts`<br>`chat/pipeline/slash-handlers.ts`<br>`chat/pipeline/turn-executor.ts`<br>`routes/persistence.ts`<br>`routes/diagram-routes.ts`<br>`routes/job-routes.ts`<br>`routes/ai-routes.ts` | 100 – 340 l. | Desacoplamiento del pipeline conversacional de Amongus y modularización de rutas HTTP en controladores cohesivos. |
 
 ---
 
@@ -178,4 +182,4 @@ Como requisito indispensable de calidad para el Segundo Examen Parcial, la refac
 
 ## 5. CONCLUSIÓN
 
-La refactorización ejecutada transforma el proyecto de un prototipo funcional con alta densidad de código monolítico a un producto de ingeniería de software con arquitectura empresarial robusta, escalable y mantenible. El cumplimiento simultáneo de **Screaming Architecture**, **Hexagonal**, **Component-Driven** y **CRDTs**, validado por 321 pruebas automatizadas y trazado mediante OpenSpec, satisface con el más alto rigor académico y técnico las exigencias del Segundo Examen Parcial.
+La refactorización ejecutada transforma el proyecto de un prototipo funcional con alta densidad de código monolítico a un producto de ingeniería de software con arquitectura empresarial robusta, escalable y mantenible. El cumplimiento simultáneo de **Screaming Architecture**, **Hexagonal**, **Component-Driven** y **CRDTs**, validado por 1.231 pruebas automatizadas y trazado mediante OpenSpec, satisface con el más alto rigor académico y técnico las exigencias del Segundo Examen Parcial.
