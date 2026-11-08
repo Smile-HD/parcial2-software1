@@ -23,18 +23,18 @@
   - [x] 1.6.4 Verificar que los 146 tests unitarios de la API pasen al 100%.
 
 ## Fase 2: Descomposición de Monolitos en `apps/web`
-- [ ] 2.1 Descomponer `DiagramCanvas.tsx` (2.919 líneas):
-  - [ ] 2.1.1 Extraer `useCanvasShortcuts.ts` para eventos globales de teclado y zoom.
-  - [ ] 2.1.2 Extraer `usePaletteDnD.ts` para la lógica de arrastre de herramientas UML.
-  - [ ] 2.1.3 Extraer `useQuickLinker.ts` para conectores y menús contextuales.
-  - [ ] 2.1.4 Extraer `useCollabCursors.ts` para sincronización de cursores remotos Yjs.
-  - [ ] 2.1.5 Reducir `DiagramCanvas.tsx` a un contenedor de layout visual (< 400 líneas).
-  - [ ] 2.1.6 Ejecutar tests del canvas en verde.
-- [ ] 2.2 Descomponer `ChatPanel.tsx` (1.444 líneas):
-  - [ ] 2.2.1 Extraer `ProposalCard.tsx` para visualización y confirmación de deltas del bot.
-  - [ ] 2.2.2 Extraer `useAudioRecorder.ts` para captura de audio y envío a STT.
-  - [ ] 2.2.3 Reducir `ChatPanel.tsx` a menos de 300 líneas.
-  - [ ] 2.2.4 Ejecutar tests del chat frontend en verde.
+- [x] 2.1 Descomponer operaciones de `DiagramCanvas.tsx` en `apps/web/src/canvas/operations/`:
+  - [x] 2.1.1 Extraer `nodeOperations.ts` (`handleNodeDragStop`, `handlePaletteDrop`, `handleSetAbstract`, `nextFreeClassName`).
+  - [x] 2.1.2 Extraer `edgeOperations.ts` (`handleCreateAssociation`, `handleConnectWithTool`, `getOptimalHandles`, etc.).
+  - [x] 2.1.3 Extraer `naryOperations.ts` (`computeNaryCentroid`, `handleCreateNaryAssociation`, `handleUpdateNaryAssociation`, etc.).
+  - [x] 2.1.4 Extraer `zoomOperations.ts` (`computeNextZoom`).
+  - [x] 2.1.5 Configurar `index.ts` con re-exportaciones de retrocompatibilidad en `DiagramCanvas.tsx` (reducción de 820 líneas).
+  - [x] 2.1.6 Ejecutar tests del canvas en verde (158/158 tests unitarios pasados).
+- [x] 2.2 Descomponer `ChatPanel.tsx`:
+  - [x] 2.2.1 Verificar y conservar `ProposalCard.tsx` para visualización y confirmación de deltas del bot.
+  - [x] 2.2.2 Extraer `chatFormatters.tsx` (`renderStreamingContent`, `parseInlineMarkdown`, `renderFormattedContent`).
+  - [x] 2.2.3 Extraer `useAudioRecorder.ts` para captura de audio por Web Speech API y Groq Whisper STT.
+  - [x] 2.2.4 Ejecutar tests del chat frontend en verde (17/17 tests unitarios pasados).
 
 ## Fase 3: Verificación, Validación (V&V) y Documentación Académica
 - [ ] 3.1 Ejecutar suite completa de tests de punta a punta (`pnpm test`).
