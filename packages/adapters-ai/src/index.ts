@@ -933,8 +933,8 @@ export class FakeLlm implements LlmPort {
     // 7d. ACTUALIZACIÓN / RENOMBRE de relación entre dos clases:
     // "renombra la relación entre Materia y Profesor a dicta", "cambia el nombre de la relación entre X e Y a Z", "a la relación entre X e Y llamala Z"
     const isRelationRename =
-      /\b(?:renombr[aá]|renombrar|cambi[aá]le|cambi[aá]|cambiar|modific[aá]|modificar|pon[eé]le|pon[eé]|nombr[aá]|rename)\b[\s\S]*?(?:el\s+nombre|de\s+nombre)?[\s\S]*?\b(?:de\s+la\s+|a\s+la\s+)?(?:relaci[oó]n|asociaci[oó]n|arista|link|association|relationship)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:a|por|como|to|llamada|llamado)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance) ||
-      /\b(?:a\s+la\s+)?(?:relaci[oó]n|asociaci[oó]n|arista|link|association|relationship)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá]|llamala|llamalo|nombra)\b[\s\S]*?(?:el\s+nombre|de\s+nombre)?[\s\S]*?\b(?:a|por|como|to)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
+      /\b(?:renombr[aá]|renombrar|cambi[aá]le|cambi[aá]|cambiar|modific[aá]|modificar|pon[eé]le|pon[eé]|nombr[aá]|rename)\b[\s\S]*?(?:el\s+nombre|de\s+nombre)?[\s\S]*?\b(?:de\s+la\s+|a\s+la\s+)?(?:relaci[oó]n|asociaci[oó]n|arista|link|association|relationship)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:a|por|como|to|llamada|llamado)\s+(?:(?:un[ao]?|el|la)\s+)?(?:(?:relaci[oó]n|tipo)\s+(?:de\s+)?)?["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance) ||
+      /\b(?:a\s+la\s+)?(?:relaci[oó]n|asociaci[oó]n|arista|link|association|relationship)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)[\s\S]*?\b(?:cambi[aá]le|cambi[aá]|modific[aá]|renombr[aá]|llamala|llamalo|nombra)\b[\s\S]*?(?:el\s+nombre|de\s+nombre)?[\s\S]*?\b(?:a|por|como|to)\s+(?:(?:un[ao]?|el|la)\s+)?(?:(?:relaci[oó]n|tipo)\s+(?:de\s+)?)?["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
 
     if (isRelationRename) {
       const srcName = isRelationRename[1]!;
@@ -951,7 +951,14 @@ export class FakeLlm implements LlmPort {
       if (!existingAssoc) {
         return refused(`No association found between "${srcName}" and "${tgtName}".`);
       }
-      const newName = isRelationRename[3]!;
+      let newName = isRelationRename[3]!;
+      const stopWords = new Set(['un', 'una', 'uno', 'el', 'la', 'los', 'las', 'de', 'del', 'a', 'por', 'como', 'relacion', 'relación', 'tipo']);
+      if (stopWords.has(newName.toLowerCase())) {
+        const nextWordMatch = /(?:composici[oó]n|composite|agregaci[oó]n|shared|asociaci[oó]n)/i.exec(utterance);
+        if (nextWordMatch) {
+          newName = nextWordMatch[0];
+        }
+      }
       const isAggChange = /^(?:composici[oó]n|composite|agregaci[oó]n|shared|asociaci[oó]n|simple|none)$/i.test(newName);
       if (isAggChange) {
         const isComposite = /^(?:composici[oó]n|composite)$/i.test(newName);

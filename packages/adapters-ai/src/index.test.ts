@@ -2070,6 +2070,19 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         expect(delta.aggregation).toBe('composite');
         expect(delta.aggregationEnd).toBe('target');
       }
+
+      // Exact prompt from user screenshot with "por una composicion" and reversed class order:
+      const result2 = await llm.interpret('cambia la relacion entre materia y asistencia por una composicion', {}, diagram);
+      expect(result2.kind).toBe('delta');
+      if (result2.kind === 'delta') {
+        const delta = result2.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('updateMultiplicity');
+        expect(delta.associationId).toBe(assocId);
+        expect(delta.aggregation).toBe('composite');
+        expect(delta.name).toBeUndefined(); // Never name it "una"!
+        expect(delta.aggregationEnd).toBe('target'); // Materia is the container
+      }
     });
   });
 });
