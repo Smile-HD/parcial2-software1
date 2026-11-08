@@ -318,7 +318,8 @@ Una **Asociación N-aria** vincula simultáneamente 3 o más clases a través de
       }
 
       // Herencia Cíclica Directa (A hereda de B cuando B ya hereda de A)
-      if (mentionedClasses.length >= 2 && Array.isArray(diagram.generalizations)) {
+      const isInvertIntent = /(?:inverti|invierte|invierta|invertir|da\s+vuelta|cambia\s+de\s+lado|flip|reverse|swap)\b/i.test(normalized);
+      if (!isInvertIntent && mentionedClasses.length >= 2 && Array.isArray(diagram.generalizations)) {
         const c1 = mentionedClasses[0]!;
         const c2 = mentionedClasses[1]!;
         const diagGens: Array<any> = diagram.generalizations;
