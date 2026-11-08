@@ -5,7 +5,7 @@
  * derivada que activa el re-renderizado cuando cambia el Y.Doc.
  * Ninguna mutación evade applyDelta (ver applyDeltaToYDoc).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -222,30 +222,36 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
     setEdgeHandles,
   });
 
-  const handleRename = (classId: string, newName: string): void => {
-    const delta: ClassDelta = {
-      kind: 'class',
-      op: 'rename',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      newName,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleRename = useCallback(
+    (classId: string, newName: string): void => {
+      const delta: ClassDelta = {
+        kind: 'class',
+        op: 'rename',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        newName,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
-  const handleDeleteClass = (classId: string): void => {
-    const delta: ClassDelta = {
-      kind: 'class',
-      op: 'delete',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleDeleteClass = useCallback(
+    (classId: string): void => {
+      const delta: ClassDelta = {
+        kind: 'class',
+        op: 'delete',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
   const handleNodeClick = (node: { id: string; type?: string }): void => {
     if (naryMode) {
@@ -280,110 +286,128 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
     setNaryName('');
   };
 
-  const handleAddAttribute = (classId: string, name: string, type: string, adornments?: MemberAdornments): void => {
-    const delta: MemberDelta = {
-      kind: 'member',
-      op: 'addAttribute',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      memberId: crypto.randomUUID(),
-      name,
-      type,
-      ...adornments,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleAddAttribute = useCallback(
+    (classId: string, name: string, type: string, adornments?: MemberAdornments): void => {
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'addAttribute',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        memberId: crypto.randomUUID(),
+        name,
+        type,
+        ...adornments,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
-  const handleEditAttribute = (classId: string, memberId: string, name: string, type: string, adornments?: MemberAdornments): void => {
-    const delta: MemberDelta = {
-      kind: 'member',
-      op: 'editAttribute',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      memberId,
-      name,
-      type,
-      ...adornments,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleEditAttribute = useCallback(
+    (classId: string, memberId: string, name: string, type: string, adornments?: MemberAdornments): void => {
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'editAttribute',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        memberId,
+        name,
+        type,
+        ...adornments,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
-  const handleRemoveAttribute = (classId: string, memberId: string): void => {
-    const delta: MemberDelta = {
-      kind: 'member',
-      op: 'deleteAttribute',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      memberId,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleRemoveAttribute = useCallback(
+    (classId: string, memberId: string): void => {
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'deleteAttribute',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        memberId,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
-  const handleAddMethod = (
-    classId: string,
-    name: string,
-    returnType: string,
-    parameters: Parameter[],
-    adornments?: MemberAdornments,
-  ): void => {
-    const delta: MemberDelta = {
-      kind: 'member',
-      op: 'addMethod',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      memberId: crypto.randomUUID(),
-      name,
-      returnType,
-      parameters,
-      ...adornments,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleAddMethod = useCallback(
+    (
+      classId: string,
+      name: string,
+      returnType: string,
+      parameters: Parameter[],
+      adornments?: MemberAdornments,
+    ): void => {
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'addMethod',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        memberId: crypto.randomUUID(),
+        name,
+        returnType,
+        parameters,
+        ...adornments,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
-  const handleEditMethod = (
-    classId: string,
-    memberId: string,
-    name: string,
-    returnType: string,
-    parameters: Parameter[],
-    adornments?: MemberAdornments,
-  ): void => {
-    const delta: MemberDelta = {
-      kind: 'member',
-      op: 'editMethod',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      memberId,
-      name,
-      returnType,
-      parameters,
-      ...adornments,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleEditMethod = useCallback(
+    (
+      classId: string,
+      memberId: string,
+      name: string,
+      returnType: string,
+      parameters: Parameter[],
+      adornments?: MemberAdornments,
+    ): void => {
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'editMethod',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        memberId,
+        name,
+        returnType,
+        parameters,
+        ...adornments,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
-  const handleRemoveMethod = (classId: string, memberId: string): void => {
-    const delta: MemberDelta = {
-      kind: 'member',
-      op: 'deleteMethod',
-      id: crypto.randomUUID(),
-      diagramId: diagram.id,
-      timestamp: new Date().toISOString(),
-      classId,
-      memberId,
-    };
-    applyDeltaToYDoc(doc, delta);
-  };
+  const handleRemoveMethod = useCallback(
+    (classId: string, memberId: string): void => {
+      const delta: MemberDelta = {
+        kind: 'member',
+        op: 'deleteMethod',
+        id: crypto.randomUUID(),
+        diagramId: diagram.id,
+        timestamp: new Date().toISOString(),
+        classId,
+        memberId,
+      };
+      applyDeltaToYDoc(doc, delta);
+    },
+    [doc, diagram.id],
+  );
 
   const { ghostMembers, ghostNodes, ghostEdges } = useGhostDeltas(ghostDelta, diagram);
 

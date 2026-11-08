@@ -64,6 +64,8 @@ export function useCanvasProjection({
   handleEditMethod,
   handleRemoveMethod,
 }: UseCanvasProjectionOptions) {
+  const measuredMapRef = useRef<Map<string, { width: number; height: number }>>(new Map());
+
   const nodes = useMemo<(ClassFlowNode | NaryDiamondFlowNode)[]>(
     () => [
       ...diagram.classes.map((cls) => {
@@ -75,11 +77,16 @@ export function useCanvasProjection({
             ? 'class-node--ghost-pending'
             : undefined;
 
+        const prevMeasured = measuredMapRef.current.get(cls.id);
+
         return {
           id: cls.id,
           type: 'class' as const,
           position: cls.position,
           className: nodeClassName,
+          initialWidth: 260,
+          initialHeight: 180,
+          ...(prevMeasured ? { measured: prevMeasured } : {}),
           data: {
             name: cls.name,
             attributes: [...cls.attributes, ...ghostAttrs],
@@ -130,6 +137,8 @@ export function useCanvasProjection({
             type: 'naryDiamond' as const,
             position: computeNaryCentroid(memberPositions),
             draggable: false,
+            initialWidth: 48,
+            initialHeight: 48,
             data: {
               nary,
               onDelete: () => handleDeleteNaryAssociation(doc, diagram.id, nary.id),
@@ -189,6 +198,8 @@ export function useCanvasProjection({
     for (const change of changes) {
       if (change.type === 'position' && change.position) {
         setDragOverride({ id: change.id, position: change.position });
+      } else if (change.type === 'dimensions' && change.dimensions) {
+        measuredMapRef.current.set(change.id, change.dimensions);
       }
     }
   }, []);
