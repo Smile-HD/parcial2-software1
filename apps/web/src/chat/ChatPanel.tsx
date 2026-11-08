@@ -1,23 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Delta } from '@app/core';
-import { AmongusAvatar } from './AmongusAvatar';
-import { ProposalCard } from './ProposalCard';
 import { useChat } from './useChat';
-import { pickUserColor } from '../presence/palette';
-import { presenceInitials } from '../canvas/PresenceBar';
 import { useT } from '../i18n';
 import type { VoiceRecorder } from '../voice/recorder';
 import {
-  SLASH_COMMANDS,
-  matchSlashCommands,
   buildHelpContent,
   buildContextReport,
-  type SlashCommand,
 } from './commands';
-import { renderStreamingContent, parseInlineMarkdown, renderFormattedContent } from './chatFormatters';
 import { useAudioRecorder } from './useAudioRecorder';
 import { useSlashCommands } from './useSlashCommands';
-import { ChatMessageItem } from './ChatMessageItem';
+import { ChatHeader } from './components/ChatHeader';
+import { ChatMessagesList } from './components/ChatMessagesList';
+import { ChatInputBar } from './components/ChatInputBar';
 import './chat.css';
 
 export interface ChatPanelProps {
@@ -52,7 +46,6 @@ export interface ChatPanelProps {
  * Panel de Chat Colaborativo y Asistente Amongus Unificado.
  * Integra chat de equipo, canal directo con Amongus, entrada por voz,
  * y tarjetas de propuesta interactivas con previsualizacion fantasma en el lienzo.
- * 100% libre de emojis; utiliza iconos vectoriales SVG.
  */
 export function ChatPanel({
   diagramId,
@@ -177,6 +170,7 @@ export function ChatPanel({
     setSpeakingText(text);
     window.speechSynthesis.speak(utterance);
   };
+
   const [appliedDeltaIds, setAppliedDeltaIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(`amongus_applied_deltas_${diagramId}`);
@@ -209,7 +203,6 @@ export function ChatPanel({
   const visibleInterpreterRefusal =
     interpreterRefusal && interpreterRefusal !== dismissedRefusal ? interpreterRefusal : null;
 
-  // Auto-descartar error visual despues de 7 segundos
   useEffect(() => {
     if (visibleInterpreterError) {
       const timer = setTimeout(() => {
@@ -219,7 +212,6 @@ export function ChatPanel({
     }
   }, [visibleInterpreterError, interpreterError]);
 
-  // Auto-descartar rechazo visual despues de 7 segundos
   useEffect(() => {
     if (visibleInterpreterRefusal) {
       const timer = setTimeout(() => {
@@ -233,20 +225,17 @@ export function ChatPanel({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastActiveProposalIdRef = useRef<string | null>(null);
 
-  // Auto-scroll exclusivamente interno al contenedor de mensajes (evita scroll o saltos en la ventana)
   useEffect(() => {
     if (isOpen && messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
   }, [safeMessages.length, activeProposal?.deltaId, visibleInterpreterError, interpreterRefusal, streamingBotMessage, isOpen]);
 
-  // Determinar la propuesta pendiente más reciente (prioriza activeProposal o el último mensaje del chat con delta pendiente si es reciente)
   const pendingChatProposal = useMemo(() => {
     const NOW = Date.now();
     for (let i = safeMessages.length - 1; i >= 0; i--) {
       const m = safeMessages[i];
       if (m?.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId)) {
-        // Solo considerar como propuesta activa de previsualización si fue creada en los últimos 15 minutos
         const msgTime = new Date(m.createdAt).getTime();
         const isRecent = !isNaN(msgTime) && NOW - msgTime < 15 * 60 * 1000;
         if (isRecent) {
@@ -262,7 +251,6 @@ export function ChatPanel({
       ? activeProposal
       : pendingChatProposal;
 
-  // Actualizar previsualización fantasma en el lienzo cuando hay propuesta activa o en el chat
   useEffect(() => {
     if (currentPreviewProposal) {
       if (lastActiveProposalIdRef.current !== currentPreviewProposal.deltaId) {
@@ -282,25 +270,17 @@ export function ChatPanel({
     const trimmed = (textOverride !== undefined ? textOverride : draft).trim();
     if (!trimmed || isSending || interpreterPhase === 'thinking') return;
 
-    // 1. Comando de cliente: /help [comando]
+    // /help
     if (trimmed === '/help' || trimmed.startsWith('/help ')) {
       const arg = trimmed.slice(5).trim();
       setDraft('');
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
+      addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
       const helpContent = buildHelpContent(arg || undefined, isEn);
-      addLocalMessage({
-        senderType: 'bot',
-        senderName: 'Amongus',
-        content: helpContent,
-      });
+      addLocalMessage({ senderType: 'bot', senderName: 'Amongus', content: helpContent });
       return;
     }
 
-    // 1b. Comando de cliente: /reset (vaciar contexto de memoria)
+    // /reset
     if (trimmed === '/reset') {
       setDraft('');
       clearMessages();
@@ -315,17 +295,13 @@ export function ChatPanel({
       return;
     }
 
-    // 1c. Comando: /context (monitor de tokens y velocidad persistido en PostgreSQL)
+    // /context
     if (trimmed === '/context') {
       setDraft('');
       try {
         await sendMessage('/context');
       } catch {
-        addLocalMessage({
-          senderType: 'user',
-          senderName: userName,
-          content: trimmed,
-        });
+        addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
         addLocalMessage({
           senderType: 'bot',
           senderName: 'Amongus',
@@ -335,14 +311,10 @@ export function ChatPanel({
       return;
     }
 
-    // 1d. Comando de cliente: /layout (auto-ordenamiento estructurado)
+    // /layout
     if (trimmed === '/layout') {
       setDraft('');
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
+      addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
       if (onAutoLayout) {
         const res = onAutoLayout();
         if (!res.ok || res.classCount === 0) {
@@ -375,18 +347,13 @@ export function ChatPanel({
       return;
     }
 
-    // 1e. Comando de cliente: /apply (aplicar y materializar propuesta o sugerencia)
+    // /apply
     if (trimmed === '/apply' || trimmed === '/aplicar' || trimmed.startsWith('/apply ') || trimmed.startsWith('/aplicar ')) {
       const specificArg = trimmed.replace(/^\/(?:apply|aplicar)\s*/i, '').trim();
       setDraft('');
 
-      // 1. Revisar si hay propuesta activa pendiente en lienzo
       if (activeProposal && !appliedDeltaIds.has(activeProposal.deltaId) && !specificArg) {
-        addLocalMessage({
-          senderType: 'user',
-          senderName: userName,
-          content: trimmed,
-        });
+        addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
         await handleConfirm(activeProposal.deltaId, activeProposal.delta);
         addLocalMessage({
           senderType: 'bot',
@@ -398,17 +365,12 @@ export function ChatPanel({
         return;
       }
 
-      // 2. Buscar la última propuesta con delta no aplicada en el historial de mensajes
       const pendingMsg = [...safeMessages]
         .reverse()
         .find((m) => m.delta && m.deltaId && !appliedDeltaIds.has(m.deltaId) && !rejectedDeltaIds.has(m.deltaId));
 
       if (pendingMsg && pendingMsg.deltaId && pendingMsg.delta && !specificArg) {
-        addLocalMessage({
-          senderType: 'user',
-          senderName: userName,
-          content: trimmed,
-        });
+        addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
         await handleConfirm(pendingMsg.deltaId, pendingMsg.delta);
         addLocalMessage({
           senderType: 'bot',
@@ -420,22 +382,15 @@ export function ChatPanel({
         return;
       }
 
-      // 3. Si no hay propuesta activa ni en mensajes para confirmar, enviar el comando a Amongus
-      // para que sintetice la sugerencia previa y genere la propuesta de modelado fantasma en el lienzo.
-      // sendMessage ya crea el mensaje de usuario de forma optimista y lo persiste en backend sin duplicar.
       await sendMessage(trimmed);
       return;
     }
 
-    // 2. Comando de cliente: /export [formato]
+    // /export
     if (trimmed === '/export' || trimmed.startsWith('/export ')) {
       const arg = trimmed.slice(7).trim().toLowerCase();
       setDraft('');
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
+      addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
 
       if (arg === 'spring') {
         const springBtn = document.querySelector('button[data-testid="export-spring"], button[aria-label*="Spring" i], button[title*="Spring" i]') as HTMLButtonElement | null;
@@ -504,18 +459,13 @@ export function ChatPanel({
       return;
     }
 
-    // 3. Comando de cliente: /clear (vaciado con propuesta de seguridad)
+    // /clear
     if (trimmed === '/clear' || trimmed === '/clear canvas' || trimmed === '/clear lienzo') {
       setDraft('');
       setDismissedError(interpreterError);
       setDismissedRefusal(interpreterRefusal);
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
+      addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
       if (onClearCanvas) {
-        // Invalidar propuestas pendientes previas al vaciar lienzo
         setRejectedDeltaIds((prev) => {
           const next = new Set([...prev]);
           for (const m of safeMessages) {
@@ -560,11 +510,7 @@ export function ChatPanel({
       setDismissedError(interpreterError);
       setDismissedRefusal(interpreterRefusal);
       clearMessages();
-      addLocalMessage({
-        senderType: 'user',
-        senderName: userName,
-        content: trimmed,
-      });
+      addLocalMessage({ senderType: 'user', senderName: userName, content: trimmed });
       addLocalMessage({
         senderType: 'bot',
         senderName: 'Amongus',
@@ -585,7 +531,6 @@ export function ChatPanel({
 
       await sendMessage(trimmed);
     } catch {
-      // Error manejado por useChat
     } finally {
       setIsSending(false);
     }
@@ -603,7 +548,6 @@ export function ChatPanel({
       } catch {}
       return next;
     });
-    // Invalidar cualquier otra propuesta pendiente previa para que no quede obsoleta en la cola
     setRejectedDeltaIds((prev) => {
       const next = new Set([...prev]);
       for (const m of safeMessages) {
@@ -648,218 +592,40 @@ export function ChatPanel({
       aria-label="Panel de chat colaborativo y Amongus"
       data-testid="chat-panel"
     >
-      {/* Cabecera */}
-      <div className="chat-panel__header">
-        <div className="chat-panel__header-info">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#4f46e5' }}>
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <h2 className="chat-panel__title">{isEn ? 'Diagram Chat' : 'Chat del Diagrama'}</h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="chat-panel__close-btn"
-          aria-label={isEn ? 'Close chat' : 'Cerrar chat'}
-          title={isEn ? 'Close chat' : 'Cerrar chat'}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
+      <ChatHeader
+        isEn={isEn}
+        activeChannel={activeChannel}
+        setActiveChannel={setActiveChannel}
+        onClose={onClose}
+      />
 
-      {/* Selector de pestañas */}
-      <div className="chat-panel__tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeChannel === 'group'}
-          className={`chat-panel__tab ${activeChannel === 'group' ? 'chat-panel__tab--active' : ''}`}
-          onClick={() => setActiveChannel('group')}
-          data-testid="chat-tab-group"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>
-          <span>{isEn ? 'Team' : 'Equipo'}</span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeChannel === 'direct_bot'}
-          className={`chat-panel__tab ${activeChannel === 'direct_bot' ? 'chat-panel__tab--active' : ''}`}
-          onClick={() => setActiveChannel('direct_bot')}
-          data-testid="chat-tab-amongus"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="10" rx="2" />
-            <circle cx="12" cy="5" r="2" />
-            <path d="M12 7v4" />
-            <line x1="8" y1="16" x2="8" y2="16" strokeWidth="3" />
-            <line x1="16" y1="16" x2="16" y2="16" strokeWidth="3" />
-          </svg>
-          <span>{isEn ? 'Assistant' : 'Asistente'}</span>
-        </button>
-      </div>
-
-      {/* Lista de mensajes */}
-      <div className="chat-panel__messages" ref={messagesContainerRef} data-testid="chat-messages-container">
-        {safeMessages.length === 0 && !isLoading && !activeProposal && (
-          <div className="chat-panel__empty">
-            <p>
-              {activeChannel === 'group'
-                ? isEn
-                  ? 'No messages yet. Chat with your team or type a modeling command.'
-                  : 'No hay mensajes aún. Chateá con tu equipo o indicá un comando de modelado.'
-                : isEn
-                  ? 'Ask questions or type modeling commands (e.g. "add class Order").'
-                  : 'Hacé preguntas o indicá comandos de modelado (ej. "crear clase Pedido").'}
-            </p>
-          </div>
-        )}
-
-        {safeMessages.map((msg) => (
-          <ChatMessageItem
-            key={msg.id}
-            msg={msg}
-            userName={userName}
-            isEn={isEn}
-            speakingText={speakingText}
-            handleSpeakText={handleSpeakText}
-            handleConfirm={handleConfirm}
-            handleReject={handleReject}
-            appliedDeltaIds={appliedDeltaIds}
-            rejectedDeltaIds={rejectedDeltaIds}
-            buildingDeltaId={buildingDeltaId}
-            existingClasses={existingClasses}
-            currentPreviewProposal={currentPreviewProposal}
-          />
-        ))}
-
-        {/* Tarjeta de propuesta activa */}
-        {activeProposal &&
-          !appliedDeltaIds.has(activeProposal.deltaId) &&
-          !rejectedDeltaIds.has(activeProposal.deltaId) &&
-          !safeMessages.some((m) => m.deltaId === activeProposal.deltaId) && (
-          <div className="chat-message chat-message--bot" data-testid="chat-active-proposal">
-            <div className="chat-message__avatar-container">
-              <AmongusAvatar size={30} isAnimated={buildingDeltaId === activeProposal.deltaId} />
-            </div>
-            <div className="chat-message__body">
-              <div className="chat-message__header">
-                <span className="chat-message__sender">Amongus</span>
-                <span className="chat-message__tag-bot">Bot</span>
-              </div>
-              <div className="chat-message__bubble">
-                <ProposalCard
-                  deltaId={activeProposal.deltaId}
-                  delta={activeProposal.delta}
-                  onConfirm={handleConfirm}
-                  onReject={handleReject}
-                  isApplied={appliedDeltaIds.has(activeProposal.deltaId)}
-                  isRejected={rejectedDeltaIds.has(activeProposal.deltaId)}
-                  isBuilding={buildingDeltaId === activeProposal.deltaId}
-                  existingClasses={existingClasses}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mensaje de rechazo con rol de alerta */}
-        {visibleInterpreterRefusal && (
-          <div className="chat-message chat-message--bot" role="alert">
-            <div className="chat-message__avatar-container">
-              <AmongusAvatar size={30} />
-            </div>
-            <div className="chat-message__body">
-              <div className="chat-message__header">
-                <span className="chat-message__sender">Amongus</span>
-                <span className="chat-message__tag-bot">Bot</span>
-                <button
-                  type="button"
-                  onClick={() => setDismissedRefusal(interpreterRefusal)}
-                  className="chat-error-dismiss-btn"
-                  title={isEn ? 'Dismiss message' : 'Cerrar mensaje'}
-                  aria-label={isEn ? 'Dismiss message' : 'Cerrar mensaje'}
-                >
-                  &times;
-                </button>
-              </div>
-              <div className="chat-message__bubble interpreter-refusal">
-                {isEn ? `Refused: ${visibleInterpreterRefusal}` : `Rechazado: ${visibleInterpreterRefusal}`}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mensaje de error con rol de alerta */}
-        {visibleInterpreterError && (
-          <div className="chat-message chat-message--bot" role="alert">
-            <div className="chat-message__avatar-container">
-              <AmongusAvatar size={30} />
-            </div>
-            <div className="chat-message__body">
-              <div className="chat-message__header">
-                <span className="chat-message__sender">Amongus</span>
-                <span className="chat-message__tag-bot">Bot</span>
-                <button
-                  type="button"
-                  onClick={() => setDismissedError(interpreterError)}
-                  className="chat-error-dismiss-btn"
-                  title={isEn ? 'Dismiss error' : 'Cerrar mensaje de error'}
-                  aria-label={isEn ? 'Dismiss error' : 'Cerrar error'}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="chat-message__bubble interpreter-error">
-                {visibleInterpreterError}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Indicador de pensamiento */}
-        {interpreterPhase === 'thinking' && (
-          <div className="chat-message chat-message--bot" aria-live="polite">
-            <div className="chat-message__avatar-container">
-              <AmongusAvatar size={30} isAnimated={true} />
-            </div>
-            <div className="chat-message__body">
-              <div className="chat-message__bubble chat-panel__thinking">
-                <span>{isEn ? 'Thinking...' : 'Pensando...'}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Respuesta de Amongus en tiempo real (streaming progresivo) */}
-        {streamingBotMessage !== null && (
-          <div className="chat-message chat-message--bot" aria-live="polite">
-            <div className="chat-message__avatar-container">
-              <AmongusAvatar size={30} isAnimated={true} />
-            </div>
-            <div className="chat-message__body">
-              <div className="chat-message__header">
-                <span className="chat-message__sender">Amongus</span>
-                <span className="chat-message__tag-bot">Bot</span>
-              </div>
-              <div className="chat-message__bubble">
-                {renderStreamingContent(streamingBotMessage, isEn)}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
+      <ChatMessagesList
+        safeMessages={safeMessages}
+        isLoading={isLoading}
+        activeChannel={activeChannel}
+        userName={userName}
+        isEn={isEn}
+        speakingText={speakingText}
+        handleSpeakText={handleSpeakText}
+        handleConfirm={handleConfirm}
+        handleReject={handleReject}
+        appliedDeltaIds={appliedDeltaIds}
+        rejectedDeltaIds={rejectedDeltaIds}
+        buildingDeltaId={buildingDeltaId}
+        existingClasses={existingClasses}
+        currentPreviewProposal={currentPreviewProposal}
+        activeProposal={activeProposal}
+        visibleInterpreterRefusal={visibleInterpreterRefusal}
+        visibleInterpreterError={visibleInterpreterError}
+        interpreterRefusal={interpreterRefusal}
+        interpreterError={interpreterError}
+        setDismissedRefusal={setDismissedRefusal}
+        setDismissedError={setDismissedError}
+        interpreterPhase={interpreterPhase}
+        streamingBotMessage={streamingBotMessage}
+        messagesContainerRef={messagesContainerRef}
+        messagesEndRef={messagesEndRef}
+      />
 
       {(error || voiceError) && (
         <div
@@ -870,155 +636,29 @@ export function ChatPanel({
         </div>
       )}
 
-      {/* Formulario de entrada con mic y send */}
-      <form onSubmit={handleSend} className="chat-panel__footer" style={{ position: 'relative' }}>
-        {/* Popover de autocompletado de comandos slash */}
-        {isSlashQuery && matchingCommands.length > 0 && (
-          <div className="chat-panel__command-popover" role="listbox" aria-label={isEn ? 'Slash commands' : 'Comandos slash'}>
-            {matchingCommands.map((cmd, idx) => {
-              const isSelected = idx === selectedCommandIndex;
-              return (
-                <div
-                  key={cmd.name}
-                  className={`chat-panel__command-item ${isSelected ? 'chat-panel__command-item--active' : ''}`}
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    if (cmd.name === 'audit' || cmd.name === 'suggest' || cmd.name === 'clear' || cmd.name === 'layout') {
-                      setDraft(`/${cmd.name}`);
-                    } else {
-                      setDraft(`/${cmd.name} `);
-                    }
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <span className="chat-panel__command-usage">{isEn ? cmd.usageEn : cmd.usage}</span>
-                  <span className="chat-panel__command-desc">{isEn ? cmd.descriptionEn : cmd.description}</span>
-                  <span className={`chat-panel__command-badge ${cmd.scope === 'server' ? 'chat-panel__command-badge--server' : ''}`}>
-                    {cmd.scope === 'server' ? 'IA' : '0ms'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Popover de autocompletado de menciones @ */}
-        {!isSlashQuery && isMentionQuery && matchingMentions.length > 0 && (
-          <div className="chat-panel__command-popover" role="listbox" aria-label={isEn ? 'Mentions' : 'Menciones'}>
-            {matchingMentions.map((item, idx) => {
-              const isSelected = idx === selectedMentionIndex;
-              return (
-                <div
-                  key={item.name}
-                  className={`chat-panel__command-item ${isSelected ? 'chat-panel__command-item--active' : ''}`}
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => handleSelectMention(item.name)}
-                >
-                  <span
-                    className="chat-panel__command-usage"
-                    style={{ fontWeight: 600, color: item.isBot ? '#7c3aed' : '#2563eb' }}
-                  >
-                    @{item.name}
-                  </span>
-                  <span className="chat-panel__command-desc">{item.role}</span>
-                  <span className={`chat-panel__command-badge ${item.isBot ? 'chat-panel__command-badge--server' : ''}`}>
-                    {item.isBot ? 'Bot' : 'User'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="chat-panel__input-group">
-          <input
-            ref={inputRef}
-            type="text"
-            className="chat-panel__input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              isTranscribing
-                ? isEn
-                  ? 'Transcribing audio with Groq Whisper...'
-                  : 'Transcribiendo audio con Groq Whisper...'
-                : activeChannel === 'group'
-                  ? isEn
-                    ? 'Write a message or command...'
-                    : 'Escribí un mensaje o comando...'
-                  : isEn
-                    ? 'Ask a question or type a UML command...'
-                    : 'Hacé una pregunta o comando UML...'
-            }
-            aria-label={isEn ? 'Natural language command' : 'Comando en lenguaje natural'}
-            data-testid="chat-input"
-            disabled={isSending || interpreterPhase === 'thinking' || isTranscribing}
-          />
-
-          {voiceRecorder !== null && (
-            <button
-              type="button"
-              onClick={onToggleRecord ?? handleInternalToggleRecord}
-              disabled={isSending || interpreterPhase === 'thinking' || isTranscribing}
-              className={`chat-panel__record-btn ${activeRecording ? 'chat-panel__record-btn--active' : ''} ${isTranscribing ? 'chat-panel__record-btn--transcribing' : ''}`}
-              aria-label={
-                isTranscribing
-                  ? isEn ? 'Transcribing' : 'Transcribiendo'
-                  : activeRecording
-                    ? isEn ? 'Stop' : 'Detener'
-                    : isEn ? 'Record' : 'Grabar'
-              }
-              title={
-                isTranscribing
-                  ? isEn ? 'Transcribing with Groq Whisper...' : 'Transcribiendo con Groq Whisper...'
-                  : activeRecording
-                    ? isEn ? 'Stop recording' : 'Detener grabación'
-                    : isEn ? 'Record voice' : 'Grabar voz'
-              }
-              data-testid="chat-record-btn"
-            >
-              {isTranscribing ? (
-                <div className="chat-panel__transcribe-spinner" />
-              ) : activeRecording ? (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="5" y="5" width="14" height="14" rx="2" />
-                  </svg>
-                  <span className="sr-only">{isEn ? 'Stop' : 'Detener'}</span>
-                </>
-              ) : (
-                <>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="22" />
-                  </svg>
-                  <span className="sr-only">{isEn ? 'Record' : 'Grabar'}</span>
-                </>
-              )}
-            </button>
-          )}
-
-          <button
-            type="submit"
-            onClick={handleSend}
-            className="chat-panel__send-btn"
-            disabled={isSending || interpreterPhase === 'thinking' || draft.trim().length === 0}
-            aria-label={isEn ? 'Send' : 'Enviar'}
-            title={isEn ? 'Send' : 'Enviar'}
-            data-testid="chat-send-btn"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-            <span className="sr-only">{isEn ? 'Send' : 'Enviar'}</span>
-          </button>
-        </div>
-      </form>
+      <ChatInputBar
+        isEn={isEn}
+        draft={draft}
+        setDraft={setDraft}
+        inputRef={inputRef}
+        handleSend={handleSend}
+        handleKeyDown={handleKeyDown}
+        isSending={isSending}
+        interpreterPhase={interpreterPhase}
+        isTranscribing={isTranscribing}
+        activeChannel={activeChannel}
+        voiceRecorder={voiceRecorder}
+        activeRecording={activeRecording}
+        onToggleRecord={onToggleRecord}
+        handleInternalToggleRecord={handleInternalToggleRecord}
+        isSlashQuery={isSlashQuery}
+        matchingCommands={matchingCommands}
+        selectedCommandIndex={selectedCommandIndex}
+        isMentionQuery={isMentionQuery}
+        matchingMentions={matchingMentions}
+        selectedMentionIndex={selectedMentionIndex}
+        handleSelectMention={handleSelectMention}
+      />
     </div>
   );
 }
