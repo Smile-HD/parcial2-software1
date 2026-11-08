@@ -13,7 +13,7 @@ import {
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from '../synthesis/domain-catalog/router.js';
 import { resolveDiagramFactualQuery } from '../diagram-query-resolver.js';
 import { auditDiagramOOAD } from '../diagram-auditor.js';
-import { evaluateChatGuard } from '../chat-guard.js';
+import { evaluateChatGuard } from './chat-guard.js';
 import {
   normalizeUmlUtterance,
   detectContradiction,
