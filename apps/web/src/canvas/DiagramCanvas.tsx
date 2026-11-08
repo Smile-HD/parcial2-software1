@@ -36,6 +36,12 @@ import {
   type QuickLinkerKind,
 } from './quickLinker';
 import { t, useT, type TKey } from '../i18n';
+import { useCanvasZoom } from './hooks/useCanvasZoom.js';
+import { useQuickLinker, type QuickLinkerMenuState } from './hooks/useQuickLinker.js';
+import { usePaletteDnD } from './hooks/usePaletteDnD.js';
+import { EdgeEditorPanel } from './components/EdgeEditorPanel.js';
+import { NaryEditorPanel } from './components/NaryEditorPanel.js';
+import { ClassDetailsPanel } from './components/ClassDetailsPanel.js';
 
 const nodeTypes = { class: ClassNode, naryDiamond: NaryDiamondNode };
 const edgeTypes = { association: AssociationEdge, generalization: GeneralizationEdge, realization: RealizationEdge, dependency: DependencyEdge, naryEnd: NaryEndEdge };
@@ -118,32 +124,6 @@ export interface DiagramCanvasProps {
   virtualPeer?: RemoteCursorPeer | null;
 }
 
-/**
- * unidad 13d — Quick Linker estilo EA: el menú abierto cuando finaliza el arrastre
- * de enlace rápido. 'connector' = soltado sobre un elemento existente (el menú lista los
- * conectores válidos origen→destino); 'element' = soltado sobre lienzo vacío (el menú lista
- * los tipos creables; seleccionar uno crea el elemento EN el punto de soltado y luego
- * encadena hacia el menú de conectores — elemento+conector en un solo gesto).
- * `anchor` es el punto en pantalla donde se renderiza el menú; `dropPosition` es el
- * punto en coordenadas de flujo donde se crea el nuevo elemento.
- */
-type QuickLinkerMenuState =
-  | {
-      mode: 'connector';
-      anchor: { x: number; y: number };
-      sourceId: string;
-      sourceKind: QuickLinkerKind;
-      targetId: string;
-      targetKind: QuickLinkerKind;
-    }
-  | {
-      mode: 'element';
-      anchor: { x: number; y: number };
-      sourceId: string;
-      sourceKind: QuickLinkerKind;
-      dropPosition: { x: number; y: number };
-    };
-
 export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: DiagramCanvasProps) {
   // unidad 13e.10 — accesor reactivo: cada cadena JSX a continuación se re-renderiza en vivo
   // cuando cambia el alternador de idioma (`t` a nivel de módulo atiende los controladores).
@@ -199,90 +179,15 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
   useEffect(() => {
     broadcastSelection(selectedClassId ? [selectedClassId] : []);
   }, [selectedClassId, broadcastSelection]);
-  // Último punto donde se hizo clic en el lienzo (en coordenadas de flujo de React Flow)
-  const lastClickedPointRef = useRef<{ x: number; y: number } | null>(null);
-  const [currentZoom, setCurrentZoom] = useState<number>(1);
 
-  const recordClickPoint = useCallback((clientX: number, clientY: number) => {
-    if (!rfRef.current) return;
-    try {
-      const flowPos = rfRef.current.screenToFlowPosition({ x: clientX, y: clientY });
-      if (Number.isFinite(flowPos.x) && Number.isFinite(flowPos.y)) {
-        lastClickedPointRef.current = flowPos;
-      }
-    } catch {
-      // Ignorar si el viewport aún no está listo
-    }
-  }, []);
-
-  const handleCanvasClickCapture = useCallback(
-    (e: React.MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target?.closest('.diagram-zoom-controls') ||
-        target?.closest('.palette') ||
-        target?.closest('.diagram-canvas__edge-editor') ||
-        target?.closest('.diagram-canvas__nary-editor') ||
-        target?.closest('.staruml-mult-picker')
-      ) {
-        return;
-      }
-      recordClickPoint(e.clientX, e.clientY);
-    },
-    [recordClickPoint],
-  );
-
-  const getZoomTarget = useCallback((): { x: number; y: number } => {
-    if (lastClickedPointRef.current) {
-      return lastClickedPointRef.current;
-    }
-    if (rfRef.current) {
-      try {
-        const flowCenter = rfRef.current.screenToFlowPosition({
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2,
-        });
-        if (Number.isFinite(flowCenter.x) && Number.isFinite(flowCenter.y)) {
-          return flowCenter;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    if (diagram.classes.length > 0) {
-      return { x: diagram.classes[0].position.x + 80, y: diagram.classes[0].position.y + 60 };
-    }
-    return { x: 400, y: 300 };
-  }, [diagram.classes]);
-
-  const handleZoomIn = useCallback(() => {
-    const target = getZoomTarget();
-    const current = rfRef.current?.getZoom?.() ?? currentZoom;
-    const nextZoom = computeNextZoom(current, 'in');
-    rfRef.current?.setCenter?.(target.x, target.y, { zoom: nextZoom, duration: 250 });
-    setCurrentZoom(nextZoom);
-  }, [getZoomTarget, currentZoom]);
-
-  const handleZoomOut = useCallback(() => {
-    const target = getZoomTarget();
-    const current = rfRef.current?.getZoom?.() ?? currentZoom;
-    const nextZoom = computeNextZoom(current, 'out');
-    rfRef.current?.setCenter?.(target.x, target.y, { zoom: nextZoom, duration: 250 });
-    setCurrentZoom(nextZoom);
-  }, [getZoomTarget, currentZoom]);
-
-  const handleZoomReset = useCallback(() => {
-    rfRef.current?.fitView?.({ duration: 250, padding: 0.2 });
-    setCurrentZoom(1);
-  }, []);
-
-  // unidad 13d — Quick Linker: extremos de arrastre en vivo (coords de pantalla, para la
-  // banda elástica) y el menú abierto cuando finaliza el arrastre.
-  const [quickLinkDrag, setQuickLinkDrag] = useState<{
-    start: { x: number; y: number };
-    cursor: { x: number; y: number };
-  } | null>(null);
-  const [quickLinkMenu, setQuickLinkMenu] = useState<QuickLinkerMenuState | null>(null);
+  const {
+    currentZoom,
+    recordClickPoint,
+    handleCanvasClickCapture,
+    handleZoomIn,
+    handleZoomOut,
+    handleZoomReset,
+  } = useCanvasZoom({ rfRef, classes: diagram.classes });
 
   useEffect(() => {
     const sync = (_update: Uint8Array, origin: unknown): void => {
@@ -324,272 +229,32 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
     };
   }, [diagram.classes]);
 
-  /** unidad 13b — permitir soltar elementos de la paleta sobre el lienzo. */
-  const onDragOver = useCallback((event: DragEvent): void => {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'copy';
-    }
-  }, []);
+  const {
+    quickLinkDrag,
+    quickLinkMenu,
+    setQuickLinkMenu,
+    startQuickLink,
+    pickQuickConnector,
+    pickQuickElement,
+  } = useQuickLinker({ doc, rfRef, setEdgeMessage });
 
-  /**
-   * unidad 13b — soltar de la paleta: lee el tipo de nodo arrastrado desde
-   * dataTransfer, convierte el punto de pantalla a coordenadas de flujo (ajustado
-   * a la cuadrícula de 20px estilo EA), y emite el delta de creación de clase/interfaz.
-   */
-  const onDrop = useCallback(
-    (event: DragEvent): void => {
-      event.preventDefault();
-      if (event.dataTransfer === undefined || event.dataTransfer === null) {
-        return;
-      }
-      const kind = event.dataTransfer.getData(PALETTE_DND_MIME);
-      if (kind !== 'class' && kind !== 'interface') {
-        return;
-      }
-      const screenPos = { x: event.clientX, y: event.clientY };
-      // screenToFlowPosition necesita un viewport medido; antes de que React Flow se haya
-      // dispuesto (o en contenedores de prueba de tamaño cero) puede retornar NaN — recurre
-      // al punto crudo de pantalla para que un soltado nunca emita un delta inválido.
-      let position = screenPos;
-      if (rfRef.current !== null) {
-        const flow = rfRef.current.screenToFlowPosition(screenPos);
-        if (Number.isFinite(flow.x) && Number.isFinite(flow.y)) {
-          position = {
-            x: Math.round(flow.x / 20) * 20,
-            y: Math.round(flow.y / 20) * 20,
-          };
-        }
-      }
-      handlePaletteDrop(doc, diagram.id, {
-        kind,
-        position,
-        existingNames: diagram.classes.map((cls) => cls.name),
-      });
-    },
-    [doc, diagram],
-  );
-
-  /**
-   * Comodidad estilo EA: clic directo en la paleta para colocar un clasificador
-   * centrado en el viewport sin forzar el gesto de arrastre.
-   */
-  const handlePaletteQuickAdd = useCallback(
-    (kind: PaletteNodeKind): void => {
-      const live = projectYDocToDiagram(doc);
-      let position = { x: 200, y: 160 };
-      if (rfRef.current !== null) {
-        const container = document.querySelector('.diagram-canvas .react-flow');
-        if (container !== null) {
-          const rect = container.getBoundingClientRect();
-          const centerScreen = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-          const flowPos = rfRef.current.screenToFlowPosition(centerScreen);
-          if (Number.isFinite(flowPos.x) && Number.isFinite(flowPos.y)) {
-            position = {
-              x: Math.round(flowPos.x / 20) * 20,
-              y: Math.round(flowPos.y / 20) * 20,
-            };
-          }
-        }
-      }
-      while (
-        live.classes.some(
-          (c) => Math.abs(c.position.x - position.x) < 20 && Math.abs(c.position.y - position.y) < 20,
-        )
-      ) {
-        position.x += 40;
-        position.y += 40;
-      }
-      const newId = handlePaletteDrop(doc, live.id, {
-        kind,
-        position,
-        existingNames: live.classes.map((cls) => cls.name),
-      });
-      setSelectedClassId(newId);
-    },
-    [doc],
-  );
-
-  /**
-   * unidad 13b — conexión de React Flow completada mientras una herramienta de arista está armada:
-   * delega al controlador protegido y expone cualquier mensaje de rechazo. En caso
-   * de éxito la herramienta se desarma automáticamente (un solo uso); en caso de rechazo permanece armada
-   * para que el usuario pueda reintentar. Escape o hacer clic en el ítem de la paleta nuevamente
-   * también la desarma.
-   */
-  const onConnect = useCallback(
-    (connection: Connection): void => {
-      const activeTool = edgeTool ?? 'association';
-      const result = handleConnectWithTool(
-        doc,
-        diagram.id,
-        activeTool,
-        { source: connection.source ?? null, target: connection.target ?? null },
-        diagram.classes.map((cls) => ({ id: cls.id, kind: cls.kind ?? ('class' as const) })),
-      );
-      setEdgeMessage(result.ok ? null : (result.message ?? null));
-      if (result.ok && edgeTool !== null) {
-        setEdgeTool(null);
-      }
-    },
-    [doc, diagram, edgeTool],
-  );
-
-  const isValidConnection = useCallback((connection: Edge | Connection): boolean => {
-    return Boolean(connection.source && connection.target);
-  }, []);
-  const onReconnect = useCallback(
-    (oldEdge: Edge, newConnection: Connection): void => {
-      if (!newConnection.source || !newConnection.target) return;
-      const assoc = diagram.associations.find((a) => a.id === oldEdge.id);
-      if (assoc) {
-        if (newConnection.source !== assoc.sourceClassId || newConnection.target !== assoc.targetClassId) {
-          handleDeleteAssociation(doc, diagram.id, assoc.id);
-          handleCreateAssociation(doc, diagram.id, {
-            sourceClassId: newConnection.source,
-            targetClassId: newConnection.target,
-            directed: assoc.directed,
-            aggregation: assoc.aggregation,
-            aggregationEnd: assoc.aggregationEnd,
-            sourceMultiplicity: assoc.sourceMultiplicity,
-            targetMultiplicity: assoc.targetMultiplicity,
-            name: assoc.name,
-            sourceRole: assoc.sourceRole,
-            targetRole: assoc.targetRole,
-            associationClassId: assoc.associationClassId,
-          });
-        }
-      }
-      setEdgeHandles((prev) => ({
-        ...prev,
-        [oldEdge.id]: {
-          sourceHandle: newConnection.sourceHandle ?? prev[oldEdge.id]?.sourceHandle,
-          targetHandle: newConnection.targetHandle ?? prev[oldEdge.id]?.targetHandle,
-        },
-      }));
-    },
-    [doc, diagram],
-  );
-
-  /**
-   * unidad 13d — Quick Linker estilo EA, resolución de soltado. Dado el punto de pantalla
-   * en pointer-up: convierte a coordenadas de flujo (misma protección de finitud que el
-   * soltado de paleta), prueba impacto en los nodos de clase (tamaño medido cuando React Flow
-   * tiene uno — jsdom nunca mide, por lo que aplica la caja predeterminada), luego abre
-   * el menú de conectores sobre un elemento o el menú de elementos sobre lienzo
-   * vacío. Soltar de vuelta sobre el propio origen abre el menú de conectores
-   * con conectores válidos para autoenlace (asociación/agregación/composición/dependencia;
-   * generalización excluida porque la autoherencia es un ciclo).
-   */
-  const finishQuickLink = (sourceId: string, cursor: { x: number; y: number }): void => {
-    // El Y.Doc es la fuente de verdad: resolver todo desde una proyección
-    // FRESCA para que una edición colaborativa durante el arrastre nunca quede obsoleta.
-    const live = projectYDocToDiagram(doc);
-    let dropPoint = cursor;
-    if (rfRef.current !== null) {
-      const flow = rfRef.current.screenToFlowPosition(cursor);
-      if (Number.isFinite(flow.x) && Number.isFinite(flow.y)) {
-        dropPoint = flow;
-      }
-    }
-    const measuredById = new Map((rfRef.current?.getNodes() ?? []).map((n) => [n.id, n.measured]));
-    const hitNodes = live.classes.map((cls) => ({
-      id: cls.id,
-      position: cls.position,
-      width: measuredById.get(cls.id)?.width,
-      height: measuredById.get(cls.id)?.height,
-    }));
-    const sourceKind = (live.classes.find((cls) => cls.id === sourceId)?.kind ?? 'class') as QuickLinkerKind;
-    const targetId = quickLinkerTarget(dropPoint, hitNodes);
-    if (targetId === null) {
-      setQuickLinkMenu({ mode: 'element', anchor: cursor, sourceId, sourceKind, dropPosition: dropPoint });
-      return;
-    }
-    if (targetId === sourceId) {
-      // Autoenlace: abrir menú de conectores con conectores válidos para autoenlace (excluye generalización)
-      const targetKind = sourceKind;
-      setQuickLinkMenu({ mode: 'connector', anchor: cursor, sourceId, sourceKind, targetId, targetKind });
-      return;
-    }
-    const targetKind = (live.classes.find((cls) => cls.id === targetId)?.kind ?? 'class') as QuickLinkerKind;
-    setQuickLinkMenu({ mode: 'connector', anchor: cursor, sourceId, sourceKind, targetId, targetKind });
-  };
-
-  /**
-   * unidad 13d — pointer-down en la flecha de la esquina del nodo seleccionado inicia el
-   * arrastre de enlace rápido: una delgada banda elástica sigue al cursor (oyentes a nivel
-   * de ventana, removidos en pointer-up) y el soltado es resuelto por
-   * `finishQuickLink`. Esta es la ruta rápida estilo EA; la ruta 13c de armar herramienta +
-   * arrastrar cuerpo permanece completamente intacta.
-   */
-  const startQuickLink = (sourceId: string, clientX: number, clientY: number): void => {
-    const start = { x: clientX, y: clientY };
-    setQuickLinkDrag({ start, cursor: start });
-    setQuickLinkMenu(null);
-    const onMove = (event: MouseEvent): void => {
-      setQuickLinkDrag((prev) =>
-        prev === null ? prev : { ...prev, cursor: { x: event.clientX, y: event.clientY } },
-      );
-    };
-    const onUp = (event: MouseEvent): void => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      setQuickLinkDrag(null);
-      finishQuickLink(sourceId, { x: event.clientX, y: event.clientY });
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
-
-  /**
-   * unidad 13d — elegir un conector del menú de Quick Linker: delega al
-   * MISMO despachador protegido que utiliza la ruta de arrastrar para conectar
-   * (`handleConnectWithTool`), de modo que cada protección de UI/motor (extremos distintos,
-   * interfaz en realización, ciclos, duplicados) se aplica textualmente y
-   * los rechazos se muestran a través del canal de mensajes existente.
-   */
-  const pickQuickConnector = (tool: QuickConnectorType): void => {
-    if (quickLinkMenu === null || quickLinkMenu.mode !== 'connector') {
-      return;
-    }
-    const live = projectYDocToDiagram(doc);
-    const result = handleConnectWithTool(
-      doc,
-      live.id,
-      tool,
-      { source: quickLinkMenu.sourceId, target: quickLinkMenu.targetId },
-      live.classes.map((cls) => ({ id: cls.id, kind: cls.kind ?? ('class' as const) })),
-    );
-    setEdgeMessage(result.ok ? null : (result.message ?? null));
-    setQuickLinkMenu(null);
-  };
-
-  /**
-   * unidad 13d — elegir Class/Interface del menú de elementos: crea el
-   * elemento en el punto de soltado (ruta compartida de creación `handlePaletteDrop`),
-   * luego encadena directamente al menú de conectores para origen→nuevo elemento —
-   * elemento + conector en un solo gesto, exactamente como EA.
-   */
-  const pickQuickElement = (kind: string): void => {
-    if (quickLinkMenu === null || quickLinkMenu.mode !== 'element') {
-      return;
-    }
-    const nodeKind: PaletteNodeKind = kind === 'interface' ? 'interface' : 'class';
-    const live = projectYDocToDiagram(doc);
-    const newId = handlePaletteDrop(doc, live.id, {
-      kind: nodeKind,
-      position: quickLinkMenu.dropPosition,
-      existingNames: live.classes.map((cls) => cls.name),
-    });
-    setQuickLinkMenu({
-      mode: 'connector',
-      anchor: quickLinkMenu.anchor,
-      sourceId: quickLinkMenu.sourceId,
-      sourceKind: quickLinkMenu.sourceKind,
-      targetId: newId,
-      targetKind: nodeKind,
-    });
-  };
+  const {
+    onDragOver,
+    onDrop,
+    handlePaletteQuickAdd,
+    onConnect,
+    isValidConnection,
+    onReconnect,
+  } = usePaletteDnD({
+    doc,
+    diagram,
+    rfRef,
+    edgeTool,
+    setEdgeTool,
+    setEdgeMessage,
+    setSelectedClassId,
+    setEdgeHandles,
+  });
 
   const handleRename = (classId: string, newName: string): void => {
     const delta: ClassDelta = {
@@ -1627,304 +1292,37 @@ export function DiagramCanvas({ doc, provider, ghostDelta, virtualPeer }: Diagra
           </button>
         </div>
       )}
-      {/* unidad 13c — UN solo editor de arista unificado para cada tipo de arista: etiqueta +
-          eliminar para todas, multiplicidades/roles solo para asociaciones. El
-          tipo de agregación se elige en el momento de creación vía la paleta
-          (herramientas Agregación/Composición), por lo que aquí no hay menús desplegables. */}
-      {selectedEdgeData && (
-        <div className="diagram-canvas__edge-editor" data-testid="edge-editor" key={selectedEdgeData.edge.id}>
-          <span className="diagram-canvas__edge-editor-title">
-            {tr(EDGE_TYPE_KEYS[selectedEdgeData.type])}
-          </span>
-          <label>
-            {selectedEdgeData.type === 'association' ? tr('editor.associationName') : tr('editor.label')}
-            <input
-              aria-label={
-                selectedEdgeData.type === 'association'
-                  ? tr('editor.associationName')
-                  : tr('editor.labelAria', { type: tr(EDGE_TYPE_KEYS[selectedEdgeData.type]) })
-              }
-              defaultValue={selectedEdgeData.edge.name ?? ''}
-              onBlur={(event) => commitEdgeLabel(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  commitEdgeLabel((event.target as HTMLInputElement).value);
-                }
-              }}
-            />
-          </label>
-          {selectedEdgeData.type === 'association' && (
-            <>
-              <label>
-                {tr('editor.sourceRole')}
-                <input
-                  aria-label={tr('editor.sourceRole')}
-                  defaultValue={selectedEdgeData.edge.sourceRole ?? ''}
-                  onBlur={(event) =>
-                    handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, { sourceRole: event.target.value.trim() || undefined })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, { sourceRole: (event.target as HTMLInputElement).value.trim() || undefined });
-                    }
-                  }}
-                />
-              </label>
-              <label>
-                {tr('editor.targetRole')}
-                <input
-                  aria-label={tr('editor.targetRole')}
-                  defaultValue={selectedEdgeData.edge.targetRole ?? ''}
-                  onBlur={(event) =>
-                    handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, { targetRole: event.target.value.trim() || undefined })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, { targetRole: (event.target as HTMLInputElement).value.trim() || undefined });
-                    }
-                  }}
-                />
-              </label>
-              <label>
-                {tr('editor.sourceMultiplicity')}
-                <input
-                  aria-label={tr('editor.sourceMultiplicity')}
-                  defaultValue={selectedEdgeData.edge.sourceMultiplicity ?? ''}
-                  onBlur={(event) =>
-                    handleUpdateMultiplicity(doc, diagram.id, selectedEdgeData.edge.id, 'source', event.target.value)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      handleUpdateMultiplicity(doc, diagram.id, selectedEdgeData.edge.id, 'source', (event.target as HTMLInputElement).value);
-                    }
-                  }}
-                />
-              </label>
-              <label>
-                {tr('editor.targetMultiplicity')}
-                <input
-                  aria-label={tr('editor.targetMultiplicity')}
-                  defaultValue={selectedEdgeData.edge.targetMultiplicity}
-                  onBlur={(event) =>
-                    handleUpdateMultiplicity(doc, diagram.id, selectedEdgeData.edge.id, 'target', event.target.value)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      handleUpdateMultiplicity(doc, diagram.id, selectedEdgeData.edge.id, 'target', (event.target as HTMLInputElement).value);
-                    }
-                  }}
-                />
-              </label>
-              {/* Control de inversión del extremo del diamante — solo para asociaciones de agregación/composición */}
-              {selectedEdgeData.edge.aggregation !== 'none' && selectedEdgeData.edge.aggregationEnd !== undefined && (
-                <div className="diagram-canvas__flip-diamond">
-                  <span>
-                    {tr('editor.diamondEnd', {
-                      end: selectedEdgeData.edge.aggregationEnd === 'source' ? tr('editor.endSource') : tr('editor.endTarget'),
-                    })}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={tr('editor.flipDiamondEndAria', {
-                      end: selectedEdgeData.edge.aggregationEnd === 'source' ? tr('editor.endTarget') : tr('editor.endSource'),
-                    })}
-                    onClick={() =>
-                      handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, {
-                        aggregationEnd: selectedEdgeData.edge.aggregationEnd === 'source' ? 'target' : 'source',
-                      })
-                    }
-                  >
-                    {tr('editor.flipDiamondEnd')}
-                  </button>
-                </div>
-              )}
-              <div className="diagram-canvas__field">
-                <label htmlFor="edge-assoc-class">
-                  {tr('editor.associationClass')}
-                </label>
-                <select
-                  id="edge-assoc-class"
-                  data-testid="edge-assoc-class-select"
-                  aria-label={tr('editor.associationClass')}
-                  value={selectedEdgeData.edge.associationClassId ?? ''}
-                  onChange={(event) =>
-                    handleUpdateAssociationMeta(doc, diagram.id, selectedEdgeData.edge.id, {
-                      associationClassId: event.target.value || null,
-                    })
-                  }
-                >
-                  <option value="">{tr('editor.noAssociationClass')}</option>
-                  {diagram.classes.map((cls) => (
-                    <option key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-          <button
-            type="button"
-            className="diagram-canvas__delete-edge"
-            aria-label={tr('editor.deleteAria', { type: selectedEdgeData.type, id: selectedEdgeData.edge.id })}
-            onClick={deleteSelectedEdge}
-          >
-            {tr('editor.delete', { type: selectedEdgeData.type })}
-          </button>
-          <button
-            type="button"
-            className="diagram-canvas__close-edge-editor"
-            aria-label={tr('editor.closeAria')}
-            onClick={() => setSelectedEdge(null)}
-          >
-            {tr('editor.close')}
-          </button>
-        </div>
-      )}
-      {/* unidad 13d corrección A — el editor propio del diamante n-ario (mismo patrón que el
-          editor de aristas unificado): nombre editable, un campo de multiplicidad por
-          extremo miembro (etiquetado por el nombre de la clase), y Eliminar. Cada confirmación emite
-          el delta `update` de naryAssociation de core. */}
-      {selectedNary && (
-        <div className="diagram-canvas__edge-editor" data-testid="nary-editor" key={selectedNary.id}>
-          <span className="diagram-canvas__edge-editor-title">
-            {tr('naryEditor.title')}
-          </span>
-          <label>
-            {tr('nary.name')}
-            <input
-              aria-label={tr('naryEditor.nameAria')}
-              defaultValue={selectedNary.name ?? ''}
-              onBlur={(event) => commitNaryName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  commitNaryName((event.target as HTMLInputElement).value);
-                }
-              }}
-            />
-          </label>
-          {selectedNary.memberEnds.map((end) => {
-            const cls = diagram.classes.find((candidate) => candidate.id === end.classId);
-            return (
-              <label key={end.classId} className="diagram-canvas__nary-end">
-                {cls?.name ?? '?'}
-                <input
-                  aria-label={tr('naryEditor.endMultiplicityAria', { name: cls?.name ?? end.classId })}
-                  defaultValue={end.multiplicity}
-                  onBlur={(event) => commitNaryEndMultiplicity(end.classId, event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      commitNaryEndMultiplicity(end.classId, (event.target as HTMLInputElement).value);
-                    }
-                  }}
-                />
-              </label>
-            );
-          })}
-          <button
-            type="button"
-            className="diagram-canvas__delete-edge"
-            aria-label={tr('naryEditor.deleteAria', { id: selectedNary.id })}
-            onClick={() => {
-              handleDeleteNaryAssociation(doc, diagram.id, selectedNary.id);
-              // La resolución de selectedNary basada en proyecciones cierra el
-              // panel; limpiar el id también cubre el caso en el mismo tick.
-              setSelectedNaryId(null);
-            }}
-          >
-            {tr('naryEditor.delete')}
-          </button>
-          <button
-            type="button"
-            className="diagram-canvas__close-edge-editor"
-            aria-label={tr('naryEditor.closeAria')}
-            onClick={() => setSelectedNaryId(null)}
-          >
-            {tr('editor.close')}
-          </button>
-        </div>
-      )}
-      {selectedClass && (
-        <div className="diagram-canvas__generalizations" data-testid="generalization-panel">
-          <span className="diagram-canvas__generalizations-title">
-            {tr('panel.generalizationsFor', { name: selectedClass.name })}
-          </span>
-          {selectedClassGeneralizations.length === 0 && (
-            <span className="diagram-canvas__generalizations-empty">{tr('panel.none')}</span>
-          )}
-          {selectedClassGeneralizations.map((gen) => (
-            <div key={gen.id} className="diagram-canvas__generalization-row">
-              <span>
-                {gen.subClassId === selectedClass.id
-                  ? tr('panel.inheritsFrom', { name: classNameById(gen.superClassId) })
-                  : tr('panel.inheritedBy', { name: classNameById(gen.subClassId) })}
-              </span>
-              <button
-                type="button"
-                className="diagram-canvas__delete-generalization"
-                aria-label={tr('panel.removeInheritanceAria', { id: gen.id })}
-                onClick={() => handleDeleteGeneralization(doc, diagram.id, gen.id)}
-              >
-                {tr('panel.removeInheritance')}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      {selectedClass && (
-        <div className="diagram-canvas__realizations" data-testid="realization-panel">
-          <span className="diagram-canvas__realizations-title">
-            {tr('panel.realizationsFor', { name: selectedClass.name })}
-          </span>
-          {selectedClassRealizations.length === 0 && (
-            <span className="diagram-canvas__realizations-empty">{tr('panel.none')}</span>
-          )}
-          {selectedClassRealizations.map((real) => (
-            <div key={real.id} className="diagram-canvas__realization-row">
-              <span>
-                {real.clientClassId === selectedClass.id
-                  ? tr('panel.realizes', { name: classNameById(real.supplierInterfaceId) })
-                  : tr('panel.realizedBy', { name: classNameById(real.clientClassId) })}
-              </span>
-              <button
-                type="button"
-                className="diagram-canvas__delete-realization"
-                aria-label={tr('panel.removeRealizationAria', { id: real.id })}
-                onClick={() => handleDeleteRealization(doc, diagram.id, real.id)}
-              >
-                {tr('panel.removeRealization')}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      {selectedClass && (
-        <div className="diagram-canvas__dependencies" data-testid="dependency-panel">
-          <span className="diagram-canvas__dependencies-title">
-            {tr('panel.dependenciesFor', { name: selectedClass.name })}
-          </span>
-          {selectedClassDependencies.length === 0 && (
-            <span className="diagram-canvas__dependencies-empty">{tr('panel.none')}</span>
-          )}
-          {selectedClassDependencies.map((dep) => (
-            <div key={dep.id} className="diagram-canvas__dependency-row">
-              <span>
-                {dep.clientClassId === selectedClass.id
-                  ? tr('panel.dependsOn', { name: classNameById(dep.supplierClassId) })
-                  : tr('panel.dependencyFrom', { name: classNameById(dep.clientClassId) })}
-              </span>
-              <button
-                type="button"
-                className="diagram-canvas__delete-dependency"
-                aria-label={tr('panel.removeDependencyAria', { id: dep.id })}
-                onClick={() => handleDeleteDependency(doc, diagram.id, dep.id)}
-              >
-                {tr('panel.removeDependency')}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <EdgeEditorPanel
+        doc={doc}
+        diagram={diagram}
+        selectedEdgeData={selectedEdgeData}
+        commitEdgeLabel={commitEdgeLabel}
+        deleteSelectedEdge={deleteSelectedEdge}
+        setSelectedEdge={setSelectedEdge}
+        tr={tr}
+        edgeTypeKeys={EDGE_TYPE_KEYS}
+      />
+
+      <NaryEditorPanel
+        doc={doc}
+        diagram={diagram}
+        selectedNary={selectedNary}
+        commitNaryName={commitNaryName}
+        commitNaryEndMultiplicity={commitNaryEndMultiplicity}
+        setSelectedNaryId={setSelectedNaryId}
+        tr={tr}
+      />
+
+      <ClassDetailsPanel
+        doc={doc}
+        diagramId={diagram.id}
+        selectedClass={selectedClass}
+        selectedClassGeneralizations={selectedClassGeneralizations}
+        selectedClassRealizations={selectedClassRealizations}
+        selectedClassDependencies={selectedClassDependencies}
+        classNameById={classNameById}
+        tr={tr}
+      />
       <EdgeCrossingProvider>
         <ReactFlow
           nodes={displayNodes}
