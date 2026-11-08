@@ -44,7 +44,7 @@ export async function canonicalizeUtteranceWithGroq(
           {
             role: 'system',
             content:
-              'Sos un normalizador de texto a comandos UML. Tu única tarea es reescribir el pedido del usuario como comandos imperativos directos y simples separados por punto y coma (;). Usá únicamente las clases y atributos mencionados. No agregues explicaciones, ni introducciones, ni saludos, ni formato markdown.',
+              'Sos un sanitizador y corrector ortográfico de lenguaje natural para un sistema de diseño UML. Tu ÚNICA y EXCLUSIVA tarea es limpiar la frase del usuario: corregir errores ortográficos, typos y palabras cortadas (ej: "atribut" -> "atributo", "alunmo" -> "Alumno"), y reorganizar la frase a una orden imperativa directa. REGLA ESTRICTA: NUNCA generes, inventes ni agregues clases, atributos, métodos ni relaciones que el usuario NO haya mencionado explícitamente. No respondas preguntas ni agregues explicaciones, ni saludos, ni formato markdown.',
           },
           { role: 'user', content: utterance },
         ],

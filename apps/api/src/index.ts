@@ -864,10 +864,26 @@ export function buildApp(options?: AppOptions): FastifyInstance {
         replyContent = chatGuard.replyContent;
       }
 
-      // Nivel 1: Intérprete rápido determinista en memoria (cero latencia para comandos atómicos, relaciones, clases y mutaciones)
+      // Nivel 1: Sanitización y corrección ortográfica previa con Groq (20 ms, solo limpia el texto, nunca inventa elementos)
+      let commandToInterpret = parsed.data.content;
+      if (!replyContent && diagram && hasModelingIntent) {
+        const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
+        if (groqApiKey && groqApiKey.startsWith('gsk_')) {
+          try {
+            const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
+            if (canonicalText && canonicalText.trim().length > 0) {
+              commandToInterpret = canonicalText.trim();
+            }
+          } catch {
+            // Fallback transparente al texto original
+          }
+        }
+      }
+
+      // Nivel 1b: Intérprete determinista en memoria sobre el comando limpio (cero latencia)
       if (!replyContent && diagram) {
         try {
-          const sanitizedCommand = normalizeUmlUtterance(parsed.data.content);
+          const sanitizedCommand = normalizeUmlUtterance(commandToInterpret);
           const outcome = await interpretCommand(sanitizedCommand, new FakeLlm(), diagram, pendingDeltas);
           if (outcome.status === 'pending') {
             deltaId = outcome.deltaId;
@@ -877,12 +893,12 @@ export function buildApp(options?: AppOptions): FastifyInstance {
               : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
           }
         } catch {
-          // Si no es comando determinista, pasa al canonicador o al agente IA unificado
+          // Si no es comando determinista, pasa a Nivel 2
         }
       }
 
-      // Nivel 1.5: Canonicador Zero-Shot de alta velocidad con Groq (solo para órdenes de modelado cuando el determinista estricto no cazó la sintaxis)
-      if (!replyContent && diagram && hasModelingIntent) {
+      // Nivel 1c: Fallback con Groq si el comando inicial no pasó por Groq
+      if (!replyContent && diagram && hasModelingIntent && commandToInterpret === parsed.data.content) {
         const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
         if (groqApiKey && groqApiKey.startsWith('gsk_')) {
           try {
