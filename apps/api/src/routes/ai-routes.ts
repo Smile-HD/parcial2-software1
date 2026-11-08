@@ -1,0 +1,411 @@
+/**
+ * Rutas REST Fastify para Asistente AI, Interpretación NLP, Voz y Chat Colaborativo.
+ */
+import type { FastifyInstance } from 'fastify';
+import type { Pool } from 'pg';
+import type { Diagram, LlmPort, SttPort } from '@app/core';
+import { FakeLlm, normalizeUmlUtterance, canonicalizeUtteranceWithGroq } from '@app/adapters-ai';
+import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from '../interpreter.js';
+import { evaluateChatGuard } from '../chat-guard.js';
+import {
+  ChatChannelTypeSchema,
+  CreateChatMessageSchema,
+  insertBotReply,
+  insertChatMessage,
+  listChatMessages,
+  processUnifiedAmongusTurn,
+} from '../chat.js';
+import { loadDiagramFromRow } from './persistence.js';
+
+export interface AiRoutesDeps {
+  pool: Pool;
+  llm: LlmPort;
+  stt: SttPort;
+  pendingDeltas: PendingDeltaStore;
+}
+
+export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void {
+  const { pool, llm, stt, pendingDeltas } = deps;
+
+  // POST /diagrams/:id/interpret — lenguaje natural → rechazo | delta pendiente
+  app.post<{ Params: { id: string }; Body: { text?: string } }>(
+    '/diagrams/:id/interpret',
+    async (request, reply) => {
+      const { id } = request.params;
+      const text = request.body?.text;
+      if (typeof text !== 'string' || text.trim().length === 0) {
+        return reply.status(400).send({ error: 'text is required' });
+      }
+
+      const result = await pool.query(
+        'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
+        [id],
+      );
+      if (result.rows.length === 0) {
+        return reply.status(404).send({ error: 'Diagram not found' });
+      }
+      const row = result.rows[0];
+
+      let currentIr: Diagram;
+      try {
+        currentIr = (
+          await loadDiagramFromRow({
+            id: row.id,
+            name: row.name,
+            doc: row.doc,
+            yjs_state: row.yjs_state,
+            version: row.version,
+          })
+        ).diagram;
+      } catch (error) {
+        return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
+      }
+
+      try {
+        const outcome = await interpretCommand(text, llm, currentIr, pendingDeltas);
+        if (outcome.status === 'error') {
+          return reply.status(422).send({ status: 'error', error: outcome.message });
+        }
+        return reply.send(outcome);
+      } catch (error) {
+        if (error instanceof LlmUnavailableError) {
+          return reply.status(502).send({ error: `LLM unavailable: ${error.message}` });
+        }
+        throw error;
+      }
+    }
+  );
+
+  // POST /deltas/:id/confirm — entrega el delta pendiente al cliente que confirma
+  app.post<{ Params: { id: string } }>('/deltas/:id/confirm', async (request, reply) => {
+    const pending = pendingDeltas.take(request.params.id);
+    if (!pending) {
+      return reply.status(404).send({ error: 'Unknown or already used delta id' });
+    }
+    return { status: 'confirmed', delta: pending.delta, diagramId: pending.diagramId };
+  });
+
+  // POST /deltas/:id/reject — descarta el delta pendiente
+  app.post<{ Params: { id: string } }>('/deltas/:id/reject', async (request, reply) => {
+    const pending = pendingDeltas.take(request.params.id);
+    if (!pending) {
+      return reply.status(404).send({ error: 'Unknown or already used delta id' });
+    }
+    return { status: 'rejected' };
+  });
+
+  // POST /diagrams/:id/voice — voz → transcripción → flujo de interpretación
+  app.post<{ Params: { id: string }; Body: { audio?: string; mimeType?: string; transcribeOnly?: boolean } }>(
+    '/diagrams/:id/voice',
+    async (request, reply) => {
+      const { id } = request.params;
+      const audioBase64 = request.body?.audio;
+      if (typeof audioBase64 !== 'string' || audioBase64.trim().length === 0) {
+        return reply.status(400).send({ error: 'audio (base64) is required' });
+      }
+
+      const result = await pool.query(
+        'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
+        [id],
+      );
+      if (result.rows.length === 0) {
+        return reply.status(404).send({ error: 'Diagram not found' });
+      }
+      const row = result.rows[0];
+
+      let transcript: string;
+      try {
+        const audio = new Uint8Array(Buffer.from(audioBase64, 'base64'));
+        transcript = await stt.transcribe(audio, request.body?.mimeType ?? 'audio/webm');
+      } catch (error) {
+        const cause = error instanceof Error ? error.message : 'unknown error';
+        return reply.status(502).send({
+          error: `Speech-to-text unavailable: ${cause}. Use the text command input instead.`,
+        });
+      }
+
+      if (request.body?.transcribeOnly) {
+        return reply.send({ transcript, status: 'ok' });
+      }
+
+      let currentIr: Diagram;
+      try {
+        currentIr = (
+          await loadDiagramFromRow({
+            id: row.id,
+            name: row.name,
+            doc: row.doc,
+            yjs_state: row.yjs_state,
+            version: row.version,
+          })
+        ).diagram;
+      } catch (error) {
+        return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
+      }
+
+      try {
+        const outcome = await interpretCommand(transcript, llm, currentIr, pendingDeltas);
+        if (outcome.status === 'error') {
+          return reply.status(422).send({ transcript, status: 'error', message: outcome.message });
+        }
+        return reply.send({ transcript, ...outcome });
+      } catch (error) {
+        if (error instanceof LlmUnavailableError) {
+          return reply.status(502).send({ error: `LLM unavailable: ${error.message}` });
+        }
+        throw error;
+      }
+    }
+  );
+
+  // GET /diagrams/:id/messages
+  app.get<{
+    Params: { id: string };
+    Querystring: { channel?: string; deviceId?: string; userName?: string };
+  }>('/diagrams/:id/messages', async (request, reply) => {
+    const { id } = request.params;
+    const { channel, deviceId, userName } = request.query;
+
+    const channelParsed = ChatChannelTypeSchema.safeParse(channel);
+    if (!channelParsed.success) {
+      return reply.status(400).send({ error: 'Valid channel (group | direct_bot) is required' });
+    }
+
+    const exists = await pool.query('SELECT id FROM diagrams WHERE id = $1', [id]);
+    if (exists.rows.length === 0) {
+      return reply.status(404).send({ error: 'Diagram not found' });
+    }
+
+    const messages = await listChatMessages(pool, id, channelParsed.data, deviceId, userName);
+    return reply.status(200).send(messages);
+  });
+
+  // POST /diagrams/:id/messages
+  app.post<{
+    Params: { id: string };
+    Body: unknown;
+  }>('/diagrams/:id/messages', async (request, reply) => {
+    const { id } = request.params;
+    const parsed = CreateChatMessageSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid message payload', details: parsed.error.issues });
+    }
+
+    const exists = await pool.query(
+      'SELECT id, name, doc, yjs_state, version FROM diagrams WHERE id = $1',
+      [id]
+    );
+    if (exists.rows.length === 0) {
+      return reply.status(404).send({ error: 'Diagram not found' });
+    }
+
+    const message = await insertChatMessage(pool, id, parsed.data);
+
+    const isStream = Boolean(request.headers.accept?.includes('text/event-stream'));
+    if (isStream) {
+      reply.raw.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders?.();
+      reply.raw.write(`event: user_message\ndata: ${JSON.stringify(message)}\n\n`);
+    }
+
+    const isSlashCommand = parsed.data.content.trim().startsWith('/');
+    const normalizedUtterance = normalizeUmlUtterance(parsed.data.content);
+    const hasModelingIntent =
+      /(?:^|[\s,;.:¡!¿?])(?:crea|agrega|borra|elimina|cambia|conecta|desvincula|add|append|create|make|build|delete|remove|connect|link|attach|detach|unlink|rename|update|modify|set)(?:$|[\s,;.:¡!¿?])/iu.test(
+        normalizedUtterance
+      ) ||
+      /(?:^|[\s,;.:¡!¿?])(?:cre[aáeéí]|agreg[aáeéí]|a[ñn]ad[eéíi]|insert[aáeéí]|sum[aáeéí]|pon[eé]|met[eé]|dise[ñn][aáeéí]|model[aáeéí]|constru[yí]|arm[aáeé]|borr[aáeéí]|elimin[aáeéí]|quit[aáeéí]|sac[aáeéí]|drop|renombr[aáeéí]|modific[aáeéí]|cambi[aáeéí]|conect[aáeéí]|vincul[aáeéí]|relacion[aáeéí]|asoci[aáeéí]|desvincul[aáeéí]|desasoci[aáeéí]|add|append|create|make|build|delete|remove|connect|link|attach|detach|unlink|rename|update|modify|set)(?:$|[\s,;.:¡!¿?])/iu.test(
+        parsed.data.content
+      );
+    const hasUmlQuestionIntent =
+      /\b(?:qu[eé]\s+(?:es|diferencia|significa)|c[oó]mo\s+(?:se|funciona)|explic[aá]|diferencia\s+entre|agregaci[oó]n|composici[oó]n|asociaci[oó]n|herencia|polimorfismo|cardinalidad|multiplicidad|patr[oó]n|uml|diagrama|cu[aá]nt[ao]s?\s+(?:personas|usuarios|conectados))\b/i.test(
+        parsed.data.content
+      );
+    const shouldBotParticipate =
+      parsed.data.channelType === 'direct_bot' ||
+      parsed.data.content.includes('@Amongus') ||
+      isSlashCommand ||
+      hasModelingIntent ||
+      hasUmlQuestionIntent;
+
+    if (shouldBotParticipate) {
+      const isEn = parsed.data.language === 'en';
+      let deltaId: string | null = null;
+      let delta: import('@app/core').Delta | null = null;
+      let replyContent = '';
+
+      let diagram: Diagram | undefined;
+      if (parsed.data.currentDiagram && Array.isArray(parsed.data.currentDiagram.classes) && parsed.data.currentDiagram.classes.length > 0) {
+        diagram = parsed.data.currentDiagram as Diagram;
+      } else {
+        try {
+          const loaded = await loadDiagramFromRow(exists.rows[0]);
+          diagram = loaded.diagram;
+        } catch {}
+      }
+
+      // Nivel 0: Guardián de Dominio y Anti-Jailbreak
+      const chatGuard = evaluateChatGuard(parsed.data.content, diagram, isEn ? 'en' : 'es');
+      if (chatGuard.blocked && chatGuard.replyContent) {
+        replyContent = chatGuard.replyContent;
+      }
+
+      // Nivel 1: Sanitización con Groq si aplica
+      let commandToInterpret = parsed.data.content;
+      if (!replyContent && diagram && hasModelingIntent) {
+        const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
+        if (groqApiKey && groqApiKey.startsWith('gsk_')) {
+          try {
+            const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
+            if (canonicalText && canonicalText.trim().length > 0) {
+              commandToInterpret = canonicalText.trim();
+            }
+          } catch {}
+        }
+      }
+
+      // Nivel 1b: Intérprete determinista en memoria
+      if (!replyContent && diagram) {
+        try {
+          const sanitizedCommand = normalizeUmlUtterance(commandToInterpret);
+          const outcome = await interpretCommand(sanitizedCommand, new FakeLlm(), diagram, pendingDeltas);
+          if (outcome.status === 'pending') {
+            deltaId = outcome.deltaId;
+            delta = outcome.delta;
+            replyContent = isEn
+              ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+              : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+          }
+        } catch {}
+      }
+
+      // Nivel 1c: Fallback con Groq
+      if (!replyContent && diagram && hasModelingIntent && commandToInterpret === parsed.data.content) {
+        const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
+        if (groqApiKey && groqApiKey.startsWith('gsk_')) {
+          try {
+            const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
+            if (canonicalText) {
+              const outcome = await interpretCommand(canonicalText, new FakeLlm(), diagram, pendingDeltas);
+              if (outcome.status === 'pending') {
+                deltaId = outcome.deltaId;
+                delta = outcome.delta;
+                replyContent = isEn
+                  ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+                  : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      // Nivel 2: Agente unificado
+      if (!replyContent) {
+        if (parsed.data.content.trim().toLowerCase() === '/reset') {
+          try {
+            await pool.query(
+              `DELETE FROM chat_messages 
+               WHERE diagram_id = $1 
+                 AND channel_type = 'direct_bot'
+                 AND (device_id = $2 OR target_user = $3 OR sender_name = $3)
+                 AND id != $4`,
+              [id, parsed.data.deviceId, parsed.data.senderName, message.id]
+            );
+          } catch {}
+        }
+
+        let chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
+        try {
+          const recentMessages = await listChatMessages(
+            pool,
+            id,
+            parsed.data.channelType,
+            parsed.data.deviceId,
+            parsed.data.senderName
+          );
+          chatHistory = recentMessages
+            .filter((m) => {
+              if (m.id === message.id) return false;
+              if (parsed.data.channelType === 'group') {
+                return m.senderType === 'bot' || m.content.includes('@Amongus') || m.content.trim().startsWith('/');
+              }
+              return true;
+            })
+            .slice(-6)
+            .map((m) => {
+              let content = m.content;
+              if (m.senderType === 'bot') {
+                content = content.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
+                if (content.length > 1500) {
+                  content = content.slice(0, 1500) + '...';
+                }
+              }
+              return {
+                role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
+                content,
+              };
+            });
+        } catch {}
+
+        const onChunk = isStream
+          ? (chunk: string) => {
+              try {
+                reply.raw.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+              } catch {}
+            }
+          : undefined;
+
+        try {
+          const unified = await processUnifiedAmongusTurn(
+            parsed.data.content,
+            parsed.data.senderName,
+            parsed.data.language ?? 'es',
+            id,
+            llm,
+            diagram,
+            chatHistory,
+            onChunk,
+            parsed.data.peerUsers
+          );
+          if (unified.batchDelta) {
+            const pending = pendingDeltas.put(id, unified.batchDelta);
+            deltaId = pending.id;
+            delta = pending.delta;
+          }
+          replyContent = unified.replyContent;
+        } catch (turnErr: any) {
+          app.log.error(turnErr, 'Error executing Amongus turn');
+          replyContent = isEn
+            ? 'An error occurred while processing your request. Please try again or rephrase.'
+            : 'Ocurrió un error al procesar tu solicitud. Por favor probá nuevamente o reformulá la consulta.';
+        }
+      }
+
+      const botMessage = await insertBotReply(
+        pool,
+        id,
+        parsed.data.deviceId,
+        parsed.data.senderName,
+        parsed.data.channelType,
+        replyContent,
+        deltaId,
+        delta
+      );
+
+      if (isStream) {
+        reply.raw.write(`event: done\ndata: ${JSON.stringify(botMessage)}\n\n`);
+        reply.raw.end();
+        return;
+      }
+    } else if (isStream) {
+      reply.raw.write(`event: done\ndata: ${JSON.stringify({ status: 'ok' })}\n\n`);
+      reply.raw.end();
+      return;
+    }
+
+    return reply.status(201).send(message);
+  });
+}
