@@ -125,3 +125,4 @@ export function handleDeleteNaryAssociation(
   };
   applyDeltaToYDoc(doc, delta);
 }
+

@@ -7,3 +7,4 @@ export function computeNextZoom(currentZoom: number, direction: 'in' | 'out'): n
   }
   return Math.max(Number((currentZoom / 1.25).toFixed(2)), 0.2);
 }
+

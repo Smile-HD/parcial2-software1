@@ -84,3 +84,4 @@ export function handlePaletteDrop(
   applyDeltaToYDoc(doc, delta);
   return classId;
 }
+

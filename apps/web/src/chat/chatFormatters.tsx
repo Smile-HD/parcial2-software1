@@ -152,3 +152,4 @@ export function renderStreamingContent(text: string, isEn: boolean) {
     </div>
   );
 }
+
