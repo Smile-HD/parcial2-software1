@@ -12,47 +12,48 @@ import {
 } from './apply-hierarchy.js';
 import { applyNaryAssociationDelta } from './apply-nary.js';
 
+function applySingleDelta(
+  diagram: Diagram,
+  delta: BatchDelta['deltas'][number]
+): ApplyResult<Diagram> {
+  switch (delta.kind) {
+    case 'class':
+      return applyClassDelta(diagram, delta);
+    case 'member':
+      return applyMemberDelta(diagram, delta);
+    case 'association':
+      return applyAssociationDelta(diagram, delta);
+    case 'generalization':
+      return applyGeneralizationDelta(diagram, delta);
+    case 'realization':
+      return applyRealizationDelta(diagram, delta);
+    case 'dependency':
+      return applyDependencyDelta(diagram, delta);
+    case 'naryAssociation':
+      return applyNaryAssociationDelta(diagram, delta);
+    default: {
+      const _exhaustive: never = delta;
+      return err({
+        kind: 'InvalidOperationError',
+        reason: `Unknown delta kind: ${(_exhaustive as any)?.kind}`,
+      });
+    }
+  }
+}
+
 /**
  * Aplica un delta por lotes (batch) de forma atómica (todo o nada).
  * Valida primero todos los deltas y luego los aplica secuencialmente sobre un estado clonado.
  * Si algún delta falla, se retorna el estado original sin modificaciones.
  */
 export function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): ApplyResult<Diagram> {
-  // Primero valida todos los deltas en el lote contra el estado original.
-  // Esto asegura atomicidad: no aplicamos cambios parciales.
   let workingDiagram = cloneDiagram(diagram);
 
   for (let i = 0; i < batchDelta.deltas.length; i++) {
     const delta = batchDelta.deltas[i];
-    let result: ApplyResult<Diagram>;
+    if (!delta) continue;
 
-    switch (delta.kind) {
-      case 'class':
-        result = applyClassDelta(workingDiagram, delta);
-        break;
-      case 'member':
-        result = applyMemberDelta(workingDiagram, delta);
-        break;
-      case 'association':
-        result = applyAssociationDelta(workingDiagram, delta);
-        break;
-      case 'generalization':
-        result = applyGeneralizationDelta(workingDiagram, delta);
-        break;
-      case 'realization':
-        result = applyRealizationDelta(workingDiagram, delta);
-        break;
-      case 'dependency':
-        result = applyDependencyDelta(workingDiagram, delta);
-        break;
-      case 'naryAssociation':
-        result = applyNaryAssociationDelta(workingDiagram, delta);
-        break;
-      default: {
-        const _exhaustive: never = delta.kind;
-        result = err({ kind: 'InvalidOperationError', reason: `Unknown delta kind: ${_exhaustive}` });
-      }
-    }
+    const result = applySingleDelta(workingDiagram, delta);
 
     if (!result.ok) {
       // Si una operación 'delete' de relación o elemento falla con NotFoundError porque
@@ -73,7 +74,6 @@ export function applyBatchDelta(diagram: Diagram, batchDelta: BatchDelta): Apply
         continue;
       }
 
-      // Envuelve el error con el contexto del lote (batch)
       return err({ kind: 'BatchError', error: result.error, failedDeltaIndex: i });
     }
 

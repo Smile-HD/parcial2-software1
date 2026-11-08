@@ -88,3 +88,4 @@ export function applyAssociationDelta(diagram: Diagram, delta: AssociationDelta)
     }
   }
 }
+

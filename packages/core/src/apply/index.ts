@@ -72,8 +72,9 @@ export function applyDelta(state: Diagram, delta: Delta): ApplyResult<Diagram> {
     case 'batch':
       return applyBatchDelta(clonedState, validatedDelta);
     default: {
-      const _exhaustive: never = validatedDelta.kind;
-      return err({ kind: 'InvalidOperationError', reason: `Unknown delta kind: ${_exhaustive}` });
+      const _exhaustive: never = validatedDelta as never;
+      return err({ kind: 'InvalidOperationError', reason: `Unknown delta kind: ${(_exhaustive as any)?.kind}` });
     }
   }
 }
+

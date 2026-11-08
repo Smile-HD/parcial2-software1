@@ -105,3 +105,4 @@ export function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResul
     }
   }
 }
+

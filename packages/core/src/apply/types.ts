@@ -59,3 +59,4 @@ export function ok<T>(value: T): ApplyResult<T> {
 export function err(error: ApplyError): ApplyResult<never> {
   return { ok: false, error };
 }
+
