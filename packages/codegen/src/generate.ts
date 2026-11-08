@@ -494,22 +494,36 @@ export function generate(diagram: Diagram, options: GenerateOptions): Generation
   // 14c: asociaciones n-arias → entidades join intermedias (agregadas al mapa).
   buildNaryJoinEntities(diagram, classInfo, entities, warnings, basePackage);
 
-  // Suprime atributos básicos que duplican columnas FK gestionadas por relaciones
-  // para evitar org.hibernate.DuplicateMappingException en tiempo de ejecución.
+  // Suprime atributos básicos que duplican columnas FK o identificadores gestionados por relaciones
+  // para evitar colisiones en Java y org.hibernate.DuplicateMappingException en tiempo de ejecución.
   for (const entity of entities.values()) {
     const fkColumns = new Set<string>();
+    const relIdentifiers = new Set<string>();
+
     for (const rel of entity.relationships) {
-      if (rel.kind === 'ManyToOne' || (rel.kind === 'OneToOne' && rel.thisSideIsOwning)) {
-        fkColumns.add(`${toSnakeCase(rel.targetEntity)}_id`.toLowerCase());
+      const targetCamel = camel(rel.targetEntity);
+      const targetSnake = toSnakeCase(rel.targetEntity).toLowerCase();
+
+      if (rel.kind === 'OneToMany' || rel.kind === 'ManyToMany') {
+        relIdentifiers.add(plural(targetCamel).toLowerCase());
+        relIdentifiers.add(plural(targetSnake).toLowerCase());
+      } else {
+        relIdentifiers.add(targetCamel.toLowerCase());
+        relIdentifiers.add(targetSnake);
+        if (rel.kind === 'ManyToOne' || (rel.kind === 'OneToOne' && rel.thisSideIsOwning)) {
+          fkColumns.add(`${targetSnake}_id`);
+        }
       }
     }
-    if (fkColumns.size > 0) {
+
+    if (fkColumns.size > 0 || relIdentifiers.size > 0) {
       entity.fields = entity.fields.filter((field) => {
         const col = toSnakeCase(field.name).toLowerCase();
-        if (fkColumns.has(col)) {
+        const fieldNameLower = field.name.toLowerCase();
+        if (fkColumns.has(col) || relIdentifiers.has(fieldNameLower) || relIdentifiers.has(col)) {
           warnings.push({
             code: 'duplicate-fk-column-suppressed',
-            message: `Attribute "${field.name}" on ${entity.className} maps to physical column "${col}" already managed by a relationship; basic field suppressed to avoid Hibernate DuplicateMappingException`,
+            message: `Attribute "${field.name}" on ${entity.className} maps to physical column or relationship already managed by "${col}"; basic field suppressed to avoid Java compilation collision and Hibernate DuplicateMappingException`,
             element: `${entity.className}.${field.name}`,
           });
           return false;
