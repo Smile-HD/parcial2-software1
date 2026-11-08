@@ -31,15 +31,19 @@ export function normalizeUmlUtterance(raw: string): string {
   // Abarca: Tuteo (crea), Voseo (creá), Ustedeo (cree), Vosotros (cread), Infinitivo (crear)
   // Enclíticos: crealo, creala, creame, armalo, etc.
   s = s.replace(
-    /(?<!\p{L})(?:cre[aáeé]|cread|crear|craer|creaer|crrea|crer|cre[aá]l[oa]|cr[eé]al[oa]|cre[aá]me|cr[eé]ame|cre[aá]nos|cr[eé]anos)(?!\p{L})/giu,
+    /(?<!\p{L})(?:cre[aáeé]|cread|crear|craer|creaer|crrea|crer|cre[aá]l[oa]|cr[eé]al[oa]|cre[aá]me|cr[eé]ame|cre[aá]nos|cr[eé]anos|cre[aá]melo|cr[eé]amelo|cre[aá]mela|cr[eé]amela)(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:arm[aáeé]|armad|armar|arm[aá]l[oa]|[aá]rmal[oa]|arm[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:arm[aáeé]|armad|armar|arm[aá]l[oa]|[aá]rmal[oa]|arm[aá]me|[aá]rmame|arm[aá]melo|[aá]rmamelo)(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
-    /(?<!\p{L})(?:constru[yíi]|construy[ea]?|construid|construir|constru[yíi]l[oa]|constr[uú]yel[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:hac[eé]|haz|hac[eé]me|h[aá]ceme|hac[eé]nos)\s+(?:una?\s+)?(?:clase|calse|tabla|entidad)(?!\p{L})/giu,
+    'crea clase'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:constru[yíi]|construy[ea]?|construid|construir|constru[yíi]l[oa]|constr[uú]yel[oa]|constru[yíi]me)(?!\p{L})/giu,
     'crea'
   );
   s = s.replace(
@@ -69,31 +73,31 @@ export function normalizeUmlUtterance(raw: string): string {
 
   // ── B. Verbos de Borrado / Eliminación (borrar, eliminar, sacar, quitar, remover, suprimir, descartar)
   s = s.replace(
-    /(?<!\p{L})(?:borr[aáeé]|borrad|borrar|brr[aá]|brrar|borr[aá]l[oa]|b[oó]rral[oa]|borr[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:borr[aáeé]|borrad|borrar|brr[aá]|brrar|borr[aá]l[oa]|b[oó]rral[oa]|borr[aá]me|borr[aá]le[s]?|borr[aá]melo|borr[aá]mela)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:elimin[aáeé]|elmin[aáe]?|elimnar|eliminad|eliminar|elminar|elimin[aá]l[oa]|elim[ií]nal[oa]|elimin[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:elimin[aáeé]|elmin[aáe]?|elimnar|eliminad|eliminar|elminar|elimin[aá]l[oa]|elim[ií]nal[oa]|elimin[aá]me|elimin[aá]le[s]?|elimin[aá]melo|elimin[aá]mela)(?!\p{L})/giu,
     'elimina'
   );
   s = s.replace(
-    /(?<!\p{L})(?:sac[aáeé]|saque|sacad|sacar|sac[aá]l[oa]|s[aá]cal[oa]|sac[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:sac[aáeé]|saque|sacad|sacar|sac[aá]l[oa]|s[aá]cal[oa]|sac[aá]me|sac[aá]le[s]?|sac[aá]melo|sac[aá]mela)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:quit[aáeé]|quitad|quitar|quit[aá]l[oa]|qu[ií]tal[oa]|quit[aá]me)(?!\p{L})/giu,
+    /(?<!\p{L})(?:quit[aáeé]|quitad|quitar|quit[aá]l[oa]|qu[ií]tal[oa]|quit[aá]me|quit[aá]le[s]?|quit[aá]melo|quit[aá]mela)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:remov[eé]|remuev[ea]?|removad|removed|remover|remov[eé]l[oa]|remu[eé]vel[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:remov[eé]|remuev[ea]?|removad|removed|remover|remov[eé]l[oa]|remu[eé]vel[oa]|remov[eé]me|remov[eé]le[s]?)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:suprim[eíiaé]|suprimid|suprimir|suprim[eíi]l[oa]|supr[ií]mal[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:suprim[eíiaé]|suprimid|suprimir|suprim[eíi]l[oa]|supr[ií]mal[oa]|suprim[eíi]me)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:descart[aáeé]|descartad|descartar|descart[aá]l[oa]|desc[aá]rtal[oa])(?!\p{L})/giu,
+    /(?<!\p{L})(?:descart[aáeé]|descartad|descartar|descart[aá]l[oa]|desc[aá]rtal[oa]|descart[aá]me)(?!\p{L})/giu,
     'borra'
   );
   s = s.replace(
@@ -103,23 +107,23 @@ export function normalizeUmlUtterance(raw: string): string {
 
   // ── C. Verbos de Agregar Miembros (agregar, añadir, meter, poner, sumar, incorporar, anexar)
   s = s.replace(
-    /(?<!\p{L})(?:agreg[aáeé]|agrg|agrga|agre|agregad|agregar|agreg[aá]le[s]?|agr[eé]gale[s]?|agreg[aá]me|agrrename)(?!\p{L})/giu,
+    /(?<!\p{L})(?:agreg[aáeé]|agrg|agrga|agre|agregad|agregar|agreg[aá]le[s]?|agr[eé]gale[s]?|agreg[aá]me|agrrename|agreg[aá]melo|agr[eé]gamelo)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:(?:añad|anad|añád|anád)[eíiaé]|(?:añad|anad)id|(?:añad|anad)ir|(?:añad|anad|añád|anád)[eíi]le[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:(?:añad|anad|añád|anád)[eíiaé]|(?:añad|anad)id|(?:añad|anad)ir|(?:añad|anad|añád|anád)[eíi]le[s]?|(?:añad|anad)[eíi]me)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:met[eé]|meta|meted|meter|met[eé]le[s]?|m[eé]tele[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:met[eé]|meta|meted|meter|met[eé]le[s]?|m[eé]tele[s]?|met[eé]me|met[eé]melo)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:pon|pon[eé]|ponga|poned|poner|pon[eé]le[s]?|p[oó]nle[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:pon|pon[eé]|ponga|poned|poner|pon[eé]le[s]?|p[oó]nle[s]?|pon[eé]me|pon[eé]melo)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
-    /(?<!\p{L})(?:sum[aáeé]|sumad|sumar|sum[aá]le[s]?|s[uú]male[s]?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:sum[aáeé]|sumad|sumar|sum[aá]le[s]?|s[uú]male[s]?|sum[aá]me|sum[aá]melo)(?!\p{L})/giu,
     'agrega'
   );
   s = s.replace(
@@ -135,19 +139,19 @@ export function normalizeUmlUtterance(raw: string): string {
     'agrega'
   );
 
-  // ── D. Verbos de Renombrar / Modificar (renombrar, cambiar, modificar, actualizar, editar)
-  // Enclíticos en español: cambiame, cámbiame, cambianos, modificame, actualizame, etc.
+  // ── D. Verbos de Renombrar / Modificar (renombrar, cambiar, modificar, actualizar, editar, pasar)
+  // Enclíticos en español: cambiame, cámbiame, cambianos, modificame, actualizame, pasame, etc.
   // Sinónimos en inglés: rename, modify, update, change, alter, convert, transform, switch
   s = s.replace(
     /(?<!\p{L})(?:renombr[aáeé]|renomvrar|renomra|rnombre|renombrad|renombrar|renombr[aá]l[oa]|ren[oó]mbral[oa]|renombr[aá]me|ren[oó]mbrame|renombr[aá]le[s]?|ren[oó]mbrale[s]?|rename|renaming|re-name)(?!\p{L})/giu,
     'renombra'
   );
   s = s.replace(
-    /(?<!\p{L})(?:cambi[aáeé]|cambiad|cambiar|cambi[aá]le[s]?|c[aá]mbiale[s]?|cambi[aá]l[oa]|c[aá]mbial[oa]|cambi[aá]me|c[aá]mbiame|cambi[aá]nos|c[aá]mbianos|chang(?:e|ing|ed)|switch(?:ing|ed)?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:cambi[aáeé]|cambiad|cambiar|cambi[aá]le[s]?|c[aá]mbiale[s]?|cambi[aá]l[oa]|c[aá]mbial[oa]|cambi[aá]me|c[aá]mbiame|cambi[aá]nos|c[aá]mbianos|cambi[aá]melo|c[aá]mbiamelo|cambi[aá]mela|c[aá]mbiamela|chang(?:e|ing|ed)|switch(?:ing|ed)?)(?!\p{L})/giu,
     'cambia'
   );
   s = s.replace(
-    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa]|modif[ií]cal[oa]|modific[aá]me|modif[ií]came|modific[aá]le[s]?|modif[ií]cale[s]?|modific[aá]nos|modif[ií]canos|modify|modifying|modified|alter(?:ing|ed)?)(?!\p{L})/giu,
+    /(?<!\p{L})(?:modific[aá]|modifique|modificad|modificar|modific[aá]l[oa]|modif[ií]cal[oa]|modific[aá]me|modif[ií]came|modific[aá]le[s]?|modif[ií]cale[s]?|modific[aá]nos|modif[ií]canos|modific[aá]melo|modif[ií]camelo|modify|modifying|modified|alter(?:ing|ed)?)(?!\p{L})/giu,
     'cambia'
   );
   s = s.replace(
@@ -159,7 +163,11 @@ export function normalizeUmlUtterance(raw: string): string {
     'cambia'
   );
   s = s.replace(
-    /(?<!\p{L})(?:convert[aáeé]|convertid|convertir|convert[aá]l[oa]|convi[eé]rtal[oa]|convert[aá]me|convi[eé]rtame|convert(?:ing|ed)?|transform(?:ing|ed)?|turn\s+(?:in)?to)(?!\p{L})/giu,
+    /(?<!\p{L})(?:convert[aáeé]|convertid|convertir|convert[aá]l[oa]|convi[eé]rtal[oa]|convert[aá]me|convi[eé]rtame|convert[aá]le[s]?|convi[eé]rtale[s]?|convert[aá]melo|convi[eé]rtamelo|convert(?:ing|ed)?|transform(?:ing|ed)?|turn\s+(?:in)?to)(?!\p{L})/giu,
+    'cambia'
+  );
+  s = s.replace(
+    /(?<!\p{L})(?:pas[aáeé]|pasad|pasar|pas[aá]l[oa]|p[aá]sal[oa]|pas[aá]me|p[aá]same|pas[aá]le[s]?|p[aá]sale[s]?)(?!\p{L})/giu,
     'cambia'
   );
 
@@ -203,8 +211,12 @@ export function normalizeUmlUtterance(raw: string): string {
   s = s.replace(/(?<!\p{L})(?:realizaci[oó]n|realizasi[oó]n|realizacion|realizasion)(?!\p{L})/giu, 'realizacion');
 
   // Normalizar frases de inversión y cambio de dirección / nodos / rombo / flecha
-  s = s.replace(/(?<!\p{L})(?:nodo\s+de\s+relaci[oó]n|nodo\s+de\s+la\s+relaci[oó]n|nodo\s+relaci[oó]n)(?!\p{L})/giu, 'relacion');
-  s = s.replace(/(?<!\p{L})(?:invert[ií]|invierte|invertir|da\s+vuelta|dar\s+vuelta|dalo\s+vuelta|dala\s+vuelta|gira|girar|voltea|voltear|cambia\s+de\s+lado)(?!\p{L})/giu, 'invierte');
+  s = s.replace(/(?<!\p{L})(?:nodo\s+de\s+(?:la\s+)?relaci[oó]n|nodo\s+relaci[oó]n|flecha\s+de\s+relaci[oó]n|arista\s+de\s+relaci[oó]n)(?!\p{L})/giu, 'relacion');
+  s = s.replace(/(?<!\p{L})(?:relaci[oó]n|asociaci[oó]n)\s+de\s+(generalizaci[oó]n|composici[oó]n|agregaci[oó]n|realizaci[oó]n|dependencia|herencia)/giu, '$1');
+  s = s.replace(
+    /(?<!\p{L})(?:(?:invert[ií]|invierte|inviert|invierta|invertir)(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|da(?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:la\s+|el\s+)?vuelta|dalo\s+vuelta|dala\s+vuelta|dalos\s+vuelta|dalas\s+vuelta|dar\s+vuelta|gir[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|girar|volte[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|voltear|rot[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|rotar|cambi[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:de\s+)?lado|pon(?:e|é)?(?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:al\s+rev[eé]s|del\s+otro\s+lado)|flip(?:ped|ping)?|reverse|swap(?:ped|ping)?)(?!\p{L})/giu,
+    'invierte'
+  );
 
   // Normalizar "atributo de <nombre> de tipo <tipo>" -> "atributo <nombre> de tipo <tipo>"
   s = s.replace(/(?<!\p{L})(?:atributos?)\s+de\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:de\s+tipo|tipo|que\s+sea|como|:)/giu, 'atributos $1 de tipo ');

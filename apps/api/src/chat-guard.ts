@@ -26,7 +26,7 @@ export function evaluateChatGuard(
   diagram?: any,
   language: 'es' | 'en' = 'es'
 ): GuardEvaluation {
-  const text = (userQuery || '').trim();
+  const text = (userQuery || '').replace(/@\w+\s*/g, '').trim();
   if (!text) return { blocked: false };
 
   const normalized = text
@@ -318,8 +318,16 @@ Una **Asociación N-aria** vincula simultáneamente 3 o más clases a través de
       }
 
       // Herencia Cíclica Directa (A hereda de B cuando B ya hereda de A)
-      const isInvertIntent = /(?:inverti|invierte|invierta|invertir|da\s+vuelta|cambia\s+de\s+lado|flip|reverse|swap)\b/i.test(normalized);
-      if (!isInvertIntent && mentionedClasses.length >= 2 && Array.isArray(diagram.generalizations)) {
+      const isInvertIntent =
+        /(?:(?:invert[ií]|invierte|inviert|invierta|invertir)(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|da(?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:la\s+|el\s+)?vuelta|dalo\s+vuelta|dala\s+vuelta|gir[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|girar|volte[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|voltear|rot[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|rotar|cambi[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:de\s+)?lado|pon(?:e|é)?(?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:al\s+rev[eé]s|del\s+otro\s+lado)|flip|reverse|swap)\b/i.test(
+          normalized
+        );
+      const isMutateOrDeleteGenIntent =
+        /(?:borr[aáeé]|elimin[aáeé]|sac[aáeé]|quit[aáeé]|reemplaz[aáeé]|sustitu[yíi]|cambi[aáeé]|pas[aáeé]|convert[ií]|delete|remove|replace|switch)(?:me|le|les|nos)?(?:l[oas]{1,2})?/i.test(
+          normalized
+        ) && /(?:por\s+(?:una?\s+)?(?:composici|agregaci|asociaci|dependencia|realizaci)|a\s+(?:una?\s+)?(?:composici|agregaci|asociaci|dependencia|realizaci)|composici|agregaci|asociaci|dependencia|realizaci)/i.test(normalized);
+
+      if (!isInvertIntent && !isMutateOrDeleteGenIntent && mentionedClasses.length >= 2 && Array.isArray(diagram.generalizations)) {
         const c1 = mentionedClasses[0]!;
         const c2 = mentionedClasses[1]!;
         const diagGens: Array<any> = diagram.generalizations;

@@ -1,5 +1,5 @@
 import type { BatchDelta, LlmPort } from '@app/core';
-import { stripAccents, findClosestClassName } from '@app/adapters-ai';
+import { stripAccents, findClosestClassName, normalizeUmlUtterance } from '@app/adapters-ai';
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from './domain-catalog/router.js';
 
 export interface SemanticAttribute {
@@ -2395,7 +2395,8 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
  */
 export function extractExplicitModelMutations(text: string, currentDiagram?: any): SemanticDomainModel | null {
   if (!text || !currentDiagram) return null;
-  const normalized = text
+  const cleanedText = normalizeUmlUtterance(text);
+  const normalized = cleanedText
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -2420,7 +2421,14 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     /(?:clase\s+de\s+asociaci[oó]n|association\s+class|n-ari[ao]|ternari[ao]|nary|ternary)/i.test(normalized);
 
   const createClassIntent = !isSpecialClassIntent
-    ? /^\s*(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé])\s+(?:la|una|nueva)?\s*(?:clase|calse|clse|class|tabla|entidad)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i.exec(text)
+    ? /^\s*(?:(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé]|hac[eé]|haz|arm[aáeé]|gener[aáeé]|defin[eíi]|model[aáeé]|dise[ñn][aáeé])(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|add|new|make)\s+(?:la|el|una|un|nueva|nuevo)?\s*(?:clase|calse|clse|class|tabla|entidad)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i.exec(
+        cleanedText
+      ) ||
+      (!isSpecialClassIntent
+        ? /^\s*(?:(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé]|hac[eé]|haz|arm[aáeé]|gener[aáeé]|defin[eíi]|model[aáeé]|dise[ñn][aáeé])(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|add|new|make)\s+(?:la|el|una|un|nueva|nuevo)?\s*(?:clase|calse|clse|class|tabla|entidad)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i.exec(
+            text.replace(/^@\w+\s*/, '')
+          )
+        : null)
     : null;
 
   if (createClassIntent) {
@@ -2475,11 +2483,21 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   // 0b. Agregar atributo a una clase existente deterministamente
   // Ej: "agregá telefono:string a la clase Especialidad"
   // Ej: "agregale el atributo telefono:string a Especialidad"
-  const addAttrMatch = /(?:agreg[aáeéí]|a[ñn]ad[eéíi]|pon[eé]|insert[aáeéí]|sum[aáeéí]|add)(?:le)?\s+(?:(?:el|la|un|una)\s+)?(?:(?:atributo|campo|columna|attribute|field)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bde\s+tipo\b|\bof\s+type\b)\s*([A-Za-z_][\w.]*)\s+(?:a|en|para|to|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+  // Ej: "a la clase Especialidad agregale el campo telefono:string"
+  const addAttrMatch =
+    /(?:agreg[aáeéí]|a[ñn]ad[eéíi]|pon[eé]|insert[aáeéí]|sum[aáeéí]|met[eé]|add)(?:me|le|les|nos)?(?:l[oas]{1,2})?\s+(?:(?:el|la|un|una)\s+)?(?:(?:atributo|campo|columna|attribute|field|propiedad|property)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bde\s+tipo\b|\bof\s+type\b)\s*([A-Za-z_][\w.]*)\s+(?:a|en|para|to|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(
+      cleanedText || text
+    ) ||
+    /(?:a|en|para)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:agreg[aáeéí]|a[ñn]ad[eéíi]|pon[eé]|insert[aáeéí]|sum[aáeéí]|met[eé]|add)(?:me|le|les|nos)?(?:l[oas]{1,2})?\s+(?:(?:el|la|un|una)\s+)?(?:(?:atributo|campo|columna|attribute|field|propiedad|property)\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s*(?::|\bde\s+tipo\b|\bof\s+type\b)\s*([A-Za-z_][\w.]*)/i.exec(
+      cleanedText || text
+    );
   if (addAttrMatch) {
-    const rawAttrName = addAttrMatch[1]!.trim();
-    const rawAttrType = addAttrMatch[2]!.trim().toLowerCase();
-    const targetClassName = addAttrMatch[3]!.trim();
+    const isClassFirst = Boolean(
+      /(?:a|en|para)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+|entidad\s+)?/i.test(addAttrMatch[0])
+    );
+    const rawAttrName = isClassFirst ? addAttrMatch[2]!.trim() : addAttrMatch[1]!.trim();
+    const rawAttrType = isClassFirst ? addAttrMatch[3]!.trim().toLowerCase() : addAttrMatch[2]!.trim().toLowerCase();
+    const targetClassName = isClassFirst ? addAttrMatch[1]!.trim() : addAttrMatch[3]!.trim();
     const targetCls = classes.find((c) => c.name.toLowerCase() === targetClassName.toLowerCase());
     if (targetCls) {
       return {
@@ -2496,7 +2514,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
   // 0c. Cambiar tipo de atributo deterministamente
   // Ej: "cambiá el tipo de anio en Tirada a string"
-  const changeAttrTypeMatch = /(?:cambi[aáeé]|modific[aáeé]|set|update)\s+(?:el\s+)?tipo\s+de(?:l\s+atributo)?\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|para)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(text);
+  const changeAttrTypeMatch = /(?:cambi[aáeé]|modific[aáeé]|pas[aáeé]|convert[ií]|set|update)(?:me|le|les|nos)?(?:l[oas]{1,2})?\s+(?:el\s+)?tipo\s+de(?:l\s+atributo)?\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|para)\s+(?:(?:la|el)\s+)?(?:clase\s+|tabla\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_][\w.]*)/i.exec(cleanedText || text);
   if (changeAttrTypeMatch) {
     const attrName = changeAttrTypeMatch[1]!.trim();
     const targetClassName = changeAttrTypeMatch[2]!.trim();
@@ -2513,15 +2531,16 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   }
 
   // 0d. Renombrar atributo o pasar a minúsculas
+  // Ej: "renombra el atributo total a monto en Factura"
   // Ej: "poné en minúsculas el atributo nombre en Autor"
   // Ej: "rename attribute fullName to nombreCompleto in Customer"
-  const renameAttrInClass = /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas|rename)\s+(?:el\s+|the\s+)?(?:atributo|campo|attribute|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(text);
-  const renameAttrToIn = !renameAttrInClass && /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|rename)\s+(?:el\s+|the\s+)?(?:atributo|campo|attribute|field)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+  const renameAttrToIn = /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|rename)(?:me|le|les|nos)?(?:l[oas]{1,2})?\s+(?:el\s+|the\s+)?(?:atributos?|campos?|attributes?|fields?|columnas?|propiedad(?:es)?)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(cleanedText || text);
+  const renameAttrInClass = !renameAttrToIn && /(?:renombr[aáeé]|cambi[aáeé]\s+el\s+nombre\s+de|pon[eé]\s+en\s+min[uú]sculas|rename)(?:me|le|les|nos)?(?:l[oas]{1,2})?\s+(?:el\s+|the\s+)?(?:atributos?|campos?|attributes?|fields?|columnas?|propiedad(?:es)?)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)\s+(?:en|de|in)\s+(?:(?:la|el|the)\s+)?(?:clase\s+|tabla\s+|class\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)(?:\s+(?:a|por|to)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*))?/i.exec(cleanedText || text);
 
-  const matchedRename = renameAttrInClass
-    ? { attrName: renameAttrInClass[1]!.trim(), className: renameAttrInClass[2]!.trim(), toName: renameAttrInClass[3]?.trim() }
-    : renameAttrToIn
-      ? { attrName: renameAttrToIn[1]!.trim(), className: renameAttrToIn[3]!.trim(), toName: renameAttrToIn[2]!.trim() }
+  const matchedRename = renameAttrToIn
+    ? { attrName: renameAttrToIn[1]!.trim(), className: renameAttrToIn[3]!.trim(), toName: renameAttrToIn[2]!.trim() }
+    : renameAttrInClass
+      ? { attrName: renameAttrInClass[1]!.trim(), className: renameAttrInClass[2]!.trim(), toName: renameAttrInClass[3]?.trim() }
       : null;
 
   if (matchedRename) {
@@ -2531,15 +2550,15 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     if (targetCls) {
       const fullCls = currentDiagram?.classes?.find((c: any) => c.id === targetCls.id);
       const existingAttr = fullCls?.attributes?.find((a: any) => a.name.toLowerCase() === attrName.toLowerCase());
-      if (existingAttr) {
-        const toName = /min[uú]sculas/i.test(text) ? existingAttr.name.toLowerCase() : (matchedRename.toName || existingAttr.name);
-        return {
-          action: 'modify',
-          renames: {
-            attributes: [{ class: targetCls.name, from: existingAttr.name, to: toName }],
-          },
-        };
-      }
+      const toName = /min[uú]sculas/i.test(text)
+        ? (existingAttr?.name.toLowerCase() || attrName.toLowerCase())
+        : (matchedRename.toName || existingAttr?.name || attrName);
+      return {
+        action: 'modify',
+        renames: {
+          attributes: [{ class: targetCls.name, from: existingAttr?.name || attrName, to: toName }],
+        },
+      };
     }
   }
 
@@ -2587,7 +2606,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   if (classes.length === 0) return null;
 
   // 1. Borrado agnóstico determinista (clases, relaciones, atributos)
-  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin[aá]?(?:me|te|le|nos|les)?|borr[aá]?(?:me|te|le|nos|les)?|sac[aá]?(?:me|te|le|nos|les)?|quit[aá]?(?:me|te|le|nos|les)?|desvincul[aáeé]?(?:me|te|le|nos|les)?|desasoci[aáeé]?(?:me|te|le|nos|les)?|unlink|detach)\b/i.test(normalized);
+  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|borr[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|sac[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|quit[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|desvincul[aáeé]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|desasoci[aáeé]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|unlink|detach)\b/i.test(normalized);
   if (isDeleteIntent) {
     const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
     const mentionedClasses = classes.filter((c) => {
@@ -2602,12 +2621,12 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     const isAttrTarget = /(?:atributo|campo|field|attribute|propiedad|property)/i.test(normalized);
     if (isAttrTarget) {
       // 1. Extraer nombre explícito del atributo si se especificó: ej. "elimina el atributo nacionalidad [en/de Autor]"
-      const attrMatch = /(?:atributo|campo|field|attribute|propiedad|property)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      const attrMatch = /(?:atributo|campo|field|attribute|propiedad|property)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(cleanedText || text);
       const requestedAttrName = attrMatch ? attrMatch[1]!.trim().toLowerCase() : undefined;
 
       // 2. Extraer clase objetivo si se especificó: ej. "en/de/para [la clase] Autor"
       let targetCls = mentionedClasses.length === 1 ? mentionedClasses[0] : undefined;
-      const classInTextMatch = /(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      const classInTextMatch = /(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(cleanedText || text);
       if (classInTextMatch) {
         const cCand = classes.find((c) => c.name.toLowerCase() === classInTextMatch[1]!.toLowerCase());
         if (cCand) targetCls = cCand;
@@ -2685,12 +2704,12 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
 
     // 1a2. Borrado de método (si menciona método/operación)
-    const isMethodTarget = /(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)/i.test(normalized);
+    const isMethodTarget = /(?:m[eé]todos?|methods?|operaci[oó]ne?s?|operations?|funcio?ne?s?|functions?)/i.test(normalized);
     if (isMethodTarget) {
-      const methodMatch = /(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      const methodMatch = /(?:m[eé]todos?|methods?|operaci[oó]ne?s?|operations?|funcio?ne?s?|functions?)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(cleanedText || text);
       const requestedMethodName = methodMatch ? methodMatch[1]!.trim().toLowerCase() : undefined;
       let targetCls = mentionedClasses.length === 1 ? mentionedClasses[0] : undefined;
-      const classInTextMatch = /(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(text);
+      const classInTextMatch = /(?:en|de|para)\s+(?:la\s+clase\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(cleanedText || text);
       if (classInTextMatch) {
         const cCand = classes.find((c) => c.name.toLowerCase() === classInTextMatch[1]!.toLowerCase());
         if (cCand) targetCls = cCand;
@@ -2713,7 +2732,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
 
     // 1b. Si el usuario pide explícitamente borrar una CLASE específica (ej. "elimina la clase Multa que esta relacionada con Libro")
-    const explicitClassTargetMatch = /(?:la\s+clase\s+|clase\s+|class\s+|tabla\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(text);
+    const explicitClassTargetMatch = /(?:la\s+clase\s+|clase\s+|class\s+|tabla\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(cleanedText || text);
     if (explicitClassTargetMatch) {
       const targetName = explicitClassTargetMatch[1]?.toLowerCase();
       const targetCls = classes.find((c) => c.name.toLowerCase() === targetName);
@@ -2897,7 +2916,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   // 3a. Adición / modificación / renombrado determinista de métodos en una clase existente
   const isMethodIntent =
     /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|cre[aáeé]|create|cambi[aáeé]|modific[aáeé]|renombr[aáeé])/i.test(normalized) &&
-    (/(?:m[eé]todo|method|operaci[oó]n|operation|funci[oó]n|function)\b/i.test(normalized) ||
+    (/(?:m[eé]todos?|methods?|operaci[oó]ne?s?|operations?|funcio?ne?s?|functions?)\b/i.test(normalized) ||
       /\b[A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*\s*\([^)]*\)\s*(?::\s*[A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)?/i.test(text));
 
   if (isMethodIntent) {
@@ -3600,10 +3619,14 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
     }
   }
 
-  // 3d. Inversión de relación / rombo / dirección
+  // 3d. Inversión de relación / rombo / dirección / multiplicidad
   const isRelationInvert =
-    /(?:inverti|invierte|invierta|invertir|voltea|voltee|voltear|gira|gire|girar|da\s+vuelta|cambia\s+de\s+lado|flip|reverse|swap)\b/i.test(normalized) &&
-    /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|generalizaci[oó]n|rombo|nodo|flecha|lado|sentido|direccion|direcci[oó]n|diamond|arrow|relation|association|composition|aggregation|generalization)/i.test(normalized);
+    /(?:(?:invert[ií]|invierte|inviert|invierta|invertir)(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|da(?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:la\s+|el\s+)?vuelta|dalo\s+vuelta|dala\s+vuelta|dalos\s+vuelta|dalas\s+vuelta|dar\s+vuelta|gir[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|girar|volte[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|voltear|rot[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?|rotar|cambi[aáeé](?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:de\s+)?lado|pon(?:e|é)?(?:me|te|le|les|nos)?(?:l[oas]{1,2})?\s+(?:al\s+rev[eé]s|del\s+otro\s+lado)|flip|reverse|swap)\b/i.test(
+      normalized
+    ) &&
+    /(?:relaci[oó]n|asociaci[oó]n|composici[oó]n|agregaci[oó]n|generalizaci[oó]n|herencia|multiplicidad|cardinalidad|rombo|nodo|flecha|lado|sentido|direccion|direcci[oó]n|diamond|arrow|relation|association|composition|aggregation|generalization|inheritance|multiplicity)/i.test(
+      normalized
+    );
 
   if (isRelationInvert) {
     const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
@@ -3619,32 +3642,39 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
 
     let targetAssoc: any = null;
     let targetGen: any = null;
+    const wantsGen = /(?:generalizaci[oó]n|generalizasion|herencia|inheritance)/i.test(normalized);
 
     if (mentionedClasses.length >= 2) {
       for (let i = 0; i < mentionedClasses.length; i++) {
         for (let j = i + 1; j < mentionedClasses.length; j++) {
           const ci = mentionedClasses[i]!;
           const cj = mentionedClasses[j]!;
-          const fa = associations.find(
-            (a) =>
-              (a.sourceClassId === ci.id && a.targetClassId === cj.id) ||
-              (a.sourceClassId === cj.id && a.targetClassId === ci.id)
-          );
-          if (fa) {
-            targetAssoc = fa;
-            break;
-          }
           const fg = (currentDiagram.generalizations || []).find(
             (g: any) =>
               (g.subClassId === ci.id && g.superClassId === cj.id) ||
               (g.subClassId === cj.id && g.superClassId === ci.id)
           );
-          if (fg) {
+          if (fg && (wantsGen || !targetGen)) {
             targetGen = fg;
-            break;
+            if (wantsGen) break;
+          }
+          const fa = associations.find(
+            (a) =>
+              (a.sourceClassId === ci.id && a.targetClassId === cj.id) ||
+              (a.sourceClassId === cj.id && a.targetClassId === ci.id)
+          );
+          if (fa && (!wantsGen || !targetAssoc)) {
+            targetAssoc = fa;
+            if (!wantsGen) break;
           }
         }
-        if (targetAssoc || targetGen) break;
+        if (wantsGen && targetGen) {
+          targetAssoc = null;
+          break;
+        }
+        if (!wantsGen && targetAssoc) {
+          break;
+        }
       }
     } else if (mentionedClasses.length === 1) {
       const c = mentionedClasses[0]!;

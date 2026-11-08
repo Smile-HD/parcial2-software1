@@ -1670,6 +1670,86 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(update).toBeDefined();
       expect((update as any).aggregationEnd).toBe('target');
     });
+
+    // 16. Enclítico voseo + mención: @Amongus invertime la relacion de generalizacion entre asistencia y alumno
+    it('16. @Amongus invertime la relacion de generalizacion entre asistencia y alumno', () => {
+      const diag = makeBaseDiagram();
+      // En el diagrama base, alumno hereda de persona. Agregamos que alumno hereda de asistencia:
+      diag.generalizations = [
+        {
+          id: 'g_al_as',
+          subClassId: 'c_alumno',
+          superClassId: 'c_asistencia',
+        },
+      ];
+      const mut = extractExplicitModelMutations('@Amongus invertime la relacion de generalizacion entre asistencia y alumno', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const delGen = delta!.deltas.find((d: any) => d.kind === 'generalization' && d.op === 'delete');
+      const createGen = delta!.deltas.find((d: any) => d.kind === 'generalization' && d.op === 'create');
+      expect(delGen).toBeDefined();
+      expect(createGen).toBeDefined();
+      expect((createGen as any).subClassId).toBe('c_asistencia');
+      expect((createGen as any).superClassId).toBe('c_alumno');
+    });
+
+    // 17. Clítico en multiplicidad: cambiame la multiplicidad entre Factura y Detalle a 1 a 0..*
+    it('17. cambiame la multiplicidad entre Factura y Detalle a 1 a 0..*', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('cambiame la multiplicidad entre Factura y Detalle a 1 a 0..*', diag);
+      expect(mut).not.toBeNull();
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      const update = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(update).toBeDefined();
+      expect((update as any).newSourceMultiplicity).toBe('1');
+      expect((update as any).newTargetMultiplicity).toBe('0..*');
+    });
+
+    // 18. Creación con enclítico y typo: creame la calse Factura
+    it('18. creame la calse Factura', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('creame la calse Factura', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.classes?.[0]?.name).toBe('Factura');
+    });
+
+    // 19. Agregar atributo con enclítico e inversión: a la clase Factura agregale el atributo codigo:string
+    it('19. a la clase Factura agregale el atributo codigo:string', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('a la clase Factura agregale el atributo codigo:string', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.classes?.[0]?.name).toBe('Factura');
+      expect(mut?.classes?.[0]?.attributes?.[0]?.name).toBe('codigo');
+      expect(mut?.classes?.[0]?.attributes?.[0]?.type).toBe('string');
+    });
+
+    // 20. Cambiar tipo de atributo con enclítico: a la tabla Factura cambiale el tipo de total a decimal
+    it('20. a la tabla Factura cambiale el tipo de total a decimal', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('a la tabla Factura cambiale el tipo de total a decimal', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.updates?.attributes?.[0]?.class).toBe('Factura');
+      expect(mut?.updates?.attributes?.[0]?.name).toBe('total');
+      expect(mut?.updates?.attributes?.[0]?.type).toBe('float');
+    });
+
+    // 21. Renombrar atributo con enclítico: renombrame el atributo total a monto en Factura
+    it('21. renombrame el atributo total a monto en Factura', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('renombrame el atributo total a monto en Factura', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.renames?.attributes?.[0]?.class).toBe('Factura');
+      expect(mut?.renames?.attributes?.[0]?.from).toBe('total');
+      expect(mut?.renames?.attributes?.[0]?.to).toBe('monto');
+    });
+
+    // 22. Borrado con enclítico: borrame la clase Factura
+    it('22. borrame la clase Factura', () => {
+      const diag = makeBaseDiagram();
+      const mut = extractExplicitModelMutations('borrame la clase Factura', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.deletions?.classes).toContain('Factura');
+    });
   });
 });
 
