@@ -1977,6 +1977,100 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         });
       }
     });
+
+    it('interprets "asocia asisetncia y materia con una relacion de composicion" with composite aggregation and typo tolerance', async () => {
+      const llm = new FakeLlm();
+      const asisId = crypto.randomUUID();
+      const matId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: asisId,
+            name: 'Asistencia',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+          {
+            id: matId,
+            name: 'Materia',
+            attributes: [],
+            methods: [],
+            position: { x: 100, y: 100 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+        associations: [],
+      } as any;
+
+      const result = await llm.interpret('asocia asisetncia y materia con una relacion de composicion', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const delta = result.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('create');
+        expect(delta.aggregation).toBe('composite');
+        expect(delta.sourceClassId).toBe(asisId);
+        expect(delta.targetClassId).toBe(matId);
+        expect(delta.aggregationEnd).toBe('target'); // Materia is the container
+      }
+    });
+
+    it('updates existing association when changing to composition', async () => {
+      const llm = new FakeLlm();
+      const asisId = crypto.randomUUID();
+      const matId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: asisId,
+            name: 'Asistencia',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+          {
+            id: matId,
+            name: 'Materia',
+            attributes: [],
+            methods: [],
+            position: { x: 100, y: 100 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+        associations: [
+          {
+            id: assocId,
+            sourceClassId: asisId,
+            targetClassId: matId,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1',
+            directed: false,
+            aggregation: 'none',
+          },
+        ],
+      } as any;
+
+      const result = await llm.interpret('cambia la relacion entre Asistencia y Materia a composicion', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const delta = result.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('updateMultiplicity');
+        expect(delta.associationId).toBe(assocId);
+        expect(delta.aggregation).toBe('composite');
+        expect(delta.aggregationEnd).toBe('target');
+      }
+    });
   });
 });
 

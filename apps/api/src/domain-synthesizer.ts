@@ -580,7 +580,7 @@ export function isHeuristicComposition(sourceName?: string, targetName?: string,
   if (hasAssocClass) return true;
 
   // Palabras clave que denotan inequívocamente entidades dependientes o partes subordinadas del todo
-  const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte)/i;
+  const childPattern = /(?:detalle|item|\blinea\b|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte|asistencia)/i;
   if (childPattern.test(t)) return true;
 
   // Si el destino es un prefijo o sufijo compuesto del origen (ej. Pedido -> PedidoItem)
@@ -1558,9 +1558,12 @@ export function expandSemanticDomainToDelta(
       const isRequestedShared = assoc.aggregation === 'shared' || (assoc as any).type === 'aggregation';
 
       const isExplicitInText = !!originText && /(?:composici[oó]n|composite)\b/i.test(originText);
-      const canBeComposite = isRequestedComposite && !isRecursive && (isExplicitInText || isHeuristicComposition(sourceName, targetName, !!assocClassId || !!assoc.associationClass));
+      const canBeComposite = isRequestedComposite && !isRecursive && (isExplicitInText || isHeuristicComposition(sourceName, targetName, !!assocClassId || !!assoc.associationClass) || isHeuristicComposition(targetName, sourceName, !!assocClassId || !!assoc.associationClass));
       const targetAggregation = canBeComposite ? 'composite' : (isRequestedShared ? 'shared' : 'none');
-      const targetEnd = (canBeComposite || isRequestedShared) ? (assoc.aggregationEnd ?? 'source') : 'source';
+      const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte|asistencia)/i;
+      const targetEnd = (canBeComposite || isRequestedShared)
+        ? (assoc.aggregationEnd ?? (childPattern.test(sourceName) && !childPattern.test(targetName) ? 'target' : 'source'))
+        : 'source';
 
       // 3. Verificar si ya existe una asociación entre este par en el lienzo actual
       const existingAssoc = currentDiagram?.associations?.find((a: any) => {
@@ -3565,6 +3568,9 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         if (sNorm === rawWholeName || sNorm.startsWith(rawWholeName) || rawWholeName.startsWith(sNorm)) return 'source';
         if (tNorm === rawWholeName || tNorm.startsWith(rawWholeName) || rawWholeName.startsWith(tNorm)) return 'target';
       }
+      const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte|asistencia)/i;
+      if (childPattern.test(sourceCls.name) && !childPattern.test(targetCls.name)) return 'target';
+      if (childPattern.test(targetCls.name) && !childPattern.test(sourceCls.name)) return 'source';
       if (existingAssoc) {
         const sm = existingAssoc.sourceMultiplicity || '';
         const tm = existingAssoc.targetMultiplicity || '';

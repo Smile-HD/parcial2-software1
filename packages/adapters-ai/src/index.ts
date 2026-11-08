@@ -952,6 +952,39 @@ export class FakeLlm implements LlmPort {
         return refused(`No association found between "${srcName}" and "${tgtName}".`);
       }
       const newName = isRelationRename[3]!;
+      const isAggChange = /^(?:composici[oó]n|composite|agregaci[oó]n|shared|asociaci[oó]n|simple|none)$/i.test(newName);
+      if (isAggChange) {
+        const isComposite = /^(?:composici[oó]n|composite)$/i.test(newName);
+        const isShared = /^(?:agregaci[oó]n|shared)$/i.test(newName);
+        const targetAgg: 'composite' | 'shared' | 'none' = isComposite ? 'composite' : (isShared ? 'shared' : 'none');
+
+        const wholeMatch =
+          /(?:(?:donde|que)\s+(?:la\s+clase\s+)?todo\s+(?:sea|es)|el\s+todo\s+es|la\s+clase\s+todo\s+es|todo\s+es|contenedor\s+es|rombo\s+en)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+        const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte|asistencia)/i;
+
+        let wholeClassId: string = targetClassId;
+        const n1 = srcName.toLowerCase();
+        const n2 = tgtName.toLowerCase();
+        if (wholeMatch) {
+          const rawWhole = wholeMatch[1]!.toLowerCase();
+          if (n1 === rawWhole || n1.startsWith(rawWhole) || rawWhole.startsWith(n1)) wholeClassId = sourceClassId;
+          else if (n2 === rawWhole || n2.startsWith(rawWhole) || rawWhole.startsWith(n2)) wholeClassId = targetClassId;
+        } else if (childPattern.test(n1) && !childPattern.test(n2)) {
+          wholeClassId = targetClassId;
+        } else if (childPattern.test(n2) && !childPattern.test(n1)) {
+          wholeClassId = sourceClassId;
+        }
+
+        const delta: AssociationDelta = {
+          kind: 'association',
+          op: 'updateMultiplicity',
+          ...deltaBase(currentIr),
+          associationId: existingAssoc.id,
+          aggregation: targetAgg,
+          aggregationEnd: wholeClassId === existingAssoc.sourceClassId ? 'source' : 'target',
+        };
+        return { kind: 'delta', value: delta };
+      }
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'updateMultiplicity',
@@ -993,7 +1026,7 @@ export class FakeLlm implements LlmPort {
     const isDeleteAssocIntent = /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá)\b/i.test(utterance);
     const isAssocClassIntent = /\b(?:clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|association\s+class|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table)\b/i.test(utterance);
     const association = !isDeleteAssocIntent && !isAssocClassIntent
-      ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance)
+      ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect|composici[óo]n|agregaci[óo]n)\b[\s\S]*?\b(?:entre\s+|between\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:with|con|y|and|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance)
       : null;
     if (association) {
       const sourceClassId = classIdByName(currentIr, association[1]!);
@@ -1001,8 +1034,37 @@ export class FakeLlm implements LlmPort {
       if (sourceClassId === null) return refused(`Unknown class "${association[1]}"`);
       if (targetClassId === null) return refused(`Unknown class "${association[2]}"`);
 
-      let sourceMultiplicity = '1';
-      let targetMultiplicity = '1';
+      const isComposite = /\b(?:composici[oó]n|composite|composicion)\b/i.test(utterance);
+      const isShared = /\b(?:agregaci[oó]n|shared|agregacion)\b/i.test(utterance);
+      const aggregation: 'composite' | 'shared' | 'none' = isComposite ? 'composite' : (isShared ? 'shared' : 'none');
+
+      // Detectar cuál es el todo (contenedor con rombo)
+      const wholeMatch =
+        /(?:(?:donde|que)\s+(?:la\s+clase\s+)?todo\s+(?:sea|es)|el\s+todo\s+es|la\s+clase\s+todo\s+es|todo\s+es|contenedor\s+es|rombo\s+en)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance) ||
+        /(?:where\s+(?:the\s+)?(?:whole|container|owner)\s+(?:class\s+)?is|whole\s+is|container\s+is|diamond\s+on)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+
+      const childPattern = /(?:detalle|item|linea|renglon|elemento|tramo|cuota|parte|componente|ticket|boleto|receta|presupuesto|movimiento|transaccion|bitacora|history|log|step|entry|inscripcion|matricula|asignacion|registro|subitem|subparte|asistencia)/i;
+
+      let wholeClassId: string = targetClassId;
+      const name1 = association[1]!.toLowerCase();
+      const name2 = association[2]!.toLowerCase();
+
+      if (wholeMatch) {
+        const rawWhole = wholeMatch[1]!.toLowerCase();
+        if (name1 === rawWhole || name1.startsWith(rawWhole) || rawWhole.startsWith(name1)) {
+          wholeClassId = sourceClassId;
+        } else if (name2 === rawWhole || name2.startsWith(rawWhole) || rawWhole.startsWith(name2)) {
+          wholeClassId = targetClassId;
+        }
+      } else if (childPattern.test(name1) && !childPattern.test(name2)) {
+        wholeClassId = targetClassId;
+      } else if (childPattern.test(name2) && !childPattern.test(name1)) {
+        wholeClassId = sourceClassId;
+      }
+
+      let sourceMultiplicity = isComposite ? (wholeClassId === sourceClassId ? '1' : '0..*') : '1';
+      let targetMultiplicity = isComposite ? (wholeClassId === targetClassId ? '1' : '0..*') : '1';
+
       const explicitMultiplicities = /(?:from\s+)?(\d+(?:\.\.(?:\d+|\*))?|\*)\s+(?:to|a)\s+(\d+(?:\.\.(?:\d+|\*))?|\*)/i.exec(utterance);
       if (explicitMultiplicities) {
         sourceMultiplicity = explicitMultiplicities[1]!;
@@ -1032,6 +1094,38 @@ export class FakeLlm implements LlmPort {
         }
       }
 
+      const existingAssoc = currentIr.associations.find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId)
+      );
+
+      const isExplicitChange = /(?:cambia|modifica|pasa|actualiza|change|update|haz\s+que|hace\s+que)/i.test(utterance);
+
+      if (existingAssoc && isExplicitChange) {
+        const isReversed = existingAssoc.sourceClassId === targetClassId;
+        const assocAggregationEnd = (isComposite || isShared)
+          ? (wholeClassId === existingAssoc.sourceClassId ? 'source' : 'target')
+          : (existingAssoc.aggregationEnd ?? 'source');
+
+        const delta: AssociationDelta = {
+          kind: 'association',
+          op: 'updateMultiplicity',
+          ...deltaBase(currentIr),
+          associationId: existingAssoc.id,
+          aggregation,
+          aggregationEnd: assocAggregationEnd,
+          newSourceMultiplicity: isReversed ? targetMultiplicity : sourceMultiplicity,
+          newTargetMultiplicity: isReversed ? sourceMultiplicity : targetMultiplicity,
+          ...(assocName ? { name: assocName } : {}),
+        };
+        return { kind: 'delta', value: delta };
+      }
+
+      const deltaAggregationEnd = (isComposite || isShared)
+        ? (wholeClassId === sourceClassId ? 'source' : 'target')
+        : undefined;
+
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -1042,7 +1136,8 @@ export class FakeLlm implements LlmPort {
         sourceMultiplicity,
         targetMultiplicity,
         directed: false,
-        aggregation: 'none',
+        aggregation,
+        ...(deltaAggregationEnd ? { aggregationEnd: deltaAggregationEnd } : {}),
         ...(assocName ? { name: assocName } : {}),
       };
       return { kind: 'delta', value: delta };
@@ -1055,6 +1150,25 @@ export class FakeLlm implements LlmPort {
       const targetClassId = classIdByName(currentIr, composition[2]!); // parte
       if (sourceClassId === null) return refused(`Unknown class "${composition[1]}"`);
       if (targetClassId === null) return refused(`Unknown class "${composition[2]}"`);
+      const existingAssoc = currentIr.associations.find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId)
+      );
+      if (existingAssoc) {
+        const isReversed = existingAssoc.sourceClassId === targetClassId;
+        const delta: AssociationDelta = {
+          kind: 'association',
+          op: 'updateMultiplicity',
+          ...deltaBase(currentIr),
+          associationId: existingAssoc.id,
+          aggregation: 'composite',
+          aggregationEnd: isReversed ? 'target' : 'source',
+          newSourceMultiplicity: isReversed ? '0..*' : '1',
+          newTargetMultiplicity: isReversed ? '1' : '0..*',
+        };
+        return { kind: 'delta', value: delta };
+      }
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -1078,7 +1192,25 @@ export class FakeLlm implements LlmPort {
       const wholeClassId = classIdByName(currentIr, partOf[2]!); // todo/contenedor
       if (partClassId === null) return refused(`Unknown class "${partOf[1]}"`);
       if (wholeClassId === null) return refused(`Unknown class "${partOf[2]}"`);
-      // Determina cuál extremo es el todo y establece aggregationEnd en consecuencia
+      const existingAssoc = currentIr.associations.find(
+        (a) =>
+          (a.sourceClassId === partClassId && a.targetClassId === wholeClassId) ||
+          (a.sourceClassId === wholeClassId && a.targetClassId === partClassId)
+      );
+      if (existingAssoc) {
+        const isReversed = existingAssoc.sourceClassId === wholeClassId;
+        const delta: AssociationDelta = {
+          kind: 'association',
+          op: 'updateMultiplicity',
+          ...deltaBase(currentIr),
+          associationId: existingAssoc.id,
+          aggregation: 'composite',
+          aggregationEnd: isReversed ? 'source' : 'target',
+          newSourceMultiplicity: isReversed ? '1' : '0..*',
+          newTargetMultiplicity: isReversed ? '0..*' : '1',
+        };
+        return { kind: 'delta', value: delta };
+      }
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
@@ -1102,6 +1234,22 @@ export class FakeLlm implements LlmPort {
       const targetClassId = classIdByName(currentIr, sharedAgg[2]!);
       if (sourceClassId === null) return refused(`Unknown class "${sharedAgg[1]}"`);
       if (targetClassId === null) return refused(`Unknown class "${sharedAgg[2]}"`);
+      const existingAssoc = currentIr.associations.find(
+        (a) =>
+          (a.sourceClassId === sourceClassId && a.targetClassId === targetClassId) ||
+          (a.sourceClassId === targetClassId && a.targetClassId === sourceClassId)
+      );
+      if (existingAssoc) {
+        const delta: AssociationDelta = {
+          kind: 'association',
+          op: 'updateMultiplicity',
+          ...deltaBase(currentIr),
+          associationId: existingAssoc.id,
+          aggregation: 'shared',
+          aggregationEnd: existingAssoc.sourceClassId === sourceClassId ? 'source' : 'target',
+        };
+        return { kind: 'delta', value: delta };
+      }
       const delta: AssociationDelta = {
         kind: 'association',
         op: 'create',
