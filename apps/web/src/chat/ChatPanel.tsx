@@ -16,6 +16,8 @@ import {
 } from './commands';
 import { renderStreamingContent, parseInlineMarkdown, renderFormattedContent } from './chatFormatters';
 import { useAudioRecorder } from './useAudioRecorder';
+import { useSlashCommands } from './useSlashCommands';
+import { ChatMessageItem } from './ChatMessageItem';
 import './chat.css';
 
 export interface ChatPanelProps {
@@ -107,57 +109,24 @@ export function ChatPanel({
   };
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
-  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
-
-  const isSlashQuery = draft.startsWith('/') && !draft.includes(' ');
-  const matchingCommands = isSlashQuery ? matchSlashCommands(draft) : [];
-
-  // Detección de menciones @ en cualquier posición del texto donde la última palabra empiece con @
-  const mentionMatch = /(?:^|\s)@([a-zA-Z0-9_ñÑáéíóúÁÉÍÓÚ]*)$/.exec(draft);
-  const isMentionQuery = Boolean(mentionMatch);
-  const mentionPrefix = mentionMatch ? mentionMatch[1]!.toLowerCase() : '';
-
-  const availableMentions = useMemo(() => {
-    const list: Array<{ name: string; role: string; isBot: boolean }> = [
-      { name: 'Amongus', role: isEn ? 'AI Tutor & Assistant' : 'Tutor y Asistente IA', isBot: true },
-    ];
-    if (Array.isArray(peerUsers)) {
-      for (const peer of peerUsers) {
-        const pName = typeof peer === 'string' ? peer : (peer as any)?.name;
-        if (
-          pName &&
-          pName.trim() &&
-          pName.trim().toLowerCase() !== (userName || '').toLowerCase() &&
-          !list.some((m) => m.name.toLowerCase() === pName.trim().toLowerCase())
-        ) {
-          list.push({ name: pName.trim(), role: isEn ? 'Team Member' : 'Miembro del equipo', isBot: false });
-        }
-      }
-    }
-    return list;
-  }, [peerUsers, userName, isEn]);
-
-  const matchingMentions = isMentionQuery
-    ? availableMentions.filter((m) => m.name.toLowerCase().startsWith(mentionPrefix))
-    : [];
-
-  useEffect(() => {
-    setSelectedMentionIndex(0);
-  }, [mentionPrefix]);
-
-  const handleSelectMention = (name: string) => {
-    if (!mentionMatch) return;
-    const matchIndex = mentionMatch.index + (mentionMatch[0].startsWith(' ') ? 1 : 0);
-    const beforeMention = draft.slice(0, matchIndex);
-    const newDraft = `${beforeMention}@${name} `;
-    setDraft(newDraft);
-    inputRef.current?.focus();
-  };
-
-  useEffect(() => {
-    setSelectedCommandIndex(0);
-  }, [draft]);
+  const {
+    selectedCommandIndex,
+    selectedMentionIndex,
+    isSlashQuery,
+    matchingCommands,
+    isMentionQuery,
+    matchingMentions,
+    handleSelectMention,
+    handleKeyDown: handleSlashKeyDown,
+  } = useSlashCommands({
+    draft,
+    setDraft,
+    inputRef,
+    peerUsers,
+    userName,
+    isEn,
+    onSendSubmit: (text) => void handleSend(undefined, text),
+  });
 
   const [isSending, setIsSending] = useState(false);
   const {
@@ -623,85 +592,7 @@ export function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isSlashQuery && matchingCommands.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedCommandIndex((prev) => (prev + 1) % matchingCommands.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedCommandIndex((prev) => (prev - 1 + matchingCommands.length) % matchingCommands.length);
-        return;
-      }
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const cmd = matchingCommands[selectedCommandIndex];
-        if (cmd) {
-          const zeroArg = ['audit', 'suggest', 'context', 'layout', 'apply', 'reset', 'clear'];
-          if (zeroArg.includes(cmd.name)) {
-            setDraft(`/${cmd.name}`);
-          } else {
-            setDraft(`/${cmd.name} `);
-          }
-        }
-        return;
-      }
-      if (e.key === 'Enter' && !e.shiftKey) {
-        const exactMatch = matchingCommands.find((c) => `/${c.name}` === draft);
-        if (!exactMatch) {
-          e.preventDefault();
-          const cmd = matchingCommands[selectedCommandIndex];
-          if (cmd) {
-            const zeroArg = ['audit', 'suggest', 'context', 'help', 'layout', 'apply', 'reset'];
-            if (zeroArg.includes(cmd.name)) {
-              setDraft('');
-              void handleSend(undefined, `/${cmd.name}`);
-              return;
-            } else {
-              setDraft(`/${cmd.name} `);
-            }
-          }
-          return;
-        }
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setDraft('');
-        return;
-      }
-    }
-
-    if (!isSlashQuery && isMentionQuery && matchingMentions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedMentionIndex((prev) => (prev + 1) % matchingMentions.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedMentionIndex((prev) => (prev - 1 + matchingMentions.length) % matchingMentions.length);
-        return;
-      }
-      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-        e.preventDefault();
-        const selected = matchingMentions[selectedMentionIndex];
-        if (selected) {
-          handleSelectMention(selected.name);
-        }
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setSelectedMentionIndex(0);
-        return;
-      }
-    }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
+    handleSlashKeyDown(e, () => void handleSend());
   };
 
   const handleConfirm = async (deltaId: string, delta: Delta) => {
@@ -833,95 +724,23 @@ export function ChatPanel({
           </div>
         )}
 
-        {safeMessages.map((msg) => {
-          const isBot = msg.senderType === 'bot';
-          const isSelf = !isBot && msg.senderName === userName;
-          const userColor = pickUserColor(msg.senderName);
-
-          let messageClass = 'chat-message--peer';
-          if (isBot) messageClass = 'chat-message--bot';
-          else if (isSelf) messageClass = 'chat-message--self';
-
-          return (
-            <div
-              key={msg.id}
-              className={`chat-message ${messageClass}`}
-              data-testid={`chat-message-${msg.id}`}
-            >
-              {!isSelf && (
-                <div className="chat-message__avatar-container">
-                  {isBot ? (
-                    <>
-                      <AmongusAvatar size={30} />
-                      <span className="sr-only">Amongus</span>
-                    </>
-                  ) : (
-                    <div
-                      className="chat-message__peer-avatar"
-                      style={{ backgroundColor: userColor }}
-                      aria-hidden="true"
-                    >
-                      {presenceInitials(msg.senderName)}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="chat-message__body">
-                <div className="chat-message__header">
-                  <span className="chat-message__sender">
-                    {isSelf ? (isEn ? 'You' : 'Vos') : msg.senderName}
-                  </span>
-                  {isBot && <span className="chat-message__tag-bot">Bot</span>}
-                  {isBot && Boolean(msg.content) && (
-                    <button
-                      type="button"
-                      onClick={() => handleSpeakText(msg.content)}
-                      className="chat-message__speak-btn"
-                      title={speakingText === msg.content ? (isEn ? 'Stop listening' : 'Detener audio') : (isEn ? 'Listen message' : 'Escuchar mensaje')}
-                      aria-label={speakingText === msg.content ? (isEn ? 'Stop listening' : 'Detener audio') : (isEn ? 'Listen message' : 'Escuchar mensaje')}
-                    >
-                      {speakingText === msg.content ? (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                          <rect x="6" y="6" width="12" height="12" rx="2" />
-                        </svg>
-                      ) : (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                  <span className="chat-message__time">
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-                <div className="chat-message__bubble">
-                  {renderFormattedContent(msg.content, isEn)}
-                  {msg.delta && msg.deltaId && (
-                    <ProposalCard
-                      deltaId={msg.deltaId}
-                      delta={msg.delta}
-                      onConfirm={handleConfirm}
-                      onReject={handleReject}
-                      isApplied={appliedDeltaIds.has(msg.deltaId)}
-                      isRejected={rejectedDeltaIds.has(msg.deltaId)}
-                      isBuilding={buildingDeltaId === msg.deltaId}
-                      existingClasses={existingClasses}
-                      isSuperseded={
-                        !appliedDeltaIds.has(msg.deltaId) &&
-                        !rejectedDeltaIds.has(msg.deltaId) &&
-                        Boolean(currentPreviewProposal) &&
-                        currentPreviewProposal?.deltaId !== msg.deltaId
-                      }
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {safeMessages.map((msg) => (
+          <ChatMessageItem
+            key={msg.id}
+            msg={msg}
+            userName={userName}
+            isEn={isEn}
+            speakingText={speakingText}
+            handleSpeakText={handleSpeakText}
+            handleConfirm={handleConfirm}
+            handleReject={handleReject}
+            appliedDeltaIds={appliedDeltaIds}
+            rejectedDeltaIds={rejectedDeltaIds}
+            buildingDeltaId={buildingDeltaId}
+            existingClasses={existingClasses}
+            currentPreviewProposal={currentPreviewProposal}
+          />
+        ))}
 
         {/* Tarjeta de propuesta activa */}
         {activeProposal &&
