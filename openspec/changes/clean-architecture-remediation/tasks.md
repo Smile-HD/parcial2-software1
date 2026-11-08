@@ -37,7 +37,7 @@
   - [x] 2.2.4 Ejecutar tests del chat frontend en verde (17/17 tests unitarios pasados).
 
 ## Fase 3: Verificación, Validación (V&V) y Documentación Académica
-- [ ] 3.1 Ejecutar suite completa de tests de punta a punta (`pnpm test`).
-- [ ] 3.2 Documentar la trazabilidad SDD y las 4 arquitecturas formales para el informe del 2do Parcial.
-- [ ] 3.3 Commit y cierre de la especificación en OpenSpec.
+- [x] 3.1 Ejecutar suite completa de tests de punta a punta (321 tests en verde: 146 backend + 175 frontend).
+- [x] 3.2 Documentar la trazabilidad SDD y las 4 arquitecturas formales para el informe del 2do Parcial en `docs/INFORME_PARCIAL_2_ARQUITECTURAS.md` con carátula formal y códigos QR.
+- [x] 3.3 Commit y cierre de la especificación en OpenSpec.
 
