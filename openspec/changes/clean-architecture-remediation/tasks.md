@@ -4,23 +4,23 @@
 - [x] 1.1 Extraer el generador de deltas determinista a `delta-generator.ts` (reducción de 2.028 líneas en `domain-synthesizer.ts`).
 - [x] 1.2 Extraer el parser de intenciones y regexes de lenguaje natural a `text-intent-parser.ts`.
 - [x] 1.3 Extraer el reparador y parser de JSON de LLM a `llm-json-parser.ts`.
-- [ ] 1.4 Crear la estructura de carpetas `apps/api/src/synthesis/`:
-  - [ ] 1.4.1 Mover `domain-synthesizer.ts`, `delta-generator.ts`, `text-intent-parser.ts`, `llm-json-parser.ts` y `domain-catalog/` a `synthesis/`.
-  - [ ] 1.4.2 Crear submódulo `synthesis/deltas/` dividiendo `delta-generator.ts` en `delta-classes.ts`, `delta-relations.ts`, `delta-hierarchy.ts` y `delta-layout.ts`.
-  - [ ] 1.4.3 Crear submódulo `synthesis/parser/` dividiendo `text-intent-parser.ts` en `parse-class-commands.ts`, `parse-relation-commands.ts`, `parse-member-commands.ts` y `spanish-synonyms.ts`.
-  - [ ] 1.4.4 Establecer barrel export en `apps/api/src/domain-synthesizer.ts` para retrocompatibilidad total.
-  - [ ] 1.4.5 Verificar que los 55 tests de `domain-synthesizer.test.ts` pasen en verde.
-- [ ] 1.5 Modularizar `apps/api/src/chat/`:
-  - [ ] 1.5.1 Crear directorio `apps/api/src/chat/`.
-  - [ ] 1.5.2 Extraer `chat-guards.ts` (detección temprana de presencia, borrado inválido, contradicciones) y `prompt-formatter.ts`.
-  - [ ] 1.5.3 Extraer `chat-pipeline.ts` para orquestar `processUnifiedAmongusTurn`.
-  - [ ] 1.5.4 Reducir `chat.ts` a controlador HTTP Fastify (< 250 líneas).
-  - [ ] 1.5.5 Verificar que los tests de chat y guardrails pasen en verde.
-- [ ] 1.6 Agrupar los módulos restantes en `diagram/`, `io/` y `ai/`:
-  - [ ] 1.6.1 Mover auditor y query resolver a `diagram/`.
-  - [ ] 1.6.2 Mover importadores XMI y foto a `io/`.
-  - [ ] 1.6.3 Mover intérprete y prompt builder a `ai/`.
-  - [ ] 1.6.4 Verificar que los 285 tests unitarios pasen al 100%.
+- [x] 1.4 Crear la estructura de carpetas `apps/api/src/synthesis/`:
+  - [x] 1.4.1 Mover `domain-synthesizer.ts`, `delta-generator.ts`, `text-intent-parser.ts`, `llm-json-parser.ts` y `domain-catalog/` a `synthesis/`.
+  - [x] 1.4.2 Crear submódulo `synthesis/deltas/` dividiendo `delta-generator.ts` en `delta-classes.ts`, `delta-class-updates.ts`, `delta-relations.ts`, `delta-hierarchy.ts` y `delta-deletions.ts`.
+  - [x] 1.4.3 Crear submódulo `synthesis/parser/` dividiendo `text-intent-parser.ts` en `class-commands.ts`, `delete-commands.ts`, `member-fast-commands.ts`, `member-full-commands.ts`, `relation-structural-commands.ts`, `relation-mutation-commands.ts` y `spanish-synonyms.ts`.
+  - [x] 1.4.4 Establecer barrel export en `apps/api/src/domain-synthesizer.ts` para retrocompatibilidad total.
+  - [x] 1.4.5 Verificar que los 55 tests de `domain-synthesizer.test.ts` pasen en verde.
+- [x] 1.5 Modularizar `apps/api/src/chat/`:
+  - [x] 1.5.1 Crear directorio `apps/api/src/chat/`.
+  - [x] 1.5.2 Extraer `chat-guard.ts` (detección temprana de presencia, borrado inválido, contradicciones) y `prompt-formatter.ts`.
+  - [x] 1.5.3 Extraer `chat-pipeline.ts` para orquestar `processUnifiedAmongusTurn`.
+  - [x] 1.5.4 Reducir `chat.ts` a controlador HTTP Fastify (< 250 líneas).
+  - [x] 1.5.5 Verificar que los tests de chat y guardrails pasen en verde.
+- [x] 1.6 Agrupar los módulos restantes en `diagram/`, `io/` y `ai/`:
+  - [x] 1.6.1 Mover auditor y query resolver a `diagram/`.
+  - [x] 1.6.2 Mover importadores XMI y foto a `io/`.
+  - [x] 1.6.3 Mover intérprete y prompt builder a `ai/`.
+  - [x] 1.6.4 Verificar que los 146 tests unitarios de la API pasen al 100%.
 
 ## Fase 2: Descomposición de Monolitos en `apps/web`
 - [ ] 2.1 Descomponer `DiagramCanvas.tsx` (2.919 líneas):
