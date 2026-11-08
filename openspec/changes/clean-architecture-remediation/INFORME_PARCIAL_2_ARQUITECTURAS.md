@@ -135,7 +135,14 @@ Toda la trazabilidad de esta remediación arquitectónica se encuentra versionad
 | Archivo Monolítico Original | Líneas | Módulos Desacoplados Resultantes | Líneas Promedio | Cohesión / Beneficio |
 | :--- | :---: | :--- | :---: | :--- |
 | `DiagramCanvas.tsx` | 2.919 | `canvas/operations/nodeOperations.ts`<br>`canvas/operations/edgeOperations.ts`<br>`canvas/operations/naryOperations.ts`<br>`canvas/operations/zoomOperations.ts`<br>`canvas/operations/index.ts` | 100 – 400 l. | **Reducción de >820 líneas**. Lógica pura de manipulación de Y.Doc extraída y testeable sin requerir renderizado DOM completo. |
-| `ChatPanel.tsx` | 1.444 | `chat/chatFormatters.tsx`<br>`chat/useAudioRecorder.ts`<br>`chat/ProposalCard.tsx` | 120 – 200 l. | Desacoplamiento de la captura y transcripción de audio (Web Speech + Whisper) y formateo de tarjetas interactivas de UML. |
+| `ChatPanel.tsx` | 1.444 | `chat/chatFormatters.tsx`<br>`chat/useAudioRecorder.ts`<br>`chat/ProposalCard.tsx`<br>`chat/useSlashCommands.ts`<br>`chat/ChatMessageItem.tsx` | 120 – 200 l. | Desacoplamiento de la captura y transcripción de audio (Web Speech + Whisper) y formateo de tarjetas interactivas de UML. |
+
+### 3.3. Paquetes del Monorepo (`packages/`)
+| Archivo Monolítico Original | Líneas | Módulos Desacoplados Resultantes | Líneas Promedio | Cohesión / Beneficio |
+| :--- | :---: | :--- | :---: | :--- |
+| `packages/core/src/apply.ts` | 977 | `apply/apply-class.ts`<br>`apply/apply-member.ts`<br>`apply/apply-association.ts`<br>`apply/apply-hierarchy.ts`<br>`apply/apply-nary.ts`<br>`apply/apply-batch.ts`<br>`apply/cascade.ts`<br>`apply.ts` (barrel) | 60 – 260 l. | Desacoplamiento del motor puro de aplicación de deltas por tipo de mutación e invariantes de grafo. |
+| `packages/codegen/src/generate.ts` | 1.611 | `generators/relationships.ts`<br>`generators/members.ts`<br>`generators/postman.ts`<br>`type-mapper.ts`<br>`types.ts`<br>`generate.ts` (orquestador) | 120 – 400 l. | Separación de responsabilidades entre tablas de mapeo UML→Java, generación de entidades JPA, contratos de interfaces y colecciones Postman. |
+| `packages/adapters-ai/src/index.ts` | 1.975 | `fake-llm.ts`<br>`openai-llm.ts`<br>`index.ts` (barrel) | 300 – 1.600 l. | Separación estricta entre el intérprete determinista offline para testing y el cliente productivo streaming con OpenAI/Ollama. |
 
 ---
 
@@ -144,40 +151,28 @@ Toda la trazabilidad de esta remediación arquitectónica se encuentra versionad
 Como requisito indispensable de calidad para el Segundo Examen Parcial, la refactorización arquitectónica se ejecutó bajo la política estricta de **cero regresiones**. Todas las pruebas unitarias y de integración del monorepo se ejecutaron de punta a punta:
 
 ```bash
-# Verificación de Backend (apps/api):
-pnpm --filter @app/api exec vitest run \
-  src/domain-synthesizer.test.ts \
-  src/chat-turn.test.ts \
-  src/chat-guard.test.ts \
-  src/prompt-builder.test.ts \
-  src/diagram-auditor.test.ts \
-  src/diagram-query-resolver.test.ts
+# Verificación Completa del Monorepo (pnpm -r test):
+# - @app/core:            228 tests pasados (5 suites)
+# - @app/codegen:          96 tests pasados (4 suites)
+# - @app/adapters-ai:     185 tests pasados (7 suites)
+# - @app/adapters-import:  77 tests pasados (4 suites)
+# - @app/api:             240 tests pasados (18 suites)
+# - @app/web:             405 tests pasados (32 suites)
 
-# Resultado: 6 archivos de prueba pasados, 146 tests pasados (100% verde).
-
-# Verificación de Frontend (apps/web):
-pnpm --filter @app/web exec vitest run \
-  src/canvas/DiagramCanvas.test.tsx \
-  src/chat/ChatPanel.test.tsx
-
-# Resultado: 2 suites de integración complejas pasadas, 175 tests pasados (100% verde).
-
-# Total de Pruebas de Núcleo Validadas: 321 tests exitosos.
+# Total Monorepo: 1.231 tests ejecutados, 1.231 pasados al 100% en verde.
 ```
 
-### Tabla de Cobertura de Verificación
+### Tabla de Cobertura de Verificación Global
 
-| Subsistema Evaluado | Archivo de Test | Pruebas Ejecutadas | Estado |
-| :--- | :--- | :---: | :---: |
-| **Síntesis y Generador de Deltas** | `domain-synthesizer.test.ts` | 55 | **PASADO** |
-| **Turno de Conversación y Asistente** | `chat-turn.test.ts` | 46 | **PASADO** |
-| **Guardrails y Validación de Integridad** | `chat-guard.test.ts` | 16 | **PASADO** |
-| **Generador de Prompts y Contexto IA** | `prompt-builder.test.ts` | 11 | **PASADO** |
-| **Auditoría Estructural de Diagrama** | `diagram-auditor.test.ts` | 9 | **PASADO** |
-| **Resolutor de Consultas de Diagrama** | `diagram-query-resolver.test.ts` | 9 | **PASADO** |
-| **Lienzo UML ReactFlow / Yjs** | `DiagramCanvas.test.tsx` | 158 | **PASADO** |
-| **Panel de Chat y Asistente Amongus** | `ChatPanel.test.tsx` | 17 | **PASADO** |
-| **TOTAL VERIFICADO** | **8 Archivos Críticos** | **321 Tests** | **100% VERDE** |
+| Paquete / Aplicación | Suites de Prueba | Pruebas Ejecutadas | Estado |
+| :--- | :---: | :---: | :---: |
+| **@app/core** (IR canónico, deltas, Yjs y apply) | 5 archivos | 228 | **100% VERDE** |
+| **@app/codegen** (Sanitizado, mapeo y generación Spring) | 4 archivos | 96 | **100% VERDE** |
+| **@app/adapters-ai** (FakeLLM, OpenAI, Vision y STT) | 7 archivos | 185 | **100% VERDE** |
+| **@app/adapters-import** (XMI 2.1 import/export y layout) | 4 archivos | 77 | **100% VERDE** |
+| **@app/api** (Servidor Fastify, síntesis y persistencia) | 18 archivos | 240 | **100% VERDE** |
+| **@app/web** (Canvas ReactFlow, chat Amongus y modales) | 32 archivos | 405 | **100% VERDE** |
+| **TOTAL GENERAL DEL MONOREPO** | **70 Suites** | **1.231 Tests** | **100% VERDE** |
 
 ---
 
