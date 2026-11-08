@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { JobRegistry } from './jobs.js';
+import { JobRegistry } from './index.js';
 
 describe('JobRegistry memory safety', () => {
   it('rejects artifact larger than maxArtifactBytes and marks job failed', () => {

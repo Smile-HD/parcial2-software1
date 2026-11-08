@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
-import { buildApp } from './index';
-import { purgeExpiredChatMessages } from './chat';
+import { buildApp } from '../index.js';
+import { purgeExpiredChatMessages } from './chat.js';
 import { FakeLlm } from '@app/adapters-ai';
 
 const TEST_DATABASE_URL = 'postgres://postgres:postgres@localhost:5433/ai_uml_test';

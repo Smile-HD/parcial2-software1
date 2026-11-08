@@ -13,7 +13,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { SttUnavailableError } from '@app/adapters-ai';
-import { buildApp, closePool } from './index.js';
+import { buildApp, closePool } from '../index.js';
 import { DiagramSchema, type Diagram, type LlmPort, type LlmResult, type SttPort } from '@app/core';
 
 function makeDiagram(): Diagram {

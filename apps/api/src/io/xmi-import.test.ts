@@ -18,9 +18,9 @@ import { describe, expect, it, beforeAll, afterAll, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { BatchDeltaSchema, DiagramSchema, applyDelta, type BatchDelta, type Diagram } from '@app/core';
-import { buildApp, closePool, pool } from './index.js';
+import { buildApp, closePool, pool } from '../index.js';
 
-const FIXTURES = new URL('../../../packages/adapters-import/test/fixtures/', import.meta.url);
+const FIXTURES = new URL('../../../../packages/adapters-import/test/fixtures/', import.meta.url);
 const eaRealExport = readFileSync(new URL('ea-real-export.xmi', FIXTURES), 'utf8');
 const badVersionXmi = readFileSync(new URL('bad-version.xmi', FIXTURES), 'utf8');
 const malformedXmi = readFileSync(new URL('malformed.xmi', FIXTURES), 'utf8');

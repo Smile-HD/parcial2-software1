@@ -19,7 +19,7 @@ import {
   type Diagram,
 } from '@app/core';
 
-import { buildApp, closePool } from './index.js';
+import { buildApp, closePool } from '../index.js';
 
 function makeDiagram(): Diagram {
   const customerId = crypto.randomUUID();

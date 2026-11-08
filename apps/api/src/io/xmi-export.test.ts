@@ -8,7 +8,7 @@
 import { describe, expect, it, beforeAll, afterAll, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { DiagramSchema, type Diagram } from '@app/core';
-import { buildApp, closePool, pool } from './index.js';
+import { buildApp, closePool, pool } from '../index.js';
 
 const app = buildApp({ logger: false });
 

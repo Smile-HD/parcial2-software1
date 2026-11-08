@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildApp, closePool, pool } from './index.js';
-import { jobRegistry } from './jobs.js';
+import { buildApp, closePool, pool } from '../index.js';
+import { jobRegistry } from './index.js';
 import type { Diagram } from '@app/core';
 
 // Simple diagram fixture with one class and one attribute

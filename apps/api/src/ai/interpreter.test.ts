@@ -11,7 +11,7 @@
  */
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildApp, closePool } from './index.js';
+import { buildApp, closePool } from '../index.js';
 import { DiagramSchema, type Diagram, type LlmPort, type LlmResult } from '@app/core';
 import { FakeLlm } from '@app/adapters-ai';
 

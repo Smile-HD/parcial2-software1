@@ -9,8 +9,8 @@ import { describe, expect, it, beforeAll, afterAll, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { BatchDeltaSchema, DiagramSchema, type BatchDelta, type Diagram } from '@app/core';
 import { FakeVision } from '@app/adapters-ai';
-import { buildApp, closePool, pool } from './index.js';
-import { jobRegistry } from './jobs.js';
+import { buildApp, closePool, pool } from '../index.js';
+import { jobRegistry } from '../jobs.js';
 import type { FastifyInstance } from 'fastify';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
