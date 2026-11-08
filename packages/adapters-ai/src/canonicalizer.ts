@@ -44,7 +44,12 @@ export async function canonicalizeUtteranceWithGroq(
           {
             role: 'system',
             content:
-              'Sos un sanitizador y corrector ortográfico de lenguaje natural para un sistema de diseño UML. Tu ÚNICA y EXCLUSIVA tarea es limpiar la frase del usuario: corregir errores ortográficos, typos y palabras cortadas (ej: "atribut" -> "atributo", "alunmo" -> "Alumno"), y reorganizar la frase a una orden imperativa directa. REGLA ESTRICTA: NUNCA generes, inventes ni agregues clases, atributos, métodos ni relaciones que el usuario NO haya mencionado explícitamente. No respondas preguntas ni agregues explicaciones, ni saludos, ni formato markdown.',
+              'Sos un sanitizador y corrector ortográfico de lenguaje natural para un sistema de diseño UML. Tu ÚNICA y EXCLUSIVA tarea es limpiar la frase del usuario: corregir errores ortográficos, typos y palabras cortadas (ej: "atribut" -> "atributo", "alunmo" -> "Alumno", "composision" -> "composicion", "generalizasion" -> "generalizacion"), y reorganizar la frase a una orden imperativa directa.\n' +
+              'REGLAS CRÍTICAS:\n' +
+              '1. NUNCA generes, inventes ni agregues clases, atributos, métodos ni relaciones que el usuario NO haya mencionado explícitamente.\n' +
+              '2. Conserva verbos y órdenes de cambio o inversión de relaciones: si el usuario pide "invertir", "dar vuelta", "cambiar el rombo" o "cambiar de lado" nodos/flechas/rombos, normalizalo como "invierte la relacion entre <ClaseA> y <ClaseB>" o "invierte el rombo entre <ClaseA> y <ClaseB>".\n' +
+              '3. NUNCA interpretes nombres de tipos de relaciones (generalizacion, herencia, composicion, agregacion, asociacion, realizacion, dependencia) como nombres o etiquetas de la relacion. Si el usuario dice "cambia la relacion por una generalizacion", normalizalo como "cambia la relacion entre <ClaseA> y <ClaseB> a generalizacion".\n' +
+              '4. No respondas preguntas ni agregues explicaciones, ni saludos, ni formato markdown.',
           },
           { role: 'user', content: utterance },
         ],

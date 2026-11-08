@@ -196,7 +196,15 @@ export function normalizeUmlUtterance(raw: string): string {
   // ── G. Miembros y propiedades del metamodelo UML
   s = s.replace(/(?<!\p{L})(?:atributs?|atrbutos?|atrubutos?|atriutos?|atribtos?|atibutos?|atribs?|atrivutos?|propiedad(?:es)?|campos?|columnas?|columns?|attibutes?|attributs?|attribs?|attrs?|props?|properties|fields?)(?!\p{L})/giu, 'atributos');
   s = s.replace(/(?<!\p{L})(?:mtodos?|m[ée]todos?|funci[oó]n(?:es)?|operaci[oó]n(?:es)?|metods?|operations?|funcs?|functions?)(?!\p{L})/giu, 'metodos');
-  s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|asociaci[oó]n(?:es)?|asocici[oó]n(?:es)?|soacici[oó]n(?:es)?|asosiaci[oó]n(?:es)?|asociasi[oó]n(?:es)?|asocaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
+  s = s.replace(/(?<!\p{L})(?:relaci[oó]n(?:es)?|relasion(?:es)?|asociaci[oó]n(?:es)?|asocici[oó]n(?:es)?|soacici[oó]n(?:es)?|asosiaci[oó]n(?:es)?|asociasi[oó]n(?:es)?|asocaci[oó]n(?:es)?)(?!\p{L})/giu, 'asociacion');
+  s = s.replace(/(?<!\p{L})(?:composici[oó]n|composisi[oó]n|compozici[oó]n|compozisi[oó]n)(?!\p{L})/giu, 'composicion');
+  s = s.replace(/(?<!\p{L})(?:agregaci[oó]n|agregasi[oó]n|agregazici[oó]n)(?!\p{L})/giu, 'agregacion');
+  s = s.replace(/(?<!\p{L})(?:generalizaci[oó]n|generalizasi[oó]n|generalizacion|generalizasion)(?!\p{L})/giu, 'generalizacion');
+  s = s.replace(/(?<!\p{L})(?:realizaci[oó]n|realizasi[oó]n|realizacion|realizasion)(?!\p{L})/giu, 'realizacion');
+
+  // Normalizar frases de inversión y cambio de dirección / nodos / rombo / flecha
+  s = s.replace(/(?<!\p{L})(?:nodo\s+de\s+relaci[oó]n|nodo\s+de\s+la\s+relaci[oó]n|nodo\s+relaci[oó]n)(?!\p{L})/giu, 'relacion');
+  s = s.replace(/(?<!\p{L})(?:invert[ií]|invierte|invertir|da\s+vuelta|dar\s+vuelta|dalo\s+vuelta|dala\s+vuelta|gira|girar|voltea|voltear|cambia\s+de\s+lado)(?!\p{L})/giu, 'invierte');
 
   // Normalizar "atributo de <nombre> de tipo <tipo>" -> "atributo <nombre> de tipo <tipo>"
   s = s.replace(/(?<!\p{L})(?:atributos?)\s+de\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:de\s+tipo|tipo|que\s+sea|como|:)/giu, 'atributos $1 de tipo ');
