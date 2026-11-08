@@ -77,7 +77,7 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
         : null)
     : null;
 
-  if (createClassIntent) {
+  if (createClassIntent && !/(?:abstract|interfa)/i.test(createClassIntent[2] || '')) {
     const rawClassName = createClassIntent[1]!.trim();
     const className = cleanClassName(rawClassName);
     const remainder = createClassIntent[2]?.trim() || '';

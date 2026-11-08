@@ -874,14 +874,16 @@ export function expandSemanticDomainToDelta(
       (a.sourceClassId === superId && a.targetClassId === subId)
     ) || [];
     for (const ea of existingAssocsForGen) {
-      deltas.push({
-        id: crypto.randomUUID(),
-        diagramId,
-        timestamp,
-        kind: 'association',
-        op: 'delete',
-        associationId: ea.id,
-      });
+      if (!deltas.some((d: any) => d.kind === 'association' && d.op === 'delete' && d.associationId === ea.id)) {
+        deltas.push({
+          id: crypto.randomUUID(),
+          diagramId,
+          timestamp,
+          kind: 'association',
+          op: 'delete',
+          associationId: ea.id,
+        });
+      }
     }
 
     deltas.push({
@@ -1304,7 +1306,7 @@ export function expandSemanticDomainToDelta(
               (a.sourceClassId === srcId && a.targetClassId === tgtId) ||
               (a.sourceClassId === tgtId && a.targetClassId === srcId)
           );
-          if (assoc) {
+          if (assoc && !deltas.some((d: any) => d.kind === 'association' && d.op === 'delete' && d.associationId === assoc.id)) {
             deltas.push({
               id: crypto.randomUUID(),
               diagramId,

@@ -1,5 +1,5 @@
 import { normalizeUmlUtterance } from '@app/adapters-ai';
-import { matchCanonicalDomain } from './domain-catalog/router.js';
+import { matchCanonicalDomain } from './synthesis/domain-catalog/router.js';
 
 export interface ChatInputNormalization {
   /** Texto con sinónimos, acentos de verbos y cardinalidades estandarizadas */
