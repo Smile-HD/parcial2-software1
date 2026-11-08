@@ -58,3 +58,4 @@ sequenceDiagram
   - El drag and drop de herramientas SHALL residir en `usePaletteDnD`.
   - El cálculo geométrico de conectores SHALL residir en `useQuickLinker`.
   - La presencia multiusuario SHALL residir en `useCollabCursors`.
+

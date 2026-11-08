@@ -31,3 +31,4 @@ Esta propuesta formaliza la **remediación arquitectónica integral del monorepo
 - Todo el trabajo se ejecuta en la rama aislada `refactor/clean-architecture-and-docs`.
 - En caso de regresión o fallo no mitigable, se ejecuta un rollback atómico vía Git (`git checkout main`).
 - Cada etapa se consolida mediante commits convencionales independientes solo tras verificar el 100% de tests en verde.
+

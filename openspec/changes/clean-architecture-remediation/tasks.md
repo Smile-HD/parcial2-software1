@@ -40,3 +40,4 @@
 - [ ] 3.1 Ejecutar suite completa de tests de punta a punta (`pnpm test`).
 - [ ] 3.2 Documentar la trazabilidad SDD y las 4 arquitecturas formales para el informe del 2do Parcial.
 - [ ] 3.3 Commit y cierre de la especificación en OpenSpec.
+
