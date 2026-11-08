@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildYDocFromDiagram, type Diagram } from '@app/core';
 
-import { DiagramCanvas } from './DiagramCanvas';
+import { DiagramCanvas } from '../DiagramCanvas';
 import {
   getSelfLoopPath,
   SELF_LOOP_DEFAULT_HEIGHT,
