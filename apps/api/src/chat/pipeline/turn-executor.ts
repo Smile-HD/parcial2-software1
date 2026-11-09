@@ -117,9 +117,19 @@ export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<Un
       { role: 'user', content: cleanContent },
     ];
 
+    const turnAbortController = new AbortController();
     let accumulatedChunks = '';
     const turnChunkCollector = (chunk: string) => {
       accumulatedChunks += chunk;
+      if (isAction && !turnAbortController.signal.aborted && accumulatedChunks.includes('}') && accumulatedChunks.includes('"classes"')) {
+        const trimmed = accumulatedChunks.trim();
+        if (trimmed.endsWith('}') || (trimmed.includes('"associations"') && trimmed.includes(']'))) {
+          const quick = robustParseDomainJson(accumulatedChunks);
+          if (quick && Array.isArray(quick.classes) && quick.classes.length >= 1) {
+            turnAbortController.abort();
+          }
+        }
+      }
       if (!isAction) {
         onChunk?.(chunk);
       }
@@ -131,8 +141,9 @@ export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<Un
         messages,
         {
           timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
-          maxTokens: isAction ? 650 : DEFAULT_LLM_MAX_TOKENS,
+          maxTokens: isAction ? 350 : DEFAULT_LLM_MAX_TOKENS,
           onChunk: turnChunkCollector,
+          signal: turnAbortController.signal,
         }
       );
     } catch (llmErr: any) {
@@ -290,11 +301,12 @@ export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<Un
             .map((m) => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
             .join('\n');
           const synthesisPrompt = [
+            ingressHint ? `Pista autoritativa de dominio de Groq:\n${ingressHint}` : '',
             `Historial reciente de la conversación:\n${recentHistory}`,
             `Última explicación del asistente:\n${clean}`,
             `Instrucción del usuario:\n${userContent}`,
             'Generá el modelo de clases y asociaciones necesario para implementar lo solicitado o discutido en el chat.',
-          ].join('\n\n');
+          ].filter(Boolean).join('\n\n');
           const synthesized = await synthesizeDomainModel(synthesisPrompt, diagramId, llm, diagram, true);
           if (synthesized && synthesized.deltas.length > 0) {
             const defaultReply = isEn

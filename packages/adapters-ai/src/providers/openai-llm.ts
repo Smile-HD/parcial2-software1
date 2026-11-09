@@ -51,10 +51,18 @@ export class OpenAiLlm implements LlmPort {
       stop?: string[];
       repeatPenalty?: number;
       repeatLastN?: number;
+      signal?: AbortSignal;
     }
   ): Promise<string> {
     const isStream = typeof options?.onChunk === 'function';
     const controller = new AbortController();
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort(options.signal.reason);
+      } else {
+        options.signal.addEventListener('abort', () => controller.abort(options.signal?.reason), { once: true });
+      }
+    }
     const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 15000);
     try {
       const requestBody: Record<string, any> = {

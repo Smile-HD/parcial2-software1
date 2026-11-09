@@ -63,6 +63,12 @@ export function applyRelationUpdates(
           if (assocClassId) {
             updateDelta.newAssociationClassId = assocClassId;
             updateDelta.associationClassId = assocClassId;
+            if (!updateDelta.newSourceMultiplicity || updateDelta.newSourceMultiplicity === '1' || updateDelta.newSourceMultiplicity === '0..1') {
+              updateDelta.newSourceMultiplicity = '0..*';
+            }
+            if (!updateDelta.newTargetMultiplicity || updateDelta.newTargetMultiplicity === '1' || updateDelta.newTargetMultiplicity === '0..1') {
+              updateDelta.newTargetMultiplicity = '0..*';
+            }
           } else if (u.associationClass === null) {
             updateDelta.newAssociationClassId = null;
           }
@@ -328,7 +334,15 @@ export function applyAssociationsDeltas(ctx: DeltaExpansionContext, model: Seman
     if (assoc.name) assocDelta.name = assoc.name;
     if (assoc.sourceRole) assocDelta.sourceRole = assoc.sourceRole;
     if (assoc.targetRole) assocDelta.targetRole = assoc.targetRole;
-    if (assocClassId) assocDelta.associationClassId = assocClassId;
+    if (assocClassId) {
+      assocDelta.associationClassId = assocClassId;
+      if (!assocDelta.sourceMultiplicity || assocDelta.sourceMultiplicity === '1' || assocDelta.sourceMultiplicity === '0..1') {
+        assocDelta.sourceMultiplicity = '0..*';
+      }
+      if (!assocDelta.targetMultiplicity || assocDelta.targetMultiplicity === '1' || assocDelta.targetMultiplicity === '0..1') {
+        assocDelta.targetMultiplicity = '0..*';
+      }
+    }
 
     deltas.push(assocDelta);
     seenConnectedPairs.add(pair);

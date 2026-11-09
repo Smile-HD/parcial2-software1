@@ -192,6 +192,57 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
         diagramSummary = `Clases: ${diagram.classes.map((c: any) => `${c.name} (atributos: ${(c.attributes || []).map((a: any) => a.name).join(', ') || 'ninguno'})`).join('; ')}`;
       }
 
+      if (parsed.data.content.trim().toLowerCase() === '/reset') {
+        try {
+          await pool.query(
+            `DELETE FROM chat_messages 
+             WHERE diagram_id = $1 
+               AND channel_type = 'direct_bot'
+               AND (device_id = $2 OR target_user = $3 OR sender_name = $3)
+               AND id != $4`,
+            [id, parsed.data.deviceId, parsed.data.senderName, message.id]
+          );
+        } catch {}
+      }
+
+      // Contexto de historial limpio: Si el lienzo está vacío (se reinició o nuevo), descartamos historial previo
+      let chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
+      if (diagram && Array.isArray(diagram.classes) && diagram.classes.length > 0) {
+        try {
+          const recentMessages = await listChatMessages(
+            pool,
+            id,
+            parsed.data.channelType,
+            parsed.data.deviceId,
+            parsed.data.senderName
+          );
+          chatHistory = recentMessages
+            .filter((m) => {
+              if (m.id === message.id) return false;
+              if (parsed.data.channelType === 'group') {
+                return m.senderType === 'bot' || m.content.includes('@Amongus') || m.content.trim().startsWith('/');
+              }
+              return true;
+            })
+            .slice(-6)
+            .map((m) => {
+              let content = m.content;
+              if (m.senderType === 'bot') {
+                content = content.replace(/```[a-zA-Z0-9_-]*[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
+                if (content.length > 1500) {
+                  content = content.slice(0, 1500) + '...';
+                }
+              }
+              return {
+                role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
+                content,
+              };
+            });
+        } catch {}
+      } else {
+        chatHistory = [];
+      }
+
       // Ingress Gateway & Short-Circuit de Slash Commands
       const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
       let ingressHandled = false;
@@ -205,6 +256,7 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
           const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, {
             apiKey: groqApiKey,
             diagramSummary,
+            recentHistory: chatHistory,
           });
           if (canonicalText) {
             const ingress = parseIngressResult(canonicalText);
@@ -217,7 +269,14 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
               ingressHandled = true;
             } else if (ingress.kind === 'chat') {
               ingressHint = ingress.hint;
-              // Bypassea el modelado determinista para ser respondido en Nivel 2
+              // Si el usuario pregunta de qué trata el diagrama y Groq dedujo el HINT, respondemos de inmediato
+              const isCanvasQuery =
+                /(?:explic|contexto|qu[eé]\s+(?:es|hace|significa|modela|representa)|de\s+qu[eé]\s+trata|describe|explain|what\s+does|meaning\s+of)/i.test(
+                  parsed.data.content
+                ) && /(?:diagrama|modelo|lienzo|canvas|actual)/i.test(parsed.data.content);
+              if (isCanvasQuery && ingress.hint) {
+                replyContent = ingress.hint;
+              }
               ingressHandled = true;
             } else if (ingress.kind === 'design') {
               // Pasa el requerimiento limpio a Nivel 2 para síntesis de dominio completa
@@ -266,52 +325,6 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
 
       // Nivel 2: Agente unificado
       if (!replyContent) {
-        if (parsed.data.content.trim().toLowerCase() === '/reset') {
-          try {
-            await pool.query(
-              `DELETE FROM chat_messages 
-               WHERE diagram_id = $1 
-                 AND channel_type = 'direct_bot'
-                 AND (device_id = $2 OR target_user = $3 OR sender_name = $3)
-                 AND id != $4`,
-              [id, parsed.data.deviceId, parsed.data.senderName, message.id]
-            );
-          } catch {}
-        }
-
-        let chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> | undefined;
-        try {
-          const recentMessages = await listChatMessages(
-            pool,
-            id,
-            parsed.data.channelType,
-            parsed.data.deviceId,
-            parsed.data.senderName
-          );
-          chatHistory = recentMessages
-            .filter((m) => {
-              if (m.id === message.id) return false;
-              if (parsed.data.channelType === 'group') {
-                return m.senderType === 'bot' || m.content.includes('@Amongus') || m.content.trim().startsWith('/');
-              }
-              return true;
-            })
-            .slice(-6)
-            .map((m) => {
-              let content = m.content;
-              if (m.senderType === 'bot') {
-                content = content.replace(/```[a-zA-Z0-9_-]*[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
-                if (content.length > 1500) {
-                  content = content.slice(0, 1500) + '...';
-                }
-              }
-              return {
-                role: (m.senderType === 'bot' ? 'assistant' : 'user') as 'assistant' | 'user',
-                content,
-              };
-            });
-        } catch {}
-
         const onChunk = isStream
           ? (chunk: string) => {
               try {

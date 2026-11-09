@@ -126,8 +126,8 @@ export function tryRelationshipCommands(ctx: FakeLlmContext): LlmResult | null {
       associationId: crypto.randomUUID(),
       sourceClassId,
       targetClassId,
-      sourceMultiplicity: '1',
-      targetMultiplicity: '1',
+      sourceMultiplicity: '0..*',
+      targetMultiplicity: '0..*',
       directed: false,
       associationClassId: assocClassId,
     };

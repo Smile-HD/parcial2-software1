@@ -105,7 +105,7 @@ export async function synthesizeDomainModel(
     'CRITICAL LANGUAGE RULE: If the prompt or context is in Spanish, name all classes, attributes, and roles in Spanish. If in English, name them in English.',
     'CRITICAL ENTITIES RULE: If candidate classes or entities are requested or implied, you MUST include ALL of them in the "classes" array. For EVERY SINGLE CLASS, you MUST provide 2 to 4 realistic domain attributes with clean types (string, int, float, boolean, date). NEVER leave attributes empty.',
     'CRITICAL RELATIONSHIP TYPES RULES:',
-    '1. DEFAULT TO PLAIN ASSOCIATION: Most relationships between classes are standard associations with "aggregation": "none" (e.g. Cliente -> Pedido, DetalleFactura -> Producto, Medico -> Paciente, Pasajero -> Vuelo).',
+    '1. DEFAULT TO PLAIN ASSOCIATION (1 TO MANY): Most relationships between classes are standard 1-to-many associations ("sourceMultiplicity": "1", "targetMultiplicity": "0..*") with "aggregation": "none" (e.g. Cliente -> Pedido, Medico -> Paciente, Pasajero -> Vuelo). DO NOT output many-to-many indiscriminately.',
     '2. COMPOSITION (strong whole-part lifecycle dependency: if the whole is deleted, parts cease to exist): Set "aggregation": "composite" on the association (e.g. Factura -> DetalleFactura, Pedido -> ItemPedido, Venta -> LineaVenta). The container/whole is the "source".',
     '3. AGGREGATION (use SPARINGLY, ONLY when a container aggregates independent entities that survive without the container): Set "aggregation": "shared" (e.g. Biblioteca -> Libro, Departamento -> Empleado). Do NOT use aggregation for simple references.',
     '4. INHERITANCE / GENERALIZATION: For specialized subtypes ("is-a" relationship, e.g. Perro is an Animal, TarjetaCredito is a MetodoPago), declare in "generalizations": [{"subclass": "TarjetaCredito", "superclass": "MetodoPago"}]. Subclasses inherit attributes from superclass; do NOT repeat inherited attributes in the subclass. NEVER create an association between a subclass and its superclass.',
@@ -132,9 +132,20 @@ export async function synthesizeDomainModel(
   ].filter(Boolean).join('\n');
 
   try {
+    const abortController = new AbortController();
     let responseText = '';
     const chunkCollector = (chunk: string) => {
       responseText += chunk;
+      // Corte temprano: si el JSON de clases cerró correctamente, abortamos el stream para no esperar timeouts
+      if (!abortController.signal.aborted && responseText.includes('}') && responseText.includes('"classes"')) {
+        const trimmed = responseText.trim();
+        if (trimmed.endsWith('}') || (trimmed.includes('"associations"') && trimmed.includes(']'))) {
+          const quick = robustParseDomainJson(responseText);
+          if (quick && Array.isArray(quick.classes) && quick.classes.length >= 1) {
+            abortController.abort();
+          }
+        }
+      }
     };
 
     let response: any;
@@ -145,10 +156,11 @@ export async function synthesizeDomainModel(
           { role: 'user', content: text },
         ],
         {
-          timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 180000,
+          timeoutMs: Number(process.env.LLM_TIMEOUT_MS) || 60000,
           temperature: 0.1,
-          maxTokens: 650,
+          maxTokens: 350,
           onChunk: chunkCollector,
+          signal: abortController.signal,
         }
       );
     } catch (llmErr) {

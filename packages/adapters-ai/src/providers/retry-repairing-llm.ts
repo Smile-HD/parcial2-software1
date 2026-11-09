@@ -157,6 +157,7 @@ export class RetryRepairingLlmPort implements LlmPort {
       stop?: string[];
       repeatPenalty?: number;
       repeatLastN?: number;
+      signal?: AbortSignal;
     }
   ): Promise<string> {
     if ('chat' in this.inner && typeof (this.inner as any).chat === 'function') {

@@ -31,13 +31,80 @@ export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
       return refused(`Invalid multiplicity format "${isMultiplicityUpdate[3]}".`);
     }
     const isDirect = existingAssoc.sourceClassId === sourceClassId;
+    const newSrcMult = isDirect ? mults.source : mults.target;
+    const newTgtMult = isDirect ? mults.target : mults.source;
+
+    // Invariante M:N: Si se actualiza a muchos a muchos y no tiene clase de asociación, se crea la tabla intermedia
+    const isManyToMany =
+      (newSrcMult === '0..*' || newSrcMult === '1..*') &&
+      (newTgtMult === '0..*' || newTgtMult === '1..*');
+
+    if (isManyToMany && !existingAssoc.associationClassId) {
+      const srcClass = currentIr.classes.find((c) => c.id === sourceClassId);
+      const tgtClass = currentIr.classes.find((c) => c.id === targetClassId);
+      const candidate1 = `${srcClass?.name || srcName}_${tgtClass?.name || tgtName}`;
+      const candidate2 = `${tgtClass?.name || tgtName}_${srcClass?.name || srcName}`;
+      const candidate3 = `${srcClass?.name || srcName}${tgtClass?.name || tgtName}`;
+      const candidate4 = `${tgtClass?.name || tgtName}${srcClass?.name || srcName}`;
+
+      let assocClassId =
+        classIdByName(currentIr, candidate1) ??
+        classIdByName(currentIr, candidate2) ??
+        classIdByName(currentIr, candidate3) ??
+        classIdByName(currentIr, candidate4);
+
+      let createClassDelta: any = null;
+      if (!assocClassId) {
+        assocClassId = crypto.randomUUID();
+        createClassDelta = {
+          kind: 'class',
+          op: 'create',
+          ...deltaBase(currentIr),
+          classId: assocClassId,
+          name: candidate1,
+          isAbstract: false,
+        };
+      }
+
+      const updateDelta: AssociationDelta = {
+        kind: 'association',
+        op: 'updateMultiplicity',
+        ...deltaBase(currentIr),
+        associationId: existingAssoc.id,
+        newSourceMultiplicity: '0..*',
+        newTargetMultiplicity: '0..*',
+        newAssociationClassId: assocClassId,
+        associationClassId: assocClassId,
+      };
+
+      const nameMatch = /\b(?:llamada|llamado|nombrada|nombrado|named|called|con\s+(?:el\s+)?nombre|de\s+nombre|nombrala|nombralo)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
+      if (nameMatch) {
+        const candidate = nameMatch[1]!;
+        if (!/^(clase|tabla|entidad|asociacion|relacion|multiplicidad|muchos|uno)$/i.test(candidate)) {
+          updateDelta.name = candidate;
+        }
+      }
+
+      if (createClassDelta) {
+        return {
+          kind: 'delta',
+          value: {
+            kind: 'batch',
+            ...deltaBase(currentIr),
+            deltas: [createClassDelta, updateDelta],
+          },
+        };
+      }
+      return { kind: 'delta', value: updateDelta };
+    }
+
     const delta: AssociationDelta = {
       kind: 'association',
       op: 'updateMultiplicity',
       ...deltaBase(currentIr),
       associationId: existingAssoc.id,
-      newSourceMultiplicity: isDirect ? mults.source : mults.target,
-      newTargetMultiplicity: isDirect ? mults.target : mults.source,
+      newSourceMultiplicity: newSrcMult,
+      newTargetMultiplicity: newTgtMult,
     };
     const nameMatch = /\b(?:llamada|llamado|nombrada|nombrado|named|called|con\s+(?:el\s+)?nombre|de\s+nombre|nombrala|nombralo)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(utterance);
     if (nameMatch) {
