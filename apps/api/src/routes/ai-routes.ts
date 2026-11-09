@@ -197,6 +197,7 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
       let ingressHandled = false;
       let ingressHint: string | undefined;
       const isSuggestSlash = parsed.data.content.trim().toLowerCase() === '/suggest';
+      let isSuggestIntent = isSuggestSlash;
 
       // 1. Ingress con Groq (Online / Con API key) para clasificar y normalizar
       if ((!isSlashCommand || isSuggestSlash) && groqApiKey && groqApiKey.startsWith('gsk_')) {
@@ -212,6 +213,8 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
               ingressHandled = true;
             } else if (ingress.kind === 'suggest') {
               ingressHint = ingress.hint;
+              isSuggestIntent = true;
+              ingressHandled = true;
             } else if (ingress.kind === 'chat') {
               ingressHint = ingress.hint;
               // Bypassea el modelado determinista para ser respondido en Nivel 2
@@ -328,7 +331,8 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
             chatHistory,
             onChunk,
             parsed.data.peerUsers,
-            ingressHint
+            ingressHint,
+            isSuggestIntent
           );
           if (unified.batchDelta) {
             const pending = pendingDeltas.put(id, unified.batchDelta);

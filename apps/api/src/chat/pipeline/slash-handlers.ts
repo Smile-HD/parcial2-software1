@@ -26,6 +26,7 @@ export interface SlashCommandParams {
   diagramContext: string;
   normalized: string;
   ingressHint?: string;
+  isSuggestIntent?: boolean;
 }
 
 export type SlashCommandOutcome =
@@ -129,8 +130,16 @@ export async function handleSlashCommands(params: SlashCommandParams): Promise<S
     };
   }
 
-  // /suggest
-  if (trimmedLower === '/suggest') {
+  // /suggest (o solicitud equivalente de sugerencias en lenguaje natural)
+  const isSuggestIntent =
+    trimmedLower === '/suggest' ||
+    trimmedLower.startsWith('/suggest ') ||
+    Boolean(params.isSuggestIntent) ||
+    /^(?:qu[eé]\s+(?:clases?|entidades?|mejoras?)\s+(?:me\s+)?(?:suger[ií]s?|recomiend|faltan)|dame\s+sugerencias?|sugerencias?|suger[ií]me\b|qu[eé]\s+falta\b|what\s+(?:classes?|entities?)\s+do\s+you\s+suggest|give\s+me\s+suggestions?)/i.test(
+      normalized
+    );
+
+  if (isSuggestIntent) {
     if (!diagram || !diagram.classes || diagram.classes.length === 0) {
       return {
         handled: true,
