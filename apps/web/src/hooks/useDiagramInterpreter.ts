@@ -118,6 +118,9 @@ export function useDiagramInterpreter({
 
     void confirmDelta(deltaId)
       .then(async (result) => {
+        try {
+          doc.getMap('meta').set(`applied_delta_${deltaId}`, Date.now());
+        } catch {}
         await applyAndBuild(result.delta);
       })
       .catch((error: unknown) => {
@@ -160,6 +163,9 @@ export function useDiagramInterpreter({
 
     void rejectDelta(deltaId)
       .then(() => {
+        try {
+          doc.getMap('meta').set(`rejected_delta_${deltaId}`, Date.now());
+        } catch {}
         setInterpreter({ phase: 'idle' });
       })
       .catch((error: unknown) => {

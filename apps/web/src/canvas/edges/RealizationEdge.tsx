@@ -47,12 +47,12 @@ export function RealizationEdge(props: EdgeProps<RealizationEdgeData>) {
           id={triangleId}
           markerWidth="16"
           markerHeight="16"
-          refX="15"
+          refX="14"
           refY="8"
           orient="auto"
           markerUnits="userSpaceOnUse"
         >
-          <path d="M 0 16 L 8 0 L 16 16 Z" fill="#ffffff" stroke="#1a1a2e" strokeWidth="2" />
+          <path d="M 0 1 L 14 8 L 0 15 Z" fill="#ffffff" stroke="#1a1a2e" strokeWidth="2" strokeLinejoin="miter" />
         </marker>
       </defs>
 

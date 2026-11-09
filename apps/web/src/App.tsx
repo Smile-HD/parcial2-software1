@@ -164,6 +164,7 @@ export function App({ doc: injectedDoc, collabUrl, voiceRecorder }: AppProps = {
           )}
 
           <ChatPanel
+            doc={doc}
             diagramId={roomId ?? ''}
             userName={userName}
             isOpen={isChatOpen && Boolean(roomId)}

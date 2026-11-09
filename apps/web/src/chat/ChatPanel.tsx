@@ -40,6 +40,7 @@ export interface ChatPanelProps {
   isTranscribing?: boolean;
   existingClasses?: Array<{ id: string; name: string }>;
   getCurrentDiagram?: () => any;
+  doc?: any;
 }
 
 /**
@@ -73,6 +74,7 @@ export function ChatPanel({
   isTranscribing: propIsTranscribing = false,
   existingClasses = [],
   getCurrentDiagram,
+  doc,
 }: ChatPanelProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
@@ -187,6 +189,56 @@ export function ChatPanel({
       return new Set();
     }
   });
+
+  // Sincronización en tiempo real de propuestas aplicadas/rechazadas vía Y.Doc colaborativo
+  useEffect(() => {
+    if (!doc || typeof doc.getMap !== 'function') return;
+    const yMeta = doc.getMap('meta');
+    const syncFromYMeta = () => {
+      const newApplied: string[] = [];
+      const newRejected: string[] = [];
+      for (const [key, val] of yMeta.entries()) {
+        if (key.startsWith('applied_delta_') && val) {
+          newApplied.push(key.replace('applied_delta_', ''));
+        } else if (key.startsWith('rejected_delta_') && val) {
+          newRejected.push(key.replace('rejected_delta_', ''));
+        }
+      }
+      if (newApplied.length > 0) {
+        setAppliedDeltaIds((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          for (const id of newApplied) {
+            if (!next.has(id)) {
+              next.add(id);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      }
+      if (newRejected.length > 0) {
+        setRejectedDeltaIds((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          for (const id of newRejected) {
+            if (!next.has(id)) {
+              next.add(id);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      }
+    };
+
+    syncFromYMeta();
+    yMeta.observe(syncFromYMeta);
+    return () => {
+      yMeta.unobserve(syncFromYMeta);
+    };
+  }, [doc]);
+
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [dismissedRefusal, setDismissedRefusal] = useState<string | null>(null);
 
@@ -565,6 +617,9 @@ export function ChatPanel({
     });
     setDismissedError(interpreterError);
     onPreviewProposal?.(null);
+    try {
+      doc?.getMap?.('meta')?.set(`applied_delta_${deltaId}`, Date.now());
+    } catch {}
     if (onConfirmProposal) {
       await onConfirmProposal(deltaId, delta);
     }
@@ -580,6 +635,9 @@ export function ChatPanel({
     });
     setDismissedError(interpreterError);
     onPreviewProposal?.(null);
+    try {
+      doc?.getMap?.('meta')?.set(`rejected_delta_${deltaId}`, Date.now());
+    } catch {}
     if (onRejectProposal) {
       await onRejectProposal(deltaId);
     }
