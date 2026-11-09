@@ -16,6 +16,7 @@ import {
   processUnifiedAmongusTurn,
 } from '../chat.js';
 import { loadDiagramFromRow } from './persistence.js';
+import { registerVoiceRoute } from './ai-voice-routes.js';
 
 export interface AiRoutesDeps {
   pool: Pool;
@@ -95,68 +96,7 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
   });
 
   // POST /diagrams/:id/voice — voz → transcripción → flujo de interpretación
-  app.post<{ Params: { id: string }; Body: { audio?: string; mimeType?: string; transcribeOnly?: boolean } }>(
-    '/diagrams/:id/voice',
-    async (request, reply) => {
-      const { id } = request.params;
-      const audioBase64 = request.body?.audio;
-      if (typeof audioBase64 !== 'string' || audioBase64.trim().length === 0) {
-        return reply.status(400).send({ error: 'audio (base64) is required' });
-      }
-
-      const result = await pool.query(
-        'SELECT id, name, doc, yjs_state, version, created_at, updated_at FROM diagrams WHERE id = $1',
-        [id],
-      );
-      if (result.rows.length === 0) {
-        return reply.status(404).send({ error: 'Diagram not found' });
-      }
-      const row = result.rows[0];
-
-      let transcript: string;
-      try {
-        const audio = new Uint8Array(Buffer.from(audioBase64, 'base64'));
-        transcript = await stt.transcribe(audio, request.body?.mimeType ?? 'audio/webm');
-      } catch (error) {
-        const cause = error instanceof Error ? error.message : 'unknown error';
-        return reply.status(502).send({
-          error: `Speech-to-text unavailable: ${cause}. Use the text command input instead.`,
-        });
-      }
-
-      if (request.body?.transcribeOnly) {
-        return reply.send({ transcript, status: 'ok' });
-      }
-
-      let currentIr: Diagram;
-      try {
-        currentIr = (
-          await loadDiagramFromRow({
-            id: row.id,
-            name: row.name,
-            doc: row.doc,
-            yjs_state: row.yjs_state,
-            version: row.version,
-          })
-        ).diagram;
-      } catch (error) {
-        return reply.status(500).send({ error: error instanceof Error ? error.message : 'Diagram load failed' });
-      }
-
-      try {
-        const outcome = await interpretCommand(transcript, llm, currentIr, pendingDeltas);
-        if (outcome.status === 'error') {
-          return reply.status(422).send({ transcript, status: 'error', message: outcome.message });
-        }
-        return reply.send({ transcript, ...outcome });
-      } catch (error) {
-        if (error instanceof LlmUnavailableError) {
-          return reply.status(502).send({ error: `LLM unavailable: ${error.message}` });
-        }
-        throw error;
-      }
-    }
-  );
+  registerVoiceRoute(app, pool, stt, llm, pendingDeltas);
 
   // GET /diagrams/:id/messages
   app.get<{
@@ -247,20 +187,33 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
         } catch {}
       }
 
+      let diagramSummary: string | undefined;
+      if (diagram && diagram.classes && diagram.classes.length > 0) {
+        diagramSummary = `Clases: ${diagram.classes.map((c: any) => `${c.name} (atributos: ${(c.attributes || []).map((a: any) => a.name).join(', ') || 'ninguno'})`).join('; ')}`;
+      }
+
       // Ingress Gateway & Short-Circuit de Slash Commands
       const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
       let ingressHandled = false;
+      let ingressHint: string | undefined;
+      const isSuggestSlash = parsed.data.content.trim().toLowerCase() === '/suggest';
 
       // 1. Ingress con Groq (Online / Con API key) para clasificar y normalizar
-      if (!isSlashCommand && groqApiKey && groqApiKey.startsWith('gsk_')) {
+      if ((!isSlashCommand || isSuggestSlash) && groqApiKey && groqApiKey.startsWith('gsk_')) {
         try {
-          const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
+          const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, {
+            apiKey: groqApiKey,
+            diagramSummary,
+          });
           if (canonicalText) {
             const ingress = parseIngressResult(canonicalText);
             if (ingress.kind === 'blocked') {
               replyContent = ingress.reason;
               ingressHandled = true;
+            } else if (ingress.kind === 'suggest') {
+              ingressHint = ingress.hint;
             } else if (ingress.kind === 'chat') {
+              ingressHint = ingress.hint;
               // Bypassea el modelado determinista para ser respondido en Nivel 2
               ingressHandled = true;
             } else if (ingress.kind === 'design') {
@@ -344,7 +297,7 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
             .map((m) => {
               let content = m.content;
               if (m.senderType === 'bot') {
-                content = content.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
+                content = content.replace(/```[a-zA-Z0-9_-]*[\s\S]*?```/gi, '').replace(/\s+/g, ' ').trim();
                 if (content.length > 1500) {
                   content = content.slice(0, 1500) + '...';
                 }
@@ -374,7 +327,8 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
             diagram,
             chatHistory,
             onChunk,
-            parsed.data.peerUsers
+            parsed.data.peerUsers,
+            ingressHint
           );
           if (unified.batchDelta) {
             const pending = pendingDeltas.put(id, unified.batchDelta);

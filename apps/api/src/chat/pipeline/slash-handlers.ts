@@ -1,7 +1,7 @@
 /**
  * Manejadores de slash commands para Amongus (/help, /reset, /context, /model, /audit, /layout, /clear, /suggest, /apply).
  */
-import type { BatchDelta, ClassDelta } from '@app/core';
+import type { BatchDelta } from '@app/core';
 import { findClosestSlashCommand } from '@app/adapters-ai';
 import { auditDiagramOOAD } from '../../diagram-auditor.js';
 import { synthesizeDomainModel } from '../../synthesis/index.js';
@@ -12,6 +12,7 @@ import {
 } from '../prompt-formatter.js';
 import { DEFAULT_LLM_TIMEOUT_MS } from '../chat-constants.js';
 import type { UnifiedTurnResult } from '../chat-pipeline.js';
+import { handleBasicSlashCommands } from './slash-basic-commands.js';
 
 export interface SlashCommandParams {
   userContent: string;
@@ -24,6 +25,7 @@ export interface SlashCommandParams {
   onChunk?: (chunk: string) => void;
   diagramContext: string;
   normalized: string;
+  ingressHint?: string;
 }
 
 export type SlashCommandOutcome =
@@ -42,88 +44,22 @@ export async function handleSlashCommands(params: SlashCommandParams): Promise<S
     onChunk,
     diagramContext,
     normalized,
+    ingressHint,
   } = params;
   const isEn = language === 'en';
   const trimmedLower = userContent.trim().toLowerCase();
 
-  // /help
-  if (trimmedLower === '/help' || trimmedLower.startsWith('/help ')) {
-    const helpLines = isEn
-      ? [
-          'Amongus Command Guide:',
-          '• /help [command] — Show interactive guide and command details',
-          '• /reset — Clear chat memory to 0 tokens for maximum CPU speed',
-          '• /context — View token count and CPU latency speed meter',
-          '• /model <topic> — Directly generate domain model proposal (e.g. /model airline)',
-          '• /audit — Audit current diagram with OOAD quality principles',
-          '• /suggest — Suggest missing entities to complete your domain',
-          '• /apply — Apply and build active proposal or latest suggestion',
-          '• /clear — Safe proposal to clear the canvas (requires confirmation)',
-          '• /export <spring|xmi|png> — Export project, XMI, or high-res image',
-          '• /layout — Reorganize classes visually to avoid overlap',
-        ].join('\n')
-      : [
-          'Guía de Comandos de Amongus:',
-          '• /help [comando] — Muestra la guía interactiva y detalles de cada comando',
-          '• /reset — Vacía la memoria del chat a 0 tokens para máxima velocidad en CPU',
-          '• /context — Muestra el total de tokens cargados y el semáforo de velocidad',
-          '• /model <tema> — Genera directamente la propuesta de dominio (ej. /model aerolineas)',
-          '• /audit — Audita el diagrama con principios de calidad OOAD y buenas prácticas UML',
-          '• /suggest — Sugiere entidades faltantes para enriquecer el modelo',
-          '• /apply — Aplica y construye la propuesta activa o última sugerencia en el lienzo',
-          '• /clear — Propuesta segura para vaciar el lienzo (con confirmación)',
-          '• /export <spring|xmi|png> — Exporta a Spring Boot, XMI 2.1 o imagen PNG',
-          '• /layout — Reorganiza visualmente las clases para evitar solapamientos',
-        ].join('\n');
-    return { handled: true, result: { replyContent: helpLines } };
-  }
-
-  // /reset
-  if (trimmedLower === '/reset') {
-    return {
-      handled: true,
-      result: {
-        replyContent: isEn
-          ? 'Chat context reset. Conversational memory has been cleared to 0 tokens for maximum speed on CPU.'
-          : 'Contexto del chat reiniciado. La memoria conversacional se vació a 0 tokens para máxima velocidad en CPU.',
-      },
-    };
-  }
-
-  // /context
-  if (trimmedLower === '/context') {
-    const classCount = diagram?.classes?.length || 0;
-    const historyCount = chatHistory?.length || 0;
-    const systemBaseTokens = isEn ? 210 : 220;
-    const canvasTokens = Math.ceil(diagramContext.length / 4);
-    const historyTokens = Math.ceil(
-      (chatHistory || []).slice(-4).reduce((acc, m) => acc + (m.content?.length || 0), 0) / 4
-    );
-    const domainMatch = matchCanonicalDomain(diagramContext);
-    const domainGroundingTokens = domainMatch
-      ? Math.ceil(formatDomainGroundingPrompt(domainMatch.domain, isEn).length / 4)
-      : 0;
-    const totalInputTokens = systemBaseTokens + canvasTokens + historyTokens + domainGroundingTokens;
-
-    let latency = isEn ? 'Optimal (~8-15s on CPU)' : 'Óptima (~8-15s en CPU)';
-    let tip = isEn ? 'Context size is well-balanced.' : 'Tamaño de contexto balanceado.';
-    if (totalInputTokens >= 2400) {
-      latency = isEn ? 'Heavy (>40s on CPU)' : 'Pesada (>40s en CPU)';
-      tip = isEn ? 'Use /reset to clear conversational memory.' : 'Usá /reset para limpiar la memoria conversacional.';
-    } else if (totalInputTokens >= 1200) {
-      latency = isEn ? 'Moderate (~20-30s on CPU)' : 'Moderada (~20-30s en CPU)';
-      tip = isEn ? 'Acceptable speed.' : 'Velocidad aceptable.';
-    }
-
-    const classesSummary = classCount > 0
-      ? `\n\n${isEn ? 'Domain Entities on Canvas' : 'Entidades del Dominio en el Lienzo'} (${classCount}): ${diagram.classes.map((c: any) => c.name).join(', ')}`
-      : '';
-
-    const reply = isEn
-      ? `Real Context Status: ~${totalInputTokens} input tokens (System/Rules: ${systemBaseTokens}, Canvas: ${canvasTokens}, History: ${historyTokens}${domainGroundingTokens ? `, Domain RAG: ${domainGroundingTokens}` : ''}). Output budget: 650 tokens (max 5 classes). Estimated CPU Latency: ${latency}. Recommendation: ${tip}${classesSummary}`
-      : `Estado del Contexto Real: ~${totalInputTokens} tokens de entrada (Sistema/Reglas: ${systemBaseTokens}, Lienzo: ${canvasTokens}, Historial: ${historyTokens}${domainGroundingTokens ? `, Catálogo RAG: ${domainGroundingTokens}` : ''}). Tope de salida: 650 tokens (máx. 5 clases). Latencia estimada en CPU: ${latency}. Recomendación: ${tip}${classesSummary}`;
-
-    return { handled: true, result: { replyContent: reply } };
+  // Delegar comandos básicos e interactivos (/help, /reset, /context, /clear)
+  const basicResult = handleBasicSlashCommands({
+    trimmedLower,
+    isEn,
+    diagram,
+    diagramContext,
+    chatHistory,
+    diagramId,
+  });
+  if (basicResult.handled) {
+    return basicResult;
   }
 
   // /model
@@ -193,48 +129,6 @@ export async function handleSlashCommands(params: SlashCommandParams): Promise<S
     };
   }
 
-  // /clear
-  if (trimmedLower === '/clear' || trimmedLower === '/limpiar' || trimmedLower === '/vaciar') {
-    const classCount = diagram?.classes?.length || 0;
-    if (classCount === 0) {
-      return {
-        handled: true,
-        result: {
-          replyContent: isEn
-            ? 'The canvas is currently empty. There are no classes to clear.'
-            : 'El lienzo está vacío actualmente. No hay clases para eliminar.',
-        },
-      };
-    }
-
-    const deltas: ClassDelta[] = (diagram?.classes || []).map((c: any) => ({
-      kind: 'class',
-      op: 'delete',
-      id: crypto.randomUUID(),
-      diagramId,
-      timestamp: new Date().toISOString(),
-      classId: c.id,
-    }));
-
-    const batchDelta: BatchDelta = {
-      kind: 'batch',
-      id: crypto.randomUUID(),
-      diagramId,
-      timestamp: new Date().toISOString(),
-      deltas,
-    };
-
-    return {
-      handled: true,
-      result: {
-        replyContent: isEn
-          ? `I prepared a proposal to clear the canvas (deleting all ${classCount} classes and their relationships). You can review the preview on the canvas and click **Confirm** in the card below to apply.`
-          : `Preparé una propuesta para vaciar el lienzo (eliminando las ${classCount} clases y sus relaciones). Podés revisar la previsualización en el lienzo y hacer clic en **Confirmar** para aplicarla.`,
-        batchDelta,
-      },
-    };
-  }
-
   // /suggest
   if (trimmedLower === '/suggest') {
     if (!diagram || !diagram.classes || diagram.classes.length === 0) {
@@ -251,7 +145,11 @@ export async function handleSlashCommands(params: SlashCommandParams): Promise<S
     const classCount = diagram.classes.length;
     const existingNames = diagram.classes.map((c: any) => c.name);
     const domainMatch = matchCanonicalDomain(diagramContext);
-    const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
+    const domainGrounding = ingressHint
+      ? `\n\nPISTA AUTORITATIVA DE DOMINIO:\n${ingressHint}`
+      : domainMatch
+        ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}`
+        : '';
 
     const suggestPrompt = isEn
       ? [
@@ -262,6 +160,7 @@ export async function handleSlashCommands(params: SlashCommandParams): Promise<S
           'CRITICAL ATOMIC NOUN RULES:',
           `- EXISTING CLASSES ALREADY ON CANVAS: ${existingNames.join(', ')}. NEVER repeat or suggest classes that already exist on the canvas. Suggest only missing complementary classes.`,
           '- ATOMIC DOMAIN ENTITIES: Every suggested class must be a single, standalone domain noun (e.g. Audit, Complaint, Branch, Shift). Concatenating existing class names into compound words is strictly prohibited.',
+          '- STRICT DOMAIN BOUNDARY: NEVER suggest entities from unrelated domains (e.g. NEVER suggest healthcare/medical entities like Medico, Paciente, Consulta if canvas is about sales/ecommerce). Suggest only complementary entities matching the current canvas domain.',
           '- STRICT LIMIT (MAXIMUM 3 SUGGESTIONS): Propose AT MOST 3 suggestions in total. NEVER output a 4th suggestion.',
           '- IF DOMAIN IS ALREADY COVERED: If core concepts are already modeled, propose 0 new classes and focus on attributes and business methods for existing classes.',
           '- NUMBERED FORMAT REQUIRED:',
@@ -278,6 +177,7 @@ export async function handleSlashCommands(params: SlashCommandParams): Promise<S
           'REGLAS CRÍTICAS DE NOMBRES ATÓMICOS:',
           `- CLASES YA EXISTENTES EN EL LIENZO: ${existingNames.join(', ')}. NUNCA repitas ni vuelvas a sugerir ninguna clase que ya exista en el lienzo. Sugerí únicamente clases complementarias nuevas.`,
           '- ENTIDADES ATÓMICAS DE NEGOCIO: Toda clase propuesta debe ser un único sustantivo atómico del dominio (ej. Auditoria, Reclamo, Sucursal, Turno). Está terminantemente prohibido concatenar o fusionar nombres de clases ya existentes.',
+          '- LÍMITE DE DOMINIO ESTRICTO: ESTÁ TERMINANTEMENTE PROHIBIDO sugerir entidades de dominios no relacionados (ej: NUNCA sugieras medicina, hospitales o doctores como Medico, Paciente, Consulta si el lienzo es de ventas o comercio). Concentrate exclusivamente en completar el dominio actual.',
           '- LÍMITE ESTRICTO (MÁXIMO 3 SUGERENCIAS): Proponé como MÁXIMO 3 sugerencias en total. NUNCA propongas una 4ta sugerencia.',
           '- SI EL DOMINIO YA ESTÁ CUBIERTO: Si los conceptos nucleares ya están modelados, proponé 0 clases nuevas y concentrate en sugerir atributos y métodos de negocio para las clases existentes.',
           '- FORMATO NUMERADO OBLIGATORIO:',

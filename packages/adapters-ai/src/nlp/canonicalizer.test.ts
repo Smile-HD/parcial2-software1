@@ -84,6 +84,24 @@ describe('canonicalizeUtteranceWithGroq and Ingress Classifier', () => {
     expect(ingress.kind).toBe('chat');
     if (ingress.kind === 'chat') {
       expect(ingress.query).toBe('¿Cuál es la diferencia entre composición y agregación?');
+      expect(ingress.hint).toBeUndefined();
+    }
+  });
+
+  it('parses [CHAT] with [HINT: ...] grounding prefix correctly', () => {
+    const ingress = parseIngressResult('[CHAT] [HINT: Dominio de comercio electrónico (Cliente, Pedido)] ¿De qué va este diagrama?');
+    expect(ingress.kind).toBe('chat');
+    if (ingress.kind === 'chat') {
+      expect(ingress.hint).toBe('Dominio de comercio electrónico (Cliente, Pedido)');
+      expect(ingress.query).toBe('¿De qué va este diagrama?');
+    }
+  });
+
+  it('parses [SUGGEST] prefix correctly', () => {
+    const ingress = parseIngressResult('[SUGGEST] Dominio detectado: Comercio. Se recomienda sugerir Producto, Factura y DetallePedido.');
+    expect(ingress.kind).toBe('suggest');
+    if (ingress.kind === 'suggest') {
+      expect(ingress.hint).toContain('Comercio');
     }
   });
 

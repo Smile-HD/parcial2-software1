@@ -8,7 +8,6 @@ import {
   expandSemanticDomainToDelta,
   synthesizeDomainModel,
   canonicalToSemantic,
-  extractExplicitModelMutations,
 } from '../../synthesis/index.js';
 import { matchCanonicalDomain, formatDomainGroundingPrompt } from '../../synthesis/domain-catalog/router.js';
 import { resolveSystemPrompt } from '../../prompt-builder.js';
@@ -19,6 +18,8 @@ import {
 } from '../prompt-formatter.js';
 import { DEFAULT_LLM_MAX_TOKENS, DEFAULT_LLM_TIMEOUT_MS } from '../chat-constants.js';
 import type { UnifiedTurnResult } from '../chat-pipeline.js';
+import { tryExplicitModelMutation } from './direct-mutation.js';
+import { tryAtomicNlpSanitizer } from './atomic-nlp-sanitizer.js';
 
 export interface TurnExecutorParams {
   userContent: string;
@@ -33,6 +34,7 @@ export interface TurnExecutorParams {
   onChunk?: (chunk: string) => void;
   peerUsers?: readonly string[];
   diagramContext: string;
+  ingressHint?: string;
 }
 
 export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<UnifiedTurnResult> {
@@ -49,96 +51,29 @@ export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<Un
     onChunk,
     peerUsers,
     diagramContext,
+    ingressHint,
   } = params;
   const isEn = language === 'en';
 
   // 00d. Si el usuario solicita una mutación puntual o creación determinista de clase/relación/atributo
   // resolverla de forma 100% determinista e inmediata ANTES de llamar al LLM.
-  if (diagram) {
-    const explicitMutation = extractExplicitModelMutations(cleanContent, diagram);
-    if (explicitMutation) {
-      const mutationDelta = expandSemanticDomainToDelta(explicitMutation, diagramId, diagram, cleanContent);
-      if (mutationDelta && mutationDelta.deltas.length > 0) {
-        let defaultReply = isEn
-          ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
-          : 'Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que se aplique en vivo.';
-        const hasUnlink = mutationDelta.deltas.some((d: any) => d.kind === 'association' && (d as any).newAssociationClassId === null);
-        const hasClassCreate = mutationDelta.deltas.some((d: any) => d.kind === 'class' && d.op === 'create');
-        if (hasUnlink) {
-          defaultReply = isEn
-            ? 'I have prepared the proposal to unlink the association class. The relationship and classes remain intact on the canvas.'
-            : 'Preparé la propuesta para desvincular la clase de asociación. La relación base y las clases se conservan intactas en el lienzo.';
-        } else if (hasClassCreate) {
-          defaultReply = isEn
-            ? 'I have prepared the proposal for this change. You can preview it on the canvas and confirm to apply.'
-            : 'Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.';
-        }
-        return {
-          replyContent: defaultReply,
-          batchDelta: mutationDelta,
-        };
-      }
-      if (explicitMutation.deletions && Array.isArray(explicitMutation.deletions.attributes) && explicitMutation.deletions.attributes.length === 0) {
-        return {
-          replyContent: isEn
-            ? 'The requested attribute does not exist in the diagram, so no changes were made.'
-            : 'El atributo solicitado no existe en el diagrama, por lo que no se realizaron modificaciones.',
-        };
-      }
-    }
+  const directMutationResult = tryExplicitModelMutation(cleanContent, diagramId, diagram, isEn);
+  if (directMutationResult) {
+    return directMutationResult;
   }
 
   // 00e. Sanitizador NLP de intenciones atómicas para lenguaje coloquial o complejo
-  if (diagram && diagram.classes && diagram.classes.length > 0 && isAction && llm && typeof llm.chat === 'function') {
-    const isMutationColloquial =
-      /(?:cambi|modific|pon|sac|borr|elimin|renombr|pas|ajust|hered|generaliz|conect|relacion|multiplicidad|rol|campo|atributo|tipo|m[eé]todo|operaci|funci|method|function)/i.test(cleanContent);
-    if (isMutationColloquial) {
-      try {
-        const nlpMessages: Array<{ role: 'system' | 'user'; content: string }> = [
-          {
-            role: 'system',
-            content: [
-              'Sos un parser de lenguaje natural a operaciones UML sobre el diagrama actual.',
-              `ESTADO ACTUAL DEL DIAGRAMA:\n${diagramContext}`,
-              'INSTRUCCIÓN:',
-              'Traducí la petición del usuario a la mutación atómica en formato JSON estructurado dentro de ```json ```.',
-              'Formato esperado:',
-              '```json',
-              '{',
-              '  "action": "modify",',
-              '  "updates": {',
-              '    "associations": [{ "source": "A", "target": "B", "sourceMultiplicity": "1", "targetMultiplicity": "1..*", "aggregation": "composite"|"shared"|"none", "sourceRole": "rol", "targetRole": "rol" }],',
-              '    "attributes": [{ "class": "Clase", "name": "attr", "type": "int"|"string"|"date"|"boolean"|"float", "newName": "nuevo" }],',
-              '    "methods": [{ "class": "Clase", "name": "calcular", "returnType": "float", "parameters": [{ "name": "x", "type": "int" }] }],',
-              '    "classes": [{ "name": "Clase", "isAbstract": true, "classKind": "class"|"interface" }]',
-              '  },',
-              '  "classes": [{ "name": "Clase", "methods": [{ "name": "calcular", "returnType": "float", "parameters": [{ "name": "x", "type": "int" }] }] }],',
-              '  "generalizations": [{ "subclass": "Sub", "superclass": "Super" }],',
-              '  "renames": { "classes": [{ "from": "Viejo", "to": "Nuevo" }], "methods": [{ "class": "C", "from": "viejo", "to": "nuevo" }] },',
-              '  "deletions": { "classes": ["X"], "associations": [{"source": "A", "target": "B"}], "attributes": [{"class": "C", "attribute": "a"}], "methods": [{"class": "C", "method": "m"}] }',
-              '}',
-              '```',
-              'REGLAS CRÍTICAS: NUNCA generes clases ni atributos nuevos que no existan en el diagrama a menos que el usuario lo pida explícitamente.',
-            ].join('\n'),
-          },
-          { role: 'user', content: cleanContent },
-        ];
-        const rawJson = await llm.chat(nlpMessages, { timeoutMs: 12000, maxTokens: 400 });
-        const parsedNlpModel = robustParseDomainJson(rawJson);
-        if (parsedNlpModel && (parsedNlpModel.updates || parsedNlpModel.generalizations || parsedNlpModel.renames || parsedNlpModel.deletions || parsedNlpModel.associations || parsedNlpModel.classes)) {
-          const nlpDelta = expandSemanticDomainToDelta(parsedNlpModel, diagramId, diagram, cleanContent);
-          if (nlpDelta && nlpDelta.deltas.length > 0) {
-            const defaultReply = isEn
-              ? 'I have prepared the proposal for this change. You can preview the updated elements on the canvas and confirm to apply.'
-              : 'Preparé la propuesta para este cambio. Podés previsualizar la relación en el lienzo y confirmarla para que se actualice en vivo.';
-            return {
-              replyContent: defaultReply,
-              batchDelta: nlpDelta,
-            };
-          }
-        }
-      } catch {}
-    }
+  const nlpSanitizerResult = await tryAtomicNlpSanitizer({
+    cleanContent,
+    diagram,
+    diagramId,
+    isAction,
+    llm,
+    diagramContext,
+    isEn,
+  });
+  if (nlpSanitizerResult) {
+    return nlpSanitizerResult;
   }
 
   if (!llm || typeof llm.chat !== 'function') {
@@ -170,9 +105,14 @@ export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<Un
       /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|design|model|build)\s+(?:un|una|el|la|a|an)?\s*(?:sistema|modelo|dominio|plataforma|system|management)\b/i.test(cleanContent);
     const domainMatch = isFullDomainSynthesisRequest ? matchCanonicalDomain(cleanContent) : null;
     const domainGrounding = domainMatch ? `\n\n${formatDomainGroundingPrompt(domainMatch.domain, isEn)}` : '';
+    const chatInstructions = !isAction
+      ? (isEn
+          ? '\n\nSTRICT INSTRUCTION: NEVER output source code (Java, TypeScript, Python, etc.) or technical implementation steps. Respond ONLY with high-level conceptual UML explanations and domain analysis.'
+          : '\n\nINSTRUCCIÓN ESTRICTA: NUNCA generes código fuente (Java, TypeScript, Python, etc.) ni pasos de implementación técnica (como actualización de DTO/MTD o backend). Respondé ÚNICAMENTE con explicaciones conceptuales de modelado UML y análisis del dominio.')
+      : '';
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: systemPrompt + domainGrounding },
+      { role: 'system', content: systemPrompt + domainGrounding + (ingressHint ? `\n\nPISTA AUTORITATIVA DE DOMINIO:\n${ingressHint}` : '') + chatInstructions },
       ...(chatHistory ? chatHistory.slice(-4) : []),
       { role: 'user', content: cleanContent },
     ];
@@ -367,6 +307,14 @@ export async function executeUnifiedTurn(params: TurnExecutorParams): Promise<Un
           }
         } catch {}
       }
+    }
+
+    if (!isAction) {
+      clean = clean
+        .replace(/```[a-zA-Z0-9_-]*[\s\S]*?```/gi, '')
+        .replace(/(?:public|private|protected)?\s*class\s+\w+\s*\{[\s\S]*?\}/g, '')
+        .replace(/###\s*(?:Implementaci[oó]n|C[oó]digo|Propuesta\s+para\s+cambiar|Actualizaci[oó]n\s+del\s+MTD|Conclusion)[\s\S]*$/i, '')
+        .trim();
     }
 
     clean = breakDegenerativeLoops(clean.replace(/```(?:json)?[\s\S]*?```/gi, '').replace(/\n{3,}/g, '\n\n').trim());

@@ -26,7 +26,8 @@ export async function processUnifiedAmongusTurn(
   diagram?: any,
   chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
   onChunk?: (chunk: string) => void,
-  peerUsers?: readonly string[]
+  peerUsers?: readonly string[],
+  ingressHint?: string
 ): Promise<UnifiedTurnResult> {
   const { cleanContent, normalized } = normalizeChatInput(userContent);
 
@@ -58,6 +59,7 @@ export async function processUnifiedAmongusTurn(
     onChunk,
     diagramContext,
     normalized,
+    ingressHint,
   });
   if (slashOutcome.handled) {
     return slashOutcome.result;
@@ -77,5 +79,6 @@ export async function processUnifiedAmongusTurn(
     onChunk,
     peerUsers,
     diagramContext,
+    ingressHint,
   });
 }
