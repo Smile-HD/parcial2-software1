@@ -95,10 +95,12 @@ describe('canonicalizeUtteranceWithGroq and Ingress Classifier', () => {
     }
   });
 
-  it('includes semicolon requirement in GROQ_INGRESS_SYSTEM_PROMPT', () => {
+  it('includes semicolon requirement and exact compound example in GROQ_INGRESS_SYSTEM_PROMPT', () => {
     expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('punto y coma (;)');
     expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('[BLOCKED]');
     expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('[CHAT]');
     expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('[DESIGN]');
+    expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('cambia la multiplicidad entre');
+    expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('muchos a muchos');
   });
 });
