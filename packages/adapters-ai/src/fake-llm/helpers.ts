@@ -20,22 +20,22 @@ export function classIdByName(diagram: Diagram, name: string): string | null {
 
 export function parseMultiplicities(text: string): { source: string; target: string } | null {
   const norm = text.trim().toLowerCase();
-  if (/^(?:muchos\s+(?:a|to)\s+muchos|muchos\s*:\s*muchos|[nm\*]\s+(?:a|to)\s+[nm\*]|[nm\*]\s*:\s*[nm\*])$/.test(norm)) {
+  if (/^(?:muchos\s+(?:a|to)\s+muchos|muchos\s*:\s*muchos|[nm\*]\s+(?:a|to)\s+[nm\*]|[nm\*]\s*:\s*[nm\*]|[nm\*]\.\.[nm\*])$/.test(norm)) {
     return { source: '0..*', target: '0..*' };
   }
-  if (/^(?:1\s+(?:a|to)\s+(?:muchos|[nm\*])|uno\s+(?:a|to)\s+muchos|1\s*:\s*(?:muchos|[nm\*]))$/.test(norm)) {
+  if (/^(?:1\s+(?:a|to)\s+(?:muchos|[nm\*])|uno\s+(?:a|to)\s+muchos|1\s*:\s*(?:muchos|[nm\*])|1\.\.(?:muchos|[nm\*]))$/.test(norm)) {
     return { source: '1', target: '0..*' };
   }
-  if (/^(?:(?:muchos|[nm\*])\s+(?:a|to)\s+1|muchos\s+(?:a|to)\s+uno|(?:muchos|[nm\*])\s*:\s*1)$/.test(norm)) {
+  if (/^(?:(?:muchos|[nm\*])\s+(?:a|to)\s+1|muchos\s+(?:a|to)\s+uno|(?:muchos|[nm\*])\s*:\s*1|(?:muchos|[nm\*])\.\.1)$/.test(norm)) {
     return { source: '0..*', target: '1' };
   }
-  if (/^(?:1\s+(?:a|to)\s+1|uno\s+(?:a|to)\s+uno|1\s*:\s*1)$/.test(norm)) {
+  if (/^(?:1\s+(?:a|to)\s+1|uno\s+(?:a|to)\s+uno|1\s*:\s*1|1\.\.1)$/.test(norm)) {
     return { source: '1', target: '1' };
   }
-  if (/^(?:0\.\.1\s+(?:a|to)\s+1)$/.test(norm)) {
+  if (/^(?:0\.\.1\s+(?:a|to)\s+1|0\.\.1\s*:\s*1|0\.\.1\.\.1)$/.test(norm)) {
     return { source: '0..1', target: '1' };
   }
-  if (/^(?:0\.\.1\s+(?:a|to)\s+(?:0\.\.\*|[nm\*]))$/.test(norm)) {
+  if (/^(?:0\.\.1\s+(?:a|to)\s+(?:0\.\.\*|[nm\*])|0\.\.1\s*:\s*(?:0\.\.\*|[nm\*]))$/.test(norm)) {
     return { source: '0..1', target: '0..*' };
   }
   const generic = /^([^\s:]+)\s*(?::|\s+(?:a|to)\s+)\s*([^\s:]+)$/.exec(norm);

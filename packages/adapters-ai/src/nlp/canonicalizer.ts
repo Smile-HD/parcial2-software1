@@ -81,8 +81,8 @@ export const GROQ_INGRESS_SYSTEM_PROMPT =
   'D. RELACIONES Y CARDINALIDADES:\n' +
   '- Crear relación: "relaciona <ClaseA> con <ClaseB> tipo <asociacion|agregacion|composicion|herencia|dependencia>"\n' +
   '- Cambiar tipo de relación: "cambia la relacion entre <ClaseA> y <ClaseB> a <asociacion|agregacion|composicion|herencia|dependencia>"\n' +
-  '- Cambiar multiplicidad: "cambia la multiplicidad entre <ClaseA> y <ClaseB> a <multA..multB>"\n' +
-  '  (IMPORTANTE: Traducir expresiones coloquiales a símbolos UML estándar: "muchos a muchos" -> "*..*", "uno a muchos" -> "1..*", "uno a uno" -> "1", "cero a uno" -> "0..1", "cero a muchos" -> "0..*")\n' +
+  '- Cambiar multiplicidad: "cambia la multiplicidad entre <ClaseA> y <ClaseB> a <multA a multB>"\n' +
+  '  (IMPORTANTE: Expresar ambos extremos con \'a\', por ejemplo: "muchos a muchos", "* a *", "1 a muchos", "1 a 1", "0..1 a 1")\n' +
   '- Invertir relación o rombo: "invierte la relacion entre <ClaseA> y <ClaseB>" o "invierte el rombo entre <ClaseA> y <ClaseB>"\n' +
   '- Borrar relación: "borra la relacion entre <ClaseA> y <ClaseB>"\n' +
   '- Nombrar relación: "cambia el nombre de la relacion entre <ClaseA> y <ClaseB> a <Nombre>"\n' +
@@ -96,7 +96,7 @@ export const GROQ_INGRESS_SYSTEM_PROMPT =
   'Ejemplo:\n' +
   'Usuario: "cambiame la relacion entre cliente y pedido por una composicion y cambiame la multiplicidad de pedido y pago q sea de muchos a muchos y agregale un atributo a pedido llamado id de tipo entero"\n' +
   'Salida obligatoria:\n' +
-  'cambia la relacion entre Cliente y Pedido a composicion; cambia la multiplicidad entre Pedido y Pago a *..*; agrega atributo id: int a Pedido\n\n' +
+  'cambia la relacion entre Cliente y Pedido a composicion; cambia la multiplicidad entre Pedido y Pago a muchos a muchos; agrega atributo id: int a Pedido\n\n' +
   'REGLAS DE SALIDA:\n' +
   '- NUNCA inventes clases, atributos ni relaciones no solicitadas.\n' +
   '- No uses markdown (```), ni explicaciones adicionales, ni introducciones.';
