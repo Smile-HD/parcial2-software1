@@ -4,7 +4,7 @@ import { matchSlashCommands, type SlashCommand } from './commands.js';
 export interface UseSlashCommandsOptions {
   draft: string;
   setDraft: (val: string) => void;
-  inputRef: RefObject<HTMLInputElement | null>;
+  inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   peerUsers?: readonly { name: string; color?: string }[];
   userName: string;
   isEn: boolean;
@@ -72,7 +72,7 @@ export function useSlashCommands({
     inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, fallbackSubmit?: () => void) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, fallbackSubmit?: () => void) => {
     if (isSlashQuery && matchingCommands.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();

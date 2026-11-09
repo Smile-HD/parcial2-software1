@@ -101,7 +101,7 @@ export function ChatPanel({
     }
   };
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const {
     selectedCommandIndex,
     selectedMentionIndex,

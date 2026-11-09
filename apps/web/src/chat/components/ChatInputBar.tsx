@@ -9,9 +9,9 @@ export interface ChatInputBarProps {
   isEn: boolean;
   draft: string;
   setDraft: (val: string) => void;
-  inputRef: React.RefObject<HTMLInputElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   handleSend: (e?: React.FormEvent) => Promise<void>;
-  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   isSending: boolean;
   interpreterPhase: 'idle' | 'thinking' | 'pending' | 'refused' | 'error';
   isTranscribing: boolean;
@@ -52,6 +52,17 @@ export function ChatInputBar({
   selectedMentionIndex,
   handleSelectMention,
 }: ChatInputBarProps) {
+  const internalTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  // Auto-resize de altura para que el texto haga wrap visual sin deslizar horizontalmente
+  React.useEffect(() => {
+    const el = internalTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const nextHeight = Math.min(el.scrollHeight, 130);
+    el.style.height = `${Math.max(22, nextHeight)}px`;
+  }, [draft]);
+
   return (
     <form onSubmit={handleSend} className="chat-panel__footer" style={{ position: 'relative' }}>
       {/* Popover de autocompletado de comandos slash */}
@@ -115,13 +126,23 @@ export function ChatInputBar({
       )}
 
       <div className="chat-panel__input-group">
-        <input
-          ref={inputRef}
-          type="text"
+        <textarea
+          ref={(node) => {
+            internalTextareaRef.current = node;
+            if (inputRef) {
+              (inputRef as any).current = node;
+            }
+          }}
+          rows={1}
           className="chat-panel__input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+            }
+            handleKeyDown(e);
+          }}
           placeholder={
             isTranscribing
               ? isEn

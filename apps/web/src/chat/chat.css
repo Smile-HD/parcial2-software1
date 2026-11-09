@@ -456,12 +456,12 @@
 
 .chat-panel__input-group {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
-  border-radius: 20px;
-  padding: 4px 6px 4px 14px;
+  border-radius: 18px;
+  padding: 6px 8px 6px 14px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -476,9 +476,18 @@
   outline: none;
   font-family: inherit;
   font-size: 13px;
+  line-height: 1.45;
   background: transparent;
   color: #0f172a;
   min-width: 0;
+  resize: none;
+  overflow-y: auto;
+  max-height: 130px;
+  min-height: 22px;
+  word-break: break-word;
+  white-space: pre-wrap;
+  padding: 3px 0;
+  margin: 0;
 }
 
 .chat-panel__input::placeholder {
