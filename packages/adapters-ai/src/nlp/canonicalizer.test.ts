@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { canonicalizeUtteranceWithGroq } from './canonicalizer';
+import {
+  canonicalizeUtteranceWithGroq,
+  parseIngressResult,
+  GROQ_INGRESS_SYSTEM_PROMPT,
+} from './canonicalizer';
 
-describe('canonicalizeUtteranceWithGroq', () => {
+describe('canonicalizeUtteranceWithGroq and Ingress Classifier', () => {
   it('returns null if no apiKey is provided', async () => {
     const res = await canonicalizeUtteranceWithGroq('crea clase Foo', { apiKey: '' });
     expect(res).toBeNull();
@@ -12,7 +16,7 @@ describe('canonicalizeUtteranceWithGroq', () => {
     expect(res).toBeNull();
   });
 
-  it('parses valid JSON response from Groq endpoint', async () => {
+  it('parses valid JSON response from Groq endpoint with compound commands', async () => {
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -20,7 +24,7 @@ describe('canonicalizeUtteranceWithGroq', () => {
         choices: [
           {
             message: {
-              content: 'crea clase Persona; agrega atributo nombre:string a Persona',
+              content: 'crea clase Persona; agrega atributo nombre: string a Persona; relaciona Persona con Rol tipo asociacion',
             },
           },
         ],
@@ -28,10 +32,15 @@ describe('canonicalizeUtteranceWithGroq', () => {
     }) as any;
 
     try {
-      const res = await canonicalizeUtteranceWithGroq('haceme una persona con nombre string', {
+      const res = await canonicalizeUtteranceWithGroq('haceme una persona con nombre string vinculada a rol', {
         apiKey: 'gsk_test123456789',
       });
-      expect(res).toBe('crea clase Persona; agrega atributo nombre:string a Persona');
+      expect(res).toBe('crea clase Persona; agrega atributo nombre: string a Persona; relaciona Persona con Rol tipo asociacion');
+      const ingress = parseIngressResult(res!);
+      expect(ingress.kind).toBe('dsl');
+      if (ingress.kind === 'dsl') {
+        expect(ingress.commands).toContain(';');
+      }
     } finally {
       global.fetch = originalFetch;
     }
@@ -61,5 +70,35 @@ describe('canonicalizeUtteranceWithGroq', () => {
       global.fetch = originalFetch;
     }
   });
-});
 
+  it('parses [BLOCKED] prefix correctly', () => {
+    const ingress = parseIngressResult('[BLOCKED] Intento de inyección de prompt fuera de dominio');
+    expect(ingress.kind).toBe('blocked');
+    if (ingress.kind === 'blocked') {
+      expect(ingress.reason).toBe('Intento de inyección de prompt fuera de dominio');
+    }
+  });
+
+  it('parses [CHAT] prefix correctly', () => {
+    const ingress = parseIngressResult('[CHAT] ¿Cuál es la diferencia entre composición y agregación?');
+    expect(ingress.kind).toBe('chat');
+    if (ingress.kind === 'chat') {
+      expect(ingress.query).toBe('¿Cuál es la diferencia entre composición y agregación?');
+    }
+  });
+
+  it('parses [DESIGN] prefix correctly', () => {
+    const ingress = parseIngressResult('[DESIGN] Diseña un sistema de biblioteca con préstamos');
+    expect(ingress.kind).toBe('design');
+    if (ingress.kind === 'design') {
+      expect(ingress.requirement).toBe('Diseña un sistema de biblioteca con préstamos');
+    }
+  });
+
+  it('includes semicolon requirement in GROQ_INGRESS_SYSTEM_PROMPT', () => {
+    expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('punto y coma (;)');
+    expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('[BLOCKED]');
+    expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('[CHAT]');
+    expect(GROQ_INGRESS_SYSTEM_PROMPT).toContain('[DESIGN]');
+  });
+});

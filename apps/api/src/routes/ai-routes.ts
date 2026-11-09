@@ -4,7 +4,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import type { Diagram, LlmPort, SttPort } from '@app/core';
-import { FakeLlm, normalizeUmlUtterance, canonicalizeUtteranceWithGroq } from '@app/adapters-ai';
+import { FakeLlm, normalizeUmlUtterance, canonicalizeUtteranceWithGroq, parseIngressResult } from '@app/adapters-ai';
 import { LlmUnavailableError, PendingDeltaStore, interpretCommand } from '../interpreter.js';
 import { evaluateChatGuard } from '../chat-guard.js';
 import {
@@ -247,56 +247,62 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
         } catch {}
       }
 
-      // Nivel 0: Guardián de Dominio y Anti-Jailbreak
-      const chatGuard = evaluateChatGuard(parsed.data.content, diagram, isEn ? 'en' : 'es');
-      if (chatGuard.blocked && chatGuard.replyContent) {
-        replyContent = chatGuard.replyContent;
-      }
+      // Ingress Gateway & Short-Circuit de Slash Commands
+      const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
+      let ingressHandled = false;
 
-      // Nivel 1: Sanitización con Groq si aplica
-      let commandToInterpret = parsed.data.content;
-      if (!replyContent && diagram && hasModelingIntent) {
-        const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
-        if (groqApiKey && groqApiKey.startsWith('gsk_')) {
-          try {
-            const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
-            if (canonicalText && canonicalText.trim().length > 0) {
-              commandToInterpret = canonicalText.trim();
-            }
-          } catch {}
-        }
-      }
-
-      // Nivel 1b: Intérprete determinista en memoria
-      if (!replyContent && diagram) {
+      // 1. Ingress con Groq (Online / Con API key) para clasificar y normalizar
+      if (!isSlashCommand && groqApiKey && groqApiKey.startsWith('gsk_')) {
         try {
-          const sanitizedCommand = normalizeUmlUtterance(commandToInterpret);
-          const outcome = await interpretCommand(sanitizedCommand, new FakeLlm(), diagram, pendingDeltas);
-          if (outcome.status === 'pending') {
-            deltaId = outcome.deltaId;
-            delta = outcome.delta;
-            replyContent = isEn
-              ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
-              : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
-          }
-        } catch {}
-      }
-
-      // Nivel 1c: Fallback con Groq
-      if (!replyContent && diagram && hasModelingIntent && commandToInterpret === parsed.data.content) {
-        const groqApiKey = process.env.GROQ_API_KEY || process.env.STT_API_KEY;
-        if (groqApiKey && groqApiKey.startsWith('gsk_')) {
-          try {
-            const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
-            if (canonicalText) {
-              const outcome = await interpretCommand(canonicalText, new FakeLlm(), diagram, pendingDeltas);
+          const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, { apiKey: groqApiKey });
+          if (canonicalText) {
+            const ingress = parseIngressResult(canonicalText);
+            if (ingress.kind === 'blocked') {
+              replyContent = ingress.reason;
+              ingressHandled = true;
+            } else if (ingress.kind === 'chat') {
+              // Bypassea el modelado determinista para ser respondido en Nivel 2
+              ingressHandled = true;
+            } else if (ingress.kind === 'design') {
+              // Pasa el requerimiento limpio a Nivel 2 para síntesis de dominio completa
+              parsed.data.content = ingress.requirement;
+              ingressHandled = true;
+            } else if (ingress.kind === 'dsl' && diagram) {
+              const outcome = await interpretCommand(ingress.commands, new FakeLlm(), diagram, pendingDeltas);
               if (outcome.status === 'pending') {
                 deltaId = outcome.deltaId;
                 delta = outcome.delta;
                 replyContent = isEn
                   ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
                   : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
+                ingressHandled = true;
               }
+            }
+          }
+        } catch {
+          // Graceful fallback to local heuristics on Groq error/timeout
+        }
+      }
+
+      // 2. Degradación Elegante Offline / Local (si Groq no estaba disponible o no resolvió)
+      if (!ingressHandled && !isSlashCommand) {
+        // Guardián de Dominio y Anti-Jailbreak Local
+        const chatGuard = evaluateChatGuard(parsed.data.content, diagram, isEn ? 'en' : 'es');
+        if (chatGuard.blocked && chatGuard.replyContent) {
+          replyContent = chatGuard.replyContent;
+        }
+
+        // Intérprete determinista local
+        if (!replyContent && diagram && hasModelingIntent) {
+          try {
+            const sanitizedCommand = normalizeUmlUtterance(parsed.data.content);
+            const outcome = await interpretCommand(sanitizedCommand, new FakeLlm(), diagram, pendingDeltas);
+            if (outcome.status === 'pending') {
+              deltaId = outcome.deltaId;
+              delta = outcome.delta;
+              replyContent = isEn
+                ? `I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to build them.`
+                : `Preparé la propuesta para este cambio. Podés ver la previsualización en el lienzo y confirmarla para que la construya en vivo.`;
             }
           } catch {}
         }
