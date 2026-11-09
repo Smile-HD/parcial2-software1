@@ -38,16 +38,16 @@ export function tryRelationshipCommands(ctx: FakeLlmContext): LlmResult | null {
 
   // 6c. Asociación con CLASE DE ASOCIACIÓN / TABLA INTERMEDIA
   const assignAssocClassPattern =
-    /(?:(?:hac[eé]|haz|make|set|convert[ií]|volv[eé]|pon(?:e|ele)?|transform[aá]|marc[aá]|asign[aá]|link|connect|conecta|conectá|asocia|asociá)\s+(?:que\s+|q\s+)?(?:(?:la|una|el|un|the|an?)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:sea|en|como|to\s+be|as|a\s+la\s+asociaci[óo]n\s+entre|to\s+(?:the\s+)?association\s+between)\s+(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table)?\s*(?:entre|between)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)|^(?:(?:la|el|the)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:sea|es|is)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia)\s+(?:entre|between)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*))/i.exec(utterance);
+    /(?:(?:hac[eé]|haz|make|set|convert[ií]|volv[eé]|pon(?:e|ele)?|transform[aá]|marc[aá]|asign[aá]|link|connect|conecta|conectá|asocia|asociá)\s+(?:que\s+|q\s+)?(?:(?:la|una|el|un|the|an?)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:sea|en|como|to\s+be|as|a\s+la\s+asociaci[óo]n\s+entre|to\s+(?:the\s+)?association\s+between)\s+(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table)?\s*(?:entre|between)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)|^(?:(?:la|el|the)\s+)?(?:class\s+|clase\s+|tabla\s+|entidad\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:sea|es|is)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia)\s+(?:entre|between)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*))/i.exec(utterance);
 
   const assocClassPattern = !assignAssocClassPattern &&
-    /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:between|entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+    /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:llamada\s+|llamado\s+|named\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:between|entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
 
   const assocClassViaPattern = !assignAssocClassPattern && !assocClassPattern &&
-    /\b(?:link|connect|conecta|conectá|asocia|asociá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:with|con|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:mediante|a\s+trav[eé]s\s+de|via|using|through)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table|association\s+table)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+    /\b(?:link|connect|conecta|conectá|asocia|asociá)\b[\s\S]*?\b([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:with|con|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:mediante|a\s+trav[eé]s\s+de|via|using|through)\s+(?:(?:la|una|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|junction\s+table|join\s+table|intermediate\s+table|association\s+table)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
 
   const anonAssocClassPattern = !assignAssocClassPattern && !assocClassPattern && !assocClassViaPattern &&
-    /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele|sumale|mete|metele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:between|entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+    /(?:^|\b)(?:cre[aá]|crear|add|agrega|agregá|inserta|insertá|pon|ponele|sumale|mete|metele)?\s*(?:(?:la|una|el|un|the|an?)\s+)?(?:association\s+class|clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table|linking\s+table)\s+(?:between|entre)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:and|y|con|with)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
 
   if (assignAssocClassPattern || assocClassPattern || assocClassViaPattern || anonAssocClassPattern) {
     let assocClassName: string;
@@ -225,7 +225,7 @@ export function tryRelationshipCommands(ctx: FakeLlmContext): LlmResult | null {
   const isDeleteAssocIntent = /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá)\b/i.test(utterance);
   const isAssocClassIntent = /\b(?:clase\s+de\s+asociaci[óo]n|tabla\s+de\s+asociaci[óo]n|tabla\s+intermedia|clase\s+intermedia|entidad\s+intermedia|entidad\s+de\s+asociaci[óo]n|association\s+class|junction\s+table|join\s+table|intermediate\s+table|bridge\s+table|association\s+table)\b/i.test(utterance);
   const association = !isDeleteAssocIntent && !isAssocClassIntent
-    ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect|composici[óo]n|agregaci[óo]n)\b[\s\S]*?\b(?:entre\s+|between\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:with|con|y|and|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance)
+    ? /\b(?:link|conecta|conectá|asocia|asociá|associate|relate|relaciona|relacioná|asociaci[óo]n|association|connect|composici[óo]n|agregaci[óo]n)\b[\s\S]*?\b(?:entre\s+|between\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:with|con|y|and|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance)
     : null;
   if (association) {
     const sourceClassId = classIdByName(currentIr, association[1]!);
@@ -342,7 +342,7 @@ export function tryRelationshipCommands(ctx: FakeLlmContext): LlmResult | null {
   }
 
   // 9. Composición: "X is composed of Y"
-  const composition = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:composed\s+of|composes|compone)\s+([A-Za-z_]\w*)/i.exec(utterance);
+  const composition = /\b([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:is\s+)?(?:composed\s+of|composes|compone)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
   if (composition) {
     const sourceClassId = classIdByName(currentIr, composition[1]!);
     const targetClassId = classIdByName(currentIr, composition[2]!);
@@ -384,7 +384,7 @@ export function tryRelationshipCommands(ctx: FakeLlmContext): LlmResult | null {
   }
 
   // 9b. Fraseo inverso de composición: "X is part of Y"
-  const partOf = /\b([A-Za-z_]\w*)\s+(?:is\s+)?(?:part\s+of|belongs\s+to|es\s+parte\s+de|pertenece\s+a)\s+([A-Za-z_]\w*)/i.exec(utterance);
+  const partOf = /\b([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:is\s+)?(?:part\s+of|belongs\s+to|es\s+parte\s+de|pertenece\s+a)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
   if (partOf) {
     const partClassId = classIdByName(currentIr, partOf[1]!);
     const wholeClassId = classIdByName(currentIr, partOf[2]!);
@@ -426,7 +426,7 @@ export function tryRelationshipCommands(ctx: FakeLlmContext): LlmResult | null {
   }
 
   // 10. Agregación compartida
-  const sharedAgg = /\b(?:aggregation|shared|agregaci[oó]n)\b[\s\S]*?\b(?:between|entre\s+)?([A-Za-z_]\w*)\s+(?:and|with|y|e)\s+([A-Za-z_]\w*)/i.exec(utterance);
+  const sharedAgg = /\b(?:aggregation|shared|agregaci[oó]n)\b[\s\S]*?\b(?:between|entre\s+)?([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:and|with|y|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
   if (sharedAgg) {
     const sourceClassId = classIdByName(currentIr, sharedAgg[1]!);
     const targetClassId = classIdByName(currentIr, sharedAgg[2]!);

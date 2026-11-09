@@ -120,6 +120,18 @@ export function expandSemanticDomainToDelta(
     }
   }
 
+  // Reconciliación de contradicciones: Si se solicita crear y borrar la misma clase en el mismo lote,
+  // se anula la creación y el borrado para evitar generar operaciones paradójicas en el delta.
+  if (model.classes && model.classes.length > 0 && model.deletions?.classes && model.deletions.classes.length > 0) {
+    const createdSet = new Set(model.classes.map(c => cleanClassName(c.name).toLowerCase()));
+    const deletedSet = new Set(model.deletions.classes.map(c => cleanClassName(c).toLowerCase()));
+    const contradictory = new Set([...createdSet].filter(name => deletedSet.has(name)));
+    if (contradictory.size > 0) {
+      model.classes = model.classes.filter(c => !contradictory.has(cleanClassName(c.name).toLowerCase()));
+      model.deletions.classes = model.deletions.classes.filter(c => !contradictory.has(cleanClassName(c).toLowerCase()));
+    }
+  }
+
   const timestamp = new Date().toISOString();
   const classIdMap = new Map<string, string>();
   const deltas: any[] = [];

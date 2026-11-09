@@ -75,6 +75,7 @@ export {
 export {
   // Motor de aplicación (Fase 2.5 / PR 3)
   applyDelta,
+  wouldCreateGeneralizationCycle,
   type ApplyResult,
   type ApplyError,
 } from './apply.js';

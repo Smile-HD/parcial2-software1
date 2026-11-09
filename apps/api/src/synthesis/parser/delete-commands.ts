@@ -11,7 +11,7 @@ export function parseDeleteCommands(
   classes: Array<{ id: string; name: string }>,
   associations: Array<any>
 ): SemanticDomainModel | null {
-  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|borr[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|sac[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|quit[aá]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|desvincul[aáeé]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|desasoci[aáeé]?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|unlink|detach)\b/i.test(normalized);
+  const isDeleteIntent = /\b(?:delete|remove|elimina|elimin(?:ar|[aá])?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|borr(?:ar|[aá])?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|sac(?:ar|[aá])?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|quit(?:ar|[aá])?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|desvincul(?:ar|[aáeé])?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|desasoci(?:ar|[aáeé])?(?:me|te|le|nos|les)?(?:l[oas]{1,2})?|unlink|detach)\b/i.test(normalized);
   if (!isDeleteIntent) return null;
 
   const cleanedTextWithoutSpaces = normalized.replace(/\s+/g, '');
@@ -132,7 +132,7 @@ export function parseDeleteCommands(
   }
 
   // 1b. Si el usuario pide explícitamente borrar una CLASE específica
-  const explicitClassTargetMatch = /(?:la\s+clase\s+|clase\s+|class\s+|tabla\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(cleanedText || text);
+  const explicitClassTargetMatch = /(?:la\s+clase\s+|clase\s+|class\s+|tabla\s+|entidad\s+)([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(cleanedText || text);
   if (explicitClassTargetMatch) {
     const targetName = explicitClassTargetMatch[1]?.toLowerCase();
     const targetCls = classes.find((c) => c.name.toLowerCase() === targetName);

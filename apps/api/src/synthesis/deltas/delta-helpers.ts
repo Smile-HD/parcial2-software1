@@ -38,6 +38,9 @@ export function cleanClassName(raw?: string): string {
   if (parts.length > 0) {
     s = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
   }
+  if (s.length > 64) {
+    s = s.slice(0, 64);
+  }
   return s;
 }
 

@@ -14,6 +14,7 @@ import { applyNaryAssociationDelta } from './apply-nary.js';
 import { applyBatchDelta } from './apply-batch.js';
 
 export { type ApplyResult, type ApplyError, isApplyError };
+export { wouldCreateGeneralizationCycle } from './cascade.js';
 export { applyClassDelta } from './apply-class.js';
 export { applyMemberDelta } from './apply-member.js';
 export { applyAssociationDelta } from './apply-association.js';

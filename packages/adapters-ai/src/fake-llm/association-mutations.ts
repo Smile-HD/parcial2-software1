@@ -244,8 +244,8 @@ export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
 
   // 7e. INVERSIÓN de extremos, rombo, flecha o dirección entre dos clases o sobre una clase
   const isRelationInvert =
-    /\b(?:invert[ií]|invierte|invertir|da\s+vuelta|dar\s+vuelta|dalo\s+vuelta|dala\s+vuelta|gira|girar|voltea|voltear|cambia\s+de\s+lado|flip|reverse|swap)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance) ||
-    /\b(?:cambi[aá]|cambi[aá]le|pon[eé]|pon[eé]le|switch)\b[\s\S]*?\b(?:el\s+rombo|el\s+diamante|el\s+nodo|la\s+flecha|diamond|arrow)\b[\s\S]*?\b(?:a|hacia|en|to|on)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)/i.exec(utterance);
+    /\b(?:invert[ií]|invierte|invertir|da\s+vuelta|dar\s+vuelta|dalo\s+vuelta|dala\s+vuelta|gira|girar|voltea|voltear|cambia\s+de\s+lado|flip|reverse|swap)\b[\s\S]*?\b(?:entre|between|de)?\s*([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:y|and|con|with|e)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance) ||
+    /\b(?:cambi[aá]|cambi[aá]le|pon[eé]|pon[eé]le|switch)\b[\s\S]*?\b(?:el\s+rombo|el\s+diamante|el\s+nodo|la\s+flecha|diamond|arrow)\b[\s\S]*?\b(?:a|hacia|en|to|on)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
 
   if (isRelationInvert) {
     const srcName = isRelationInvert[1]!;
@@ -347,8 +347,8 @@ export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
 
   // 7c. ELIMINACIÓN de asociación / relación entre dos clases
   const isDeleteAssociation =
-    /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá|unlink|detach)\b[\s\S]*?\b(?:asocia(?:ci[óo]n)?|association|link|relaci[oó]n|relations?|relationships?|enlace)\b[\s\S]*?\b(?:between|entre|de|from)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:and|with|y|e|de|con)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance) ||
-    /\b(?:desvincula|desvinculá|unlink)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)\s+(?:de|from|con|with|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚ]\w*)/i.exec(utterance);
+    /\b(?:delete|remove|elimina|eliminá|borra|borrá|sacar|sacá|saca|desvincula|desvinculá|unlink|detach)\b[\s\S]*?\b(?:asocia(?:ci[óo]n)?|association|link|relaci[oó]n|relations?|relationships?|enlace)\b[\s\S]*?\b(?:between|entre|de|from)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:and|with|y|e|de|con)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance) ||
+    /\b(?:desvincula|desvinculá|unlink)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)\s+(?:de|from|con|with|y|and)\s+([A-Za-z_ñÑáéíóúÁÉÍÓÚüÜ][\wñÑáéíóúÁÉÍÓÚüÜ]*)/i.exec(utterance);
   if (isDeleteAssociation) {
     const sourceClassId = classIdByName(currentIr, isDeleteAssociation[1]!);
     const targetClassId = classIdByName(currentIr, isDeleteAssociation[2]!);

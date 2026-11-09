@@ -2,14 +2,22 @@ import type { Diagram, Delta } from '@app/core';
 import { levenshtein } from '../normalizer.js';
 
 export function classIdByName(diagram: Diagram, name: string): string | null {
-  const target = name.toLowerCase();
-  const exact = diagram.classes.find((cls) => cls.name.toLowerCase() === target);
+  const target = name.toLowerCase().trim();
+  const targetNorm = target.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const exact = diagram.classes.find((cls) => cls.name.toLowerCase().trim() === target);
   if (exact) return exact.id;
+
+  const accentInsensitive = diagram.classes.find(
+    (cls) => cls.name.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm
+  );
+  if (accentInsensitive) return accentInsensitive.id;
 
   let bestId: string | null = null;
   let bestDist = 3;
   for (const cls of diagram.classes) {
-    const dist = levenshtein(cls.name.toLowerCase(), target);
+    const clsNorm = cls.name.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const dist = levenshtein(clsNorm, targetNorm);
     if (dist < bestDist && dist <= 2) {
       bestDist = dist;
       bestId = cls.id;
