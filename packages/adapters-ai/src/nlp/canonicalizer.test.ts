@@ -87,11 +87,23 @@ describe('canonicalizeUtteranceWithGroq and Ingress Classifier', () => {
     }
   });
 
-  it('parses [DESIGN] prefix correctly', () => {
+  it('parses [DESIGN] prefix correctly for general domain requirements', () => {
     const ingress = parseIngressResult('[DESIGN] Diseña un sistema de biblioteca con préstamos');
     expect(ingress.kind).toBe('design');
     if (ingress.kind === 'design') {
       expect(ingress.requirement).toBe('Diseña un sistema de biblioteca con préstamos');
+    }
+  });
+
+  it('recovers DSL commands from mistagged [DESIGN] prefix (defense in depth)', () => {
+    const ingress = parseIngressResult(
+      '[DESIGN] crea clase de asociacion Detalle entre Pedido y Producto; borra clase DetallePedido; agrega atributo cantidad: int a Detalle'
+    );
+    expect(ingress.kind).toBe('dsl');
+    if (ingress.kind === 'dsl') {
+      expect(ingress.commands).toBe(
+        'crea clase de asociacion Detalle entre Pedido y Producto; borra clase DetallePedido; agrega atributo cantidad: int a Detalle'
+      );
     }
   });
 
