@@ -4,10 +4,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import type { LlmClient, SttClient } from '@app/adapters-ai';
-import { LlmUnavailableError } from '@app/adapters-ai';
 import type { PendingDeltaStore } from '../pending-deltas.js';
 import { loadDiagramFromRow } from './persistence.js';
-import { interpretCommand } from '../interpreter.js';
+import { interpretCommand, LlmUnavailableError } from '../interpreter.js';
 import type { Diagram } from '@app/core';
 
 export function registerVoiceRoute(
