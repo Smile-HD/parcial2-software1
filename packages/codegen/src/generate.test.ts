@@ -745,6 +745,39 @@ describe('redundant FK attribute suppression (Hibernate DuplicateMappingExceptio
     expect(result.warnings.some((w) => w.code === 'duplicate-fk-column-suppressed')).toBe(true);
   });
 
+  it('suppresses entity-named attribute when a relationship to that entity exists to prevent Java duplicate field collisions', () => {
+    const d = v2Diagram({
+      classes: [
+        v2Cls(ID2.customer, 'Clases', {
+          attributes: [
+            v2Attr('nombre', 'String'),
+            v2Attr('profesor', 'String'),
+          ],
+        }),
+        v2Cls(ID2.order, 'Profesor', {
+          attributes: [v2Attr('nombre', 'String')],
+        }),
+      ],
+      associations: [
+        {
+          id: ID2.assoc,
+          sourceClassId: ID2.customer,
+          targetClassId: ID2.order,
+          sourceMultiplicity: '0..*',
+          targetMultiplicity: '1',
+          directed: true,
+          aggregation: 'none',
+        },
+      ],
+    });
+    const result = generate(d, { outputRoot: ROOT });
+    const clases = entityOf(result.files, 'Clases');
+    expect(clases.fields.find((f) => f.name === 'profesor')).toBeUndefined();
+    expect(clases.fields.find((f) => f.name === 'nombre')).toBeDefined();
+    expect(clases.relationships.some((r) => r.targetEntity === 'Profesor' && r.kind === 'ManyToOne')).toBe(true);
+    expect(result.warnings.some((w) => w.code === 'duplicate-fk-column-suppressed')).toBe(true);
+  });
+
   it('maps an association class into an entity with two ManyToOne relationships and OneToMany on endpoints', () => {
     const studentId = randomUUID();
     const courseId = randomUUID();

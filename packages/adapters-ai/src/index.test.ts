@@ -1977,6 +1977,205 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         });
       }
     });
+
+    it('interprets "asocia asisetncia y materia con una relacion de composicion" with composite aggregation and typo tolerance', async () => {
+      const llm = new FakeLlm();
+      const asisId = crypto.randomUUID();
+      const matId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: asisId,
+            name: 'Asistencia',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+          {
+            id: matId,
+            name: 'Materia',
+            attributes: [],
+            methods: [],
+            position: { x: 100, y: 100 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+        associations: [],
+      } as any;
+
+      const result = await llm.interpret('asocia asisetncia y materia con una relacion de composicion', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const delta = result.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('create');
+        expect(delta.aggregation).toBe('composite');
+        expect(delta.sourceClassId).toBe(asisId);
+        expect(delta.targetClassId).toBe(matId);
+        expect(delta.aggregationEnd).toBe('target'); // Materia is the container
+      }
+    });
+
+    it('updates existing association when changing to composition', async () => {
+      const llm = new FakeLlm();
+      const asisId = crypto.randomUUID();
+      const matId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          {
+            id: asisId,
+            name: 'Asistencia',
+            attributes: [],
+            methods: [],
+            position: { x: 0, y: 0 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+          {
+            id: matId,
+            name: 'Materia',
+            attributes: [],
+            methods: [],
+            position: { x: 100, y: 100 },
+            isAbstract: false,
+            classKind: 'class',
+          },
+        ],
+        associations: [
+          {
+            id: assocId,
+            sourceClassId: asisId,
+            targetClassId: matId,
+            sourceMultiplicity: '1',
+            targetMultiplicity: '1',
+            directed: false,
+            aggregation: 'none',
+          },
+        ],
+      } as any;
+
+      const result = await llm.interpret('cambia la relacion entre Asistencia y Materia a composicion', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const delta = result.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('updateMultiplicity');
+        expect(delta.associationId).toBe(assocId);
+        expect(delta.aggregation).toBe('composite');
+        expect(delta.aggregationEnd).toBe('target');
+      }
+
+      // Exact prompt from user screenshot with "por una composicion" and reversed class order:
+      const result2 = await llm.interpret('cambia la relacion entre materia y asistencia por una composicion', {}, diagram);
+      expect(result2.kind).toBe('delta');
+      if (result2.kind === 'delta') {
+        const delta = result2.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('updateMultiplicity');
+        expect(delta.associationId).toBe(assocId);
+        expect(delta.aggregation).toBe('composite');
+        expect(delta.name).toBeUndefined(); // Never name it "una"!
+        expect(delta.aggregationEnd).toBe('target'); // Materia is the container
+      }
+    });
+
+    it('converts association to generalization, replacing old edge (user screenshot 1)', async () => {
+      const llm = new FakeLlm();
+      const alumId = crypto.randomUUID();
+      const asisId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          { id: alumId, name: 'Alumno', attributes: [], methods: [], position: { x: 0, y: 0 }, isAbstract: false, classKind: 'class' },
+          { id: asisId, name: 'Asistencia', attributes: [], methods: [], position: { x: 100, y: 100 }, isAbstract: false, classKind: 'class' },
+        ],
+        associations: [
+          { id: assocId, sourceClassId: alumId, targetClassId: asisId, sourceMultiplicity: '1', targetMultiplicity: '1', directed: false, aggregation: 'none' },
+        ],
+        generalizations: [],
+      } as any;
+
+      const result = await llm.interpret('cambiame la relacion entre alumno y asistencia por una generalizacion', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const batch = result.value as any;
+        expect(batch.kind).toBe('batch');
+        expect(batch.deltas).toHaveLength(2);
+        expect(batch.deltas[0]).toMatchObject({ kind: 'association', op: 'delete', associationId: assocId });
+        expect(batch.deltas[1]).toMatchObject({ kind: 'generalization', op: 'create', subClassId: alumId, superClassId: asisId });
+      }
+    });
+
+    it('inverts composition diamond and cleans duplicates (user screenshot 2 & 3)', async () => {
+      const llm = new FakeLlm();
+      const asisId = crypto.randomUUID();
+      const matId = crypto.randomUUID();
+      const dupAssocId = crypto.randomUUID();
+      const compAssocId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          { id: asisId, name: 'Asistencia', attributes: [], methods: [], position: { x: 0, y: 0 }, isAbstract: false, classKind: 'class' },
+          { id: matId, name: 'Materia', attributes: [], methods: [], position: { x: 100, y: 100 }, isAbstract: false, classKind: 'class' },
+        ],
+        associations: [
+          { id: dupAssocId, sourceClassId: asisId, targetClassId: matId, sourceMultiplicity: '1', targetMultiplicity: '1', directed: false, aggregation: 'none', name: 'una' },
+          { id: compAssocId, sourceClassId: asisId, targetClassId: matId, sourceMultiplicity: '0..*', targetMultiplicity: '1', directed: false, aggregation: 'composite', aggregationEnd: 'target' },
+        ],
+        generalizations: [],
+      } as any;
+
+      const result = await llm.interpret('inverti el nodo de relacion de composicion entre asistencia y materia', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const batch = result.value as any;
+        expect(batch.kind).toBe('batch');
+        // Deletes duplicate zombie association and updates primary with flipped aggregationEnd
+        expect(batch.deltas).toHaveLength(2);
+        expect(batch.deltas[0]).toMatchObject({ kind: 'association', op: 'delete', associationId: dupAssocId });
+        expect(batch.deltas[1]).toMatchObject({
+          kind: 'association',
+          op: 'updateMultiplicity',
+          associationId: compAssocId,
+          aggregation: 'composite',
+          aggregationEnd: 'source', // Flipped from target to source!
+        });
+      }
+    });
+
+    it('supports English synonyms for flip/invert and relationship replacement', async () => {
+      const llm = new FakeLlm();
+      const aId = crypto.randomUUID();
+      const bId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagram = {
+        ...makeDiagram(),
+        classes: [
+          { id: aId, name: 'Customer', attributes: [], methods: [], position: { x: 0, y: 0 }, isAbstract: false, classKind: 'class' },
+          { id: bId, name: 'Order', attributes: [], methods: [], position: { x: 100, y: 100 }, isAbstract: false, classKind: 'class' },
+        ],
+        associations: [
+          { id: assocId, sourceClassId: aId, targetClassId: bId, sourceMultiplicity: '1', targetMultiplicity: '0..*', directed: false, aggregation: 'composite', aggregationEnd: 'source' },
+        ],
+      } as any;
+
+      const result = await llm.interpret('flip composition between Customer and Order', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const delta = result.value as any;
+        expect(delta.kind).toBe('association');
+        expect(delta.op).toBe('updateMultiplicity');
+        expect(delta.associationId).toBe(assocId);
+        expect(delta.aggregationEnd).toBe('target'); // Flipped from source to target
+      }
+    });
   });
 });
 
