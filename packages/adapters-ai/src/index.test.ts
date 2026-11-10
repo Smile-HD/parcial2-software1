@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DeltaSchema, deltaJsonSchema, type Diagram } from '@app/core';
+import { DeltaSchema, deltaJsonSchema, type Diagram, applyDelta } from '@app/core';
 
 import { FakeLlm, OpenAiLlm } from './index.js';
 import { repairModelIdentifiers } from './repair.js';
@@ -2174,6 +2174,50 @@ describe('OpenAiLlm flexible intent & garbage prompt guidance', () => {
         expect(delta.op).toBe('updateMultiplicity');
         expect(delta.associationId).toBe(assocId);
         expect(delta.aggregationEnd).toBe('target'); // Flipped from source to target
+      }
+    });
+
+    it('creates intermediate association class with valid position on M:N multiplicity update and applies cleanly', async () => {
+      const llm = new FakeLlm();
+      const invId = crypto.randomUUID();
+      const empId = crypto.randomUUID();
+      const assocId = crypto.randomUUID();
+      const diagram: Diagram = {
+        id: crypto.randomUUID(),
+        name: 'Shop',
+        classes: [
+          { id: invId, name: 'Inventario', attributes: [], methods: [], position: { x: 100, y: 100 }, isAbstract: false, classKind: 'class' },
+          { id: empId, name: 'Empleado', attributes: [], methods: [], position: { x: 300, y: 300 }, isAbstract: false, classKind: 'class' },
+        ],
+        associations: [
+          { id: assocId, sourceClassId: invId, targetClassId: empId, sourceMultiplicity: '1', targetMultiplicity: '1', directed: false, aggregation: 'none' },
+        ],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+      };
+
+      const result = await llm.interpret('cambiar multiplicidad de la relacion entre Inventario y Empleado a muchos a muchos', {}, diagram);
+      expect(result.kind).toBe('delta');
+      if (result.kind === 'delta') {
+        const batch = result.value as any;
+        expect(batch.kind).toBe('batch');
+        expect(batch.deltas).toHaveLength(2);
+        const [createClass, updateAssoc] = batch.deltas;
+        expect(createClass.kind).toBe('class');
+        expect(createClass.op).toBe('create');
+        expect(createClass.name).toBe('Inventario_Empleado');
+        expect(createClass.position).toEqual({ x: 200, y: 260 }); // Midpoint (200, 200) + 60 y-offset
+
+        const applied = applyDelta(diagram, batch);
+        expect(applied.ok).toBe(true);
+        if (applied.ok) {
+          const newDiag = applied.value;
+          expect(newDiag.classes).toHaveLength(3);
+          const assocClass = newDiag.classes.find((c) => c.name === 'Inventario_Empleado');
+          expect(assocClass).toBeDefined();
+          expect(assocClass?.position).toEqual({ x: 200, y: 260 });
+        }
       }
     });
   });

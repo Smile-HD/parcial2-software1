@@ -16,16 +16,17 @@ import {
 export function applyClassDelta(diagram: Diagram, delta: ClassDelta): ApplyResult<Diagram> {
   switch (delta.op) {
     case 'create': {
-      if (!delta.name || !delta.position) {
-        return err({ kind: 'InvalidOperationError', reason: 'Class create requires name and position' });
+      if (!delta.name) {
+        return err({ kind: 'InvalidOperationError', reason: 'Class create requires name' });
       }
       if (isDuplicateClassName(diagram, delta.name)) {
         return err({ kind: 'DuplicateClassError', className: delta.name, classId: delta.classId });
       }
+      const position = delta.position ?? { x: 250, y: 150 };
       const newClass = ClassSchema.parse({
         id: delta.classId,
         name: delta.name,
-        position: delta.position,
+        position,
         attributes: [],
         methods: [],
         // Unidad 12.1: tipo de clasificador opcional en create (por defecto 'class').

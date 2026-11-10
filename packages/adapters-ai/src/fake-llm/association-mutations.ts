@@ -3,7 +3,7 @@ import type {
   BatchDelta,
   LlmResult,
 } from '@app/core';
-import { classIdByName, parseMultiplicities, deltaBase, type FakeLlmContext } from './helpers.js';
+import { classIdByName, parseMultiplicities, deltaBase, nextPosition, type FakeLlmContext } from './helpers.js';
 
 export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
   const { utterance, currentIr } = ctx;
@@ -56,6 +56,13 @@ export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
       let createClassDelta: any = null;
       if (!assocClassId) {
         assocClassId = crypto.randomUUID();
+        const pos =
+          srcClass?.position && tgtClass?.position
+            ? {
+                x: Math.round((srcClass.position.x + tgtClass.position.x) / 2),
+                y: Math.round((srcClass.position.y + tgtClass.position.y) / 2) + 60,
+              }
+            : nextPosition(currentIr);
         createClassDelta = {
           kind: 'class',
           op: 'create',
@@ -63,6 +70,7 @@ export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
           classId: assocClassId,
           name: candidate1,
           isAbstract: false,
+          position: pos,
         };
       }
 
