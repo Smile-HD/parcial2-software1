@@ -276,7 +276,8 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
             }
             ingressHandled = true;
           }
-        } catch {
+        } catch (err: any) {
+          console.error('[KaggleCognitiveGateway] Error in cognitive turn:', err?.message || err);
           // Degradación elegante automática al pipeline legado (Groq / FakeLlm)
         }
       }

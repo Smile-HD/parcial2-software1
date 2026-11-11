@@ -95,7 +95,7 @@ export async function executeKaggleCognitiveTurn(
     }
 
     const data = (await response.json()) as any;
-    console.log(
+    console.error(
       `[KaggleCognitiveGateway] Atendido por GPU: ${model} | Firma: ${data.system_fingerprint || 'fp_ollama'} | Tokens: ${data.usage?.total_tokens ?? 'N/A'}`
     );
     const raw = data.choices?.[0]?.message?.content;
