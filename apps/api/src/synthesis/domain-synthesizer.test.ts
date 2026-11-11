@@ -1795,6 +1795,38 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(mut?.generalizations?.[0]?.subclass).toBe('Perro');
       expect(mut?.generalizations?.[0]?.superclass).toBe('Animal');
     });
+
+    // 25. Actualización de multiplicidad a muchos a muchos genera automáticamente la tabla de asociación
+    it('25. cambia la relacion entre Estudiante y Curso a muchos a muchos generando tabla de asociacion', () => {
+      const diag = {
+        id: 'diag-m-n-test',
+        classes: [
+          { id: 'c_est', name: 'Estudiante', attributes: [], methods: [], position: { x: 100, y: 100 } },
+          { id: 'c_cur', name: 'Curso', attributes: [], methods: [], position: { x: 300, y: 100 } },
+        ],
+        associations: [
+          { id: 'a_est_cur', sourceClassId: 'c_est', targetClassId: 'c_cur', sourceMultiplicity: '1', targetMultiplicity: '1..*', aggregation: 'none' },
+        ],
+        generalizations: [],
+      };
+      const mut = extractExplicitModelMutations('cambia la relacion entre Estudiante y Curso a muchos a muchos', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.action).toBe('modify');
+      expect(mut?.updates?.associations?.[0]?.sourceMultiplicity).toMatch(/^(0\.\.\*|1\.\.\*)$/);
+      expect(mut?.updates?.associations?.[0]?.targetMultiplicity).toMatch(/^(0\.\.\*|1\.\.\*)$/);
+      expect(mut?.updates?.associations?.[0]?.associationClass).toBe('Estudiante_Curso');
+
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      expect(delta).not.toBeNull();
+      // Debe crear la clase intermedia
+      const createAssocClass = delta!.deltas.find((d: any) => d.kind === 'class' && d.op === 'create');
+      expect(createAssocClass).toBeDefined();
+      expect((createAssocClass as any).name).toBe('EstudianteCurso');
+      // Debe actualizar la asociación asignándole associationClassId
+      const updateAssoc = delta!.deltas.find((d: any) => d.kind === 'association' && d.op === 'updateMultiplicity');
+      expect(updateAssoc).toBeDefined();
+      expect((updateAssoc as any).associationClassId).toBe((createAssocClass as any).classId);
+    });
   });
 });
 

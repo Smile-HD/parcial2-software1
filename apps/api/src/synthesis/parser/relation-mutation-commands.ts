@@ -280,6 +280,15 @@ export function parseRelationChangeCommands(
       if (explicit?.sourceMultiplicity) updateAssoc.sourceMultiplicity = explicit.sourceMultiplicity;
       if (explicit?.targetMultiplicity) updateAssoc.targetMultiplicity = explicit.targetMultiplicity;
 
+      // Invariante OOAD M:N: si la relación resultante es muchos a muchos y no tiene clase de asociación, asignarla
+      const finalSrc = updateAssoc.sourceMultiplicity || matchingAssoc.sourceMultiplicity;
+      const finalTgt = updateAssoc.targetMultiplicity || matchingAssoc.targetMultiplicity;
+      const isMtoN = (finalSrc === '0..*' || finalSrc === '1..*' || finalSrc === '*') &&
+                     (finalTgt === '0..*' || finalTgt === '1..*' || finalTgt === '*');
+      if (isMtoN && !matchingAssoc.associationClassId) {
+        updateAssoc.associationClass = `${sourceCls.name}_${targetCls.name}`;
+      }
+
       return {
         action: 'modify',
         updates: {
@@ -296,6 +305,11 @@ export function parseRelationChangeCommands(
       if (explicit.sourceMultiplicity) srcMult = explicit.sourceMultiplicity;
       if (explicit.targetMultiplicity) tgtMult = explicit.targetMultiplicity;
     }
+
+    const isNewAssocMtoN = (srcMult === '0..*' || srcMult === '1..*' || srcMult === '*') &&
+                           (tgtMult === '0..*' || tgtMult === '1..*' || tgtMult === '*');
+    const newAssocClass = isNewAssocMtoN ? `${c1.name}_${c2.name}` : undefined;
+
     return {
       action: 'modify',
       associations: [
@@ -306,6 +320,7 @@ export function parseRelationChangeCommands(
           targetMultiplicity: tgtMult,
           aggregation: targetAggregation,
           aggregationEnd: calcEnd,
+          ...(newAssocClass ? { associationClass: newAssocClass } : {}),
         },
       ],
     };

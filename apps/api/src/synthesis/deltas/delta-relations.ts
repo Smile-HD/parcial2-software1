@@ -36,13 +36,49 @@ export function applyRelationUpdates(
         });
         if (existingAssoc) {
           let assocClassId = u.associationClass ? resolveClassId(u.associationClass) : undefined;
-          if (u.associationClass && !assocClassId && model?.classes) {
-            const mc = model.classes.find((c) => c.name.toLowerCase() === u.associationClass!.toLowerCase());
-            if (mc) {
-              assocClassId = crypto.randomUUID();
-              const clean = cleanClassName(mc.name);
-              classIdMap.set(toCanonicalKey(clean), assocClassId);
-              classIdMap.set(clean.toLowerCase(), assocClassId);
+          if (u.associationClass && !assocClassId) {
+            const acName = cleanClassName(u.associationClass);
+            const acLower = acName.toLowerCase();
+            const acCanon = toCanonicalKey(acName);
+            assocClassId = crypto.randomUUID();
+            classIdMap.set(acCanon, assocClassId);
+            classIdMap.set(acLower, assocClassId);
+            const srcClass = currentDiagram?.classes?.find((c: any) => c.id === sourceId);
+            const tgtClass = currentDiagram?.classes?.find((c: any) => c.id === targetId);
+            const pos = srcClass?.position && tgtClass?.position
+              ? {
+                  x: Math.round((srcClass.position.x + tgtClass.position.x) / 2),
+                  y: Math.round((srcClass.position.y + tgtClass.position.y) / 2) + 60,
+                }
+              : { x: 360, y: 380 };
+            deltas.push({
+              id: crypto.randomUUID(),
+              diagramId,
+              timestamp,
+              kind: 'class',
+              op: 'create',
+              classId: assocClassId,
+              name: acName,
+              classKind: 'class',
+              isAbstract: false,
+              position: pos,
+            });
+            const defaultAttrs = generateDefaultAttributesForClass(acName);
+            for (const da of defaultAttrs) {
+              deltas.push({
+                id: crypto.randomUUID(),
+                diagramId,
+                timestamp,
+                kind: 'member',
+                op: 'addAttribute',
+                classId: assocClassId,
+                memberId: crypto.randomUUID(),
+                name: da.name,
+                type: da.type,
+                visibility: '+',
+                isStatic: false,
+                isDerived: false,
+              });
             }
           }
           const updateDelta: any = {

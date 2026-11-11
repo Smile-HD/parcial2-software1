@@ -111,6 +111,25 @@ export function parseMultiplicityOrRoleCommands(
       if (foundAssocCls) assocClass = foundAssocCls.name;
     }
 
+    // Invariante OOAD M:N: si la relación resultante es de muchos a muchos (* a * o 0..* a 0..* o 1..* a 1..*)
+    // y no tiene clase de asociación asignada, se auto-deduce o genera el nombre de la tabla intermedia
+    const isManyToMany =
+      (sourceMultiplicity === '0..*' || sourceMultiplicity === '1..*' || sourceMultiplicity === '*') &&
+      (targetMultiplicity === '0..*' || targetMultiplicity === '1..*' || targetMultiplicity === '*');
+
+    if (isManyToMany && !assocClass && !matchingAssoc.associationClassId) {
+      const existingCandidates = [
+        `${sourceCls.name}_${targetCls.name}`,
+        `${targetCls.name}_${sourceCls.name}`,
+        `${sourceCls.name}${targetCls.name}`,
+        `${targetCls.name}${sourceCls.name}`,
+      ];
+      const foundExisting = classes.find((c) =>
+        existingCandidates.some((cand) => cand.toLowerCase() === c.name.toLowerCase())
+      );
+      assocClass = foundExisting ? foundExisting.name : `${sourceCls.name}_${targetCls.name}`;
+    }
+
     let assocName: string | undefined;
     const assocNameMatch = /(?:llamada|llamado|nombrada|nombrado|named|called|con\s+(?:el\s+)?nombre|de\s+nombre|nombre\s+(?:sea|es))\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?/i.exec(text);
     if (assocNameMatch) {
