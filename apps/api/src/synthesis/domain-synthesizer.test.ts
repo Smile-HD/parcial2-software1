@@ -1750,6 +1750,51 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(mut).not.toBeNull();
       expect(mut?.deletions?.classes).toContain('Factura');
     });
+
+    // 23. Relacionar con generalización directamente sin asociación previa existente
+    it('23. relaciona Alumno con Persona con generalizacion', () => {
+      const diag = {
+        id: 'diag-gen-test',
+        classes: [
+          { id: 'c_persona', name: 'Persona', attributes: [], methods: [] },
+          { id: 'c_alumno', name: 'Alumno', attributes: [], methods: [] },
+        ],
+        associations: [],
+        generalizations: [],
+      };
+      const mut = extractExplicitModelMutations('relaciona Alumno y Persona con generalizacion', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.action).toBe('modify');
+      expect(mut?.generalizations).toBeDefined();
+      expect(mut?.generalizations?.[0]?.subclass).toBe('Alumno');
+      expect(mut?.generalizations?.[0]?.superclass).toBe('Persona');
+
+      const delta = expandSemanticDomainToDelta(mut!, diag.id, diag);
+      expect(delta).not.toBeNull();
+      const createGen = delta!.deltas.find((d: any) => d.kind === 'generalization' && d.op === 'create');
+      expect(createGen).toBeDefined();
+      expect((createGen as any).subClassId).toBe('c_alumno');
+      expect((createGen as any).superClassId).toBe('c_persona');
+      // Asegurar que NO se emite una asociación simple parasitaria
+      const anyAssoc = delta!.deltas.find((d: any) => d.kind === 'association');
+      expect(anyAssoc).toBeUndefined();
+    });
+
+    it('24. conecta Perro con Animal con herencia', () => {
+      const diag = {
+        id: 'diag-gen-test-2',
+        classes: [
+          { id: 'c_animal', name: 'Animal', attributes: [], methods: [] },
+          { id: 'c_perro', name: 'Perro', attributes: [], methods: [] },
+        ],
+        associations: [],
+        generalizations: [],
+      };
+      const mut = extractExplicitModelMutations('conecta Perro con Animal con herencia', diag);
+      expect(mut).not.toBeNull();
+      expect(mut?.generalizations?.[0]?.subclass).toBe('Perro');
+      expect(mut?.generalizations?.[0]?.superclass).toBe('Animal');
+    });
   });
 });
 

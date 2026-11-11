@@ -106,10 +106,49 @@ export function describeDelta(
           return isEn ? 'Delete association' : 'Eliminar asociación';
       }
       break;
+    case 'generalization': {
+      const sub = getClassName(delta.subClassId) ?? (isEn ? 'Subclass' : 'Subclase');
+      const sup = getClassName(delta.superClassId) ?? (isEn ? 'Superclass' : 'Superclase');
+      switch (delta.op) {
+        case 'create':
+          return isEn ? `Add inheritance: "${sub}" inherits from "${sup}"` : `Crear generalización: "${sub}" hereda de "${sup}"`;
+        case 'update':
+          return isEn ? `Update inheritance "${delta.name ?? ''}"` : `Actualizar herencia "${delta.name ?? ''}"`;
+        case 'delete':
+          return isEn ? 'Delete inheritance' : 'Eliminar generalización';
+      }
+      break;
+    }
+    case 'realization': {
+      const cl = getClassName(delta.clientClassId) ?? (isEn ? 'Class' : 'Clase');
+      const iface = getClassName(delta.supplierInterfaceId) ?? (isEn ? 'Interface' : 'Interfaz');
+      switch (delta.op) {
+        case 'create':
+          return isEn ? `Add realization: "${cl}" implements "${iface}"` : `Crear realización: "${cl}" implementa "${iface}"`;
+        case 'update':
+          return isEn ? `Update realization "${delta.name ?? ''}"` : `Actualizar realización "${delta.name ?? ''}"`;
+        case 'delete':
+          return isEn ? 'Delete realization' : 'Eliminar realización';
+      }
+      break;
+    }
+    case 'dependency': {
+      const cl = getClassName(delta.clientClassId) ?? (isEn ? 'Class' : 'Clase');
+      const dep = getClassName(delta.supplierClassId) ?? (isEn ? 'Supplier' : 'Proveedor');
+      switch (delta.op) {
+        case 'create':
+          return isEn ? `Add dependency: "${cl}" depends on "${dep}"` : `Crear dependencia: "${cl}" depende de "${dep}"`;
+        case 'update':
+          return isEn ? `Update dependency "${delta.name ?? ''}"` : `Actualizar dependencia "${delta.name ?? ''}"`;
+        case 'delete':
+          return isEn ? 'Delete dependency' : 'Eliminar dependencia';
+      }
+      break;
+    }
     case 'batch':
       return isEn
-        ? `Apply ${delta.deltas.length} changes: ${delta.deltas.map((inner) => describeDelta(inner, isEn)).join('; ')}`
-        : `Aplicar ${delta.deltas.length} cambios: ${delta.deltas.map((inner) => describeDelta(inner, isEn)).join('; ')}`;
+        ? `Apply ${delta.deltas.length} changes: ${delta.deltas.map((inner) => describeDelta(inner, isEn, classNamesById)).join('; ')}`
+        : `Aplicar ${delta.deltas.length} cambios: ${delta.deltas.map((inner) => describeDelta(inner, isEn, classNamesById)).join('; ')}`;
   }
 }
 

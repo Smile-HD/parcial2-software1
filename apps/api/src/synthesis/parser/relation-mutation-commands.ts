@@ -35,7 +35,7 @@ export function parseRelationChangeCommands(
       normalized
     ) ||
     ((isGeneralization || isRealization || isDependency) &&
-      /(?:cambi|modific|pas[aá]|convert|turn|relaci[oó]n|hac|haz|sea|hered|subclase|superclase|extends|implement|depend)/i.test(normalized)));
+      /(?:cambi|modific|pas[aá]|convert|turn|relaci[oó]n|hac|haz|sea|hered|subclase|superclase|extends|implement|depend|conect|asoci|vincul|cre|agreg|a[ñn]ad)/i.test(normalized)));
 
   if (!isRelationChange) return null;
 
@@ -104,6 +104,23 @@ export function parseRelationChangeCommands(
       return { subclass: clsA, superclass: clsB };
     }
     if (new RegExp(`${aNorm}\\s+(?:es\\s+padre\\s+de|sea\\s+superclase\\s+de|superclase\\s+de)\\s+${bNorm}`, 'i').test(normalized)) {
+      return { subclass: clsB, superclass: clsA };
+    }
+    // Patrones de roles: "con A como subclase", "subclase A", "superclase B"
+    if (new RegExp(`(?:subclase|hijo|hija|child)\\s+(?:sea\\s+)?${aNorm}`, 'i').test(normalized) ||
+        new RegExp(`${aNorm}\\s+(?:sea|como|es)\\s+(?:la\\s+)?(?:subclase|hijo|hija)`, 'i').test(normalized)) {
+      return { subclass: clsA, superclass: clsB };
+    }
+    if (new RegExp(`(?:subclase|hijo|hija|child)\\s+(?:sea\\s+)?${bNorm}`, 'i').test(normalized) ||
+        new RegExp(`${bNorm}\\s+(?:sea|como|es)\\s+(?:la\\s+)?(?:subclase|hijo|hija)`, 'i').test(normalized)) {
+      return { subclass: clsB, superclass: clsA };
+    }
+    if (new RegExp(`(?:superclase|padre|madre|parent)\\s+(?:sea\\s+)?${bNorm}`, 'i').test(normalized) ||
+        new RegExp(`${bNorm}\\s+(?:sea|como|es)\\s+(?:la\\s+)?(?:superclase|padre|madre)`, 'i').test(normalized)) {
+      return { subclass: clsA, superclass: clsB };
+    }
+    if (new RegExp(`(?:superclase|padre|madre|parent)\\s+(?:sea\\s+)?${aNorm}`, 'i').test(normalized) ||
+        new RegExp(`${aNorm}\\s+(?:sea|como|es)\\s+(?:la\\s+)?(?:superclase|padre|madre)`, 'i').test(normalized)) {
       return { subclass: clsB, superclass: clsA };
     }
     const posA = normalized.indexOf(aNorm);
