@@ -154,13 +154,76 @@ export function applyRelationUpdates(
 }
 
 /**
+ * Fusiona dos asociaciones hacia una tabla intermedia en una sola asociación con associationClass UML nativa.
+ */
+export function fuseJunctionTableAssociations(associations: any[], originText?: string): any[] {
+  if (!Array.isArray(associations) || associations.length < 2) return associations;
+
+  const textWantsAssocClass = originText
+    ? /(?:tabla|clase)\s+(?:de\s+)?asociaci[oó]n|muchos\s+a\s+muchos|m:n|n:m|intermedia/i.test(originText)
+    : false;
+
+  const connMap = new Map<string, Array<{ other: string; assocIndex: number; assoc: any }>>();
+  associations.forEach((a, idx) => {
+    if (!a.source || !a.target || a.source === a.target) return;
+    const s = String(a.source).trim();
+    const t = String(a.target).trim();
+    if (!connMap.has(s)) connMap.set(s, []);
+    if (!connMap.has(t)) connMap.set(t, []);
+    connMap.get(s)!.push({ other: t, assocIndex: idx, assoc: a });
+    connMap.get(t)!.push({ other: s, assocIndex: idx, assoc: a });
+  });
+
+  const mergedAssocIndices = new Set<number>();
+  const fusedAssocs: any[] = [];
+
+  for (const [candidate, conns] of connMap.entries()) {
+    if (conns.length === 2) {
+      const [c1, c2] = conns;
+      if (c1.other !== c2.other) {
+        const c1Name = c1.other.toLowerCase();
+        const c2Name = c2.other.toLowerCase();
+        const candLower = candidate.toLowerCase();
+
+        const isCompoundName =
+          (candLower.includes(c1Name) && candLower.includes(c2Name)) ||
+          candLower.includes(`${c1Name}_${c2Name}`) ||
+          candLower.includes(`${c2Name}_${c1Name}`) ||
+          /^(compra|venta|detalle|linea|item|inscripcion|matricula|reserva|registro)/i.test(candidate);
+
+        if (isCompoundName || textWantsAssocClass) {
+          mergedAssocIndices.add(c1.assocIndex);
+          mergedAssocIndices.add(c2.assocIndex);
+
+          fusedAssocs.push({
+            source: c1.other,
+            target: c2.other,
+            sourceMultiplicity: '0..*',
+            targetMultiplicity: '0..*',
+            aggregation: 'none',
+            associationClass: candidate,
+          });
+        }
+      }
+    }
+  }
+
+  if (mergedAssocIndices.size === 0) return associations;
+
+  const remaining = associations.filter((_, idx) => !mergedAssocIndices.has(idx));
+  return [...remaining, ...fusedAssocs];
+}
+
+/**
  * Procesa asociaciones, composiciones y agregaciones binarias y recursivas.
  */
 export function applyAssociationsDeltas(ctx: DeltaExpansionContext, model: SemanticDomainModel): void {
   if (!Array.isArray(model.associations)) return;
   const { diagramId, timestamp, deltas, classIdMap, seenConnectedPairs, currentDiagram, originText, resolveClassId, getPairKey } = ctx;
 
-  model.associations.forEach((assoc) => {
+  const rawAssocs = fuseJunctionTableAssociations(model.associations, originText);
+
+  rawAssocs.forEach((assoc) => {
     // Si era una generalización o realización ya procesada
     const isGen =
       (assoc.name && /^(generaliz|hered|herencia|is_a|subclass)/i.test(assoc.name)) ||

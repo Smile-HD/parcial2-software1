@@ -1827,6 +1827,46 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect(updateAssoc).toBeDefined();
       expect((updateAssoc as any).associationClassId).toBe((createAssocClass as any).classId);
     });
+
+    // 26. Fusión automática de tabla intermedia generada por LLMs relacionales en clase de asociación nativa UML
+    it('26. fusiona dos asociaciones hacia tabla intermedia en una asociacion con associationClass UML nativa', () => {
+      const diag = {
+        id: 'diag-fuse-test',
+        classes: [
+          { id: 'c_cli', name: 'Cliente', attributes: [], methods: [], position: { x: 100, y: 100 } },
+          { id: 'c_vta', name: 'Venta', attributes: [], methods: [], position: { x: 500, y: 100 } },
+        ],
+        associations: [],
+        generalizations: [],
+      };
+
+      // Modelo emitido típicamente por LLMs (estilo BD relacional): 2 asociaciones hacia ClienteVenta
+      const model = {
+        action: 'modify' as const,
+        classes: [
+          { name: 'ClienteVenta', attributes: [{ name: 'fechaCompra', type: 'date' }, { name: 'montoTotal', type: 'float' }] },
+        ],
+        associations: [
+          { source: 'Cliente', target: 'ClienteVenta', sourceMultiplicity: '0..*', targetMultiplicity: '0..*' },
+          { source: 'ClienteVenta', target: 'Venta', sourceMultiplicity: '0..*', targetMultiplicity: '0..*' },
+        ],
+      };
+
+      const delta = expandSemanticDomainToDelta(model, diag.id, diag, 'creame una tabla de asociacion entre cliente y venta');
+      expect(delta).not.toBeNull();
+
+      // Debe crear la clase ClienteVenta con sus atributos
+      const createClass = delta!.deltas.find((d: any) => d.kind === 'class' && d.op === 'create');
+      expect(createClass).toBeDefined();
+      expect((createClass as any).name).toBe('ClienteVenta');
+
+      // Debe existir exactamente UNA asociación directa entre Cliente y Venta con associationClassId
+      const assocDeltas = delta!.deltas.filter((d: any) => d.kind === 'association' && d.op === 'create');
+      expect(assocDeltas.length).toBe(1);
+      expect((assocDeltas[0] as any).sourceClassId).toBe('c_cli');
+      expect((assocDeltas[0] as any).targetClassId).toBe('c_vta');
+      expect((assocDeltas[0] as any).associationClassId).toBe((createClass as any).classId);
+    });
   });
 });
 
