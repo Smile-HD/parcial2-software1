@@ -54,7 +54,7 @@ export async function executeKaggleCognitiveTurn(
 
   const isEn = language === 'en';
   const model = process.env.KAGGLE_MODEL || process.env.OPENAI_MODEL || 'qwen2.5-coder:14b';
-  const timeoutMs = Number(process.env.KAGGLE_TIMEOUT_MS) || 35000;
+  const timeoutMs = Number(process.env.KAGGLE_TIMEOUT_MS) || 120000;
   const apiKey = process.env.KAGGLE_API_KEY || 'kaggle';
 
   const activePeers = peerUsers && peerUsers.length > 0

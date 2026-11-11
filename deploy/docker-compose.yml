@@ -85,7 +85,7 @@ services:
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-180000}
       KAGGLE_BASE_URL: ${KAGGLE_BASE_URL:-}
       KAGGLE_MODEL: ${KAGGLE_MODEL:-qwen2.5-coder:14b}
-      KAGGLE_TIMEOUT_MS: ${KAGGLE_TIMEOUT_MS:-35000}
+      KAGGLE_TIMEOUT_MS: ${KAGGLE_TIMEOUT_MS:-120000}
     depends_on:
       postgres:
         condition: service_healthy
