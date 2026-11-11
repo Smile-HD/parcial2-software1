@@ -147,6 +147,7 @@ describe('prompt-builder & normalizer module', () => {
       expect(prompt).toContain('```json');
       expect(prompt).toContain('"action": "modify"');
       expect(prompt).toContain('Clase Usuario con id');
+      expect(prompt).toContain('PROHIBIDO DIVIDIR EN MÚLTIPLES BLOQUES');
     });
 
     it('generates unified architect prompt in English (en)', () => {
@@ -158,6 +159,7 @@ describe('prompt-builder & normalizer module', () => {
       });
 
       expect(prompt).toContain('You are Amongus, a senior software architect');
+      expect(prompt).toContain('FORBIDDEN TO SPLIT JSON');
       expect(prompt).toContain('DIALOGUE & AMBIGUITY RESOLUTION');
       expect(prompt).toContain('/model');
       expect(prompt).toContain('/suggest');
