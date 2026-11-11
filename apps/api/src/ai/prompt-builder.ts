@@ -305,7 +305,7 @@ export function buildKaggleArchitectPrompt(options: Omit<PromptBuildOptions, 'is
     '   - /audit: Diagnosticá el diseño bajo principios OOAD (acoplamiento, clases huérfanas, cohesión) brindando feedback constructivo.',
     '   - /help, /context, /reset, /layout: Explicá o confirmá la acción del editor según corresponda.',
     '4. SALIDA BIMODAL PARA MUTACIONES (CUANDO CORRESPONDE MODIFICAR):',
-    '   - Cuando el usuario solicite crear, mutar o eliminar elementos del diagrama, explicá brevemente tu criterio arquitectónico en lenguaje natural y agregá al final UN ÚNICO bloque ```json con este esquema:',
+    '   - Cuando el usuario solicite crear, mutar o eliminar elementos del diagrama: sé muy conciso, explicá tu criterio arquitectónico en máximo 2 o 3 oraciones y agregá de inmediato UN ÚNICO bloque ```json con este esquema:',
     '```json',
     '{',
     '  "action": "modify",',

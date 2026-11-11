@@ -251,10 +251,19 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
       const isSuggestSlash = parsed.data.content.trim().toLowerCase() === '/suggest';
       let isSuggestIntent = isSuggestSlash;
 
-      // 0. Capa 0: Puerta de Enlace Cognitiva con Qwen 27B en Kaggle (Prioritaria)
+      // Guardián Determinista Frontal: Anti-Jailbreak y Fuera de Dominio (0ms, 0 tokens)
+      if (!isSlashCommand) {
+        const chatGuard = evaluateChatGuard(parsed.data.content, diagram, isEn ? 'en' : 'es');
+        if (chatGuard.blocked && chatGuard.replyContent) {
+          replyContent = chatGuard.replyContent;
+          ingressHandled = true;
+        }
+      }
+
+      // 0. Capa 0: Puerta de Enlace Cognitiva con Qwen en Kaggle (Prioritaria)
       // En entorno de tests unitarios automáticos, no se realizan llamadas HTTP reales a menos que se fuerce KAGGLE_ENABLE_IN_TEST
       const isTestEnv = process.env.NODE_ENV === 'test' && process.env.KAGGLE_ENABLE_IN_TEST !== 'true';
-      if (!isTestEnv && (process.env.KAGGLE_BASE_URL || process.env.KAGGLE_OPENAI_BASE_URL)) {
+      if (!ingressHandled && !isTestEnv && (process.env.KAGGLE_BASE_URL || process.env.KAGGLE_OPENAI_BASE_URL)) {
         try {
           const kaggleResult = await executeKaggleCognitiveTurn({
             userContent: parsed.data.content,

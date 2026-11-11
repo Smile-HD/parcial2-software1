@@ -85,7 +85,7 @@ export async function executeKaggleCognitiveTurn(
         model,
         messages,
         temperature: 0.1,
-        max_tokens: 650,
+        max_tokens: 900,
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
