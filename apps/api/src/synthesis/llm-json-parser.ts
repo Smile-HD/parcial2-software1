@@ -185,6 +185,37 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
             : Array.isArray(parsed.relationships)
               ? parsed.relationships
               : [];
+
+      // Extraer asociaciones anidadas dentro de las definiciones de clase si el LLM las agrupó ahí
+      const nestedAssocs: any[] = [];
+      if (Array.isArray(classesData)) {
+        for (const cls of classesData) {
+          const clsAssocs = Array.isArray(cls.associations)
+            ? cls.associations
+            : Array.isArray(cls.asociaciones)
+              ? cls.asociaciones
+              : Array.isArray(cls.relaciones)
+                ? cls.relaciones
+                : [];
+          for (const ca of clsAssocs) {
+            if (ca && typeof ca === 'object') {
+              const target = typeof ca.target === 'object' ? ca.target?.name : (ca.target ?? ca.destino);
+              if (target) {
+                nestedAssocs.push({
+                  source: cls.name,
+                  target,
+                  name: ca.name || ca.nombre,
+                  type: ca.type || ca.tipo,
+                  aggregation: ca.aggregation || ca.agregacion,
+                  sourceMultiplicity: ca.sourceMultiplicity || (typeof ca.type === 'string' && ca.type.includes('..') ? ca.type.split('..')[0] : undefined),
+                  targetMultiplicity: ca.targetMultiplicity || (typeof ca.type === 'string' && ca.type.includes('..') ? ca.type.split('..')[1] : ca.type),
+                  associationClass: ca.associationClass || ca.claseAsociacion || ca.tablaIntermedia,
+                });
+              }
+            }
+          }
+        }
+      }
       const rawGens = Array.isArray(parsed.generalizations)
         ? parsed.generalizations
         : Array.isArray(parsed.generalizaciones)
@@ -209,7 +240,8 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
           : [];
 
       const classes = rawClasses.filter((c: any) => c.name && !isDummyName(c.name));
-      const associations = rawAssocs
+      const allAssocs = [...rawAssocs, ...nestedAssocs];
+      const associations = allAssocs
         .map((a: any) => {
           const rawAgg = String(a.aggregation || a.agregacion || a.tipo || a.type || '').toLowerCase();
           let aggregation: 'composite' | 'shared' | 'none' = 'none';

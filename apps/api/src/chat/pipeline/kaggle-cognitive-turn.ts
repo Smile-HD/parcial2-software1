@@ -74,9 +74,22 @@ export async function executeKaggleCognitiveTurn(
     canonicalGrounding,
   });
 
+  const sanitizedHistory = (chatHistory ? chatHistory.slice(-4) : []).map((m) => {
+    if (m.role === 'assistant') {
+      const sanitized = m.content
+        .replace(/```(?:json)?[\s\S]*?```/gi, '')
+        .replace(/(?:###\s*)?(?:Aquí está el |He aquí el |A continuación el )?bloque JSON[^:\n]*:?/gi, '')
+        .replace(/###\s*Acci[oó]n:?/gi, '')
+        .replace(/###\s*Criterio [aA]rquitect[oó]nico:?/gi, '')
+        .trim();
+      return { role: m.role, content: sanitized };
+    }
+    return m;
+  });
+
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt },
-    ...(chatHistory ? chatHistory.slice(-4) : []),
+    ...sanitizedHistory,
     { role: 'user', content: userContent },
   ];
 
@@ -137,7 +150,12 @@ export async function executeKaggleCognitiveTurn(
     if (hasAnyContent) {
       const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram, userContent);
       if (batchDelta && batchDelta.deltas.length > 0) {
-        const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
+        const textWithoutJson = clean
+          .replace(/```(?:json)?[\s\S]*?```/gi, '')
+          .replace(/(?:###\s*)?(?:Aquí está el |He aquí el |A continuación el )?bloque JSON[^:\n]*:?/gi, '')
+          .replace(/###\s*Acci[oó]n:?/gi, '')
+          .replace(/###\s*Criterio [aA]rquitect[oó]nico:?/gi, '')
+          .trim();
         const defaultReply = isEn
           ? 'I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to apply them.'
           : 'Preparé la propuesta para este cambio. Podés previsualizar los elementos en el lienzo y confirmarla para que se construyan en vivo.';
