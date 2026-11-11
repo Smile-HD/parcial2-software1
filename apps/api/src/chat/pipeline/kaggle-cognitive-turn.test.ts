@@ -137,42 +137,32 @@ describe('executeKaggleCognitiveTurn', () => {
     expect(res?.batchDelta).not.toBeNull();
   });
 
-  it('streams text chunks via onChunk and stops before JSON code block', async () => {
+  it('executes direct non-streaming turn and parses JSON code block', async () => {
     process.env.KAGGLE_BASE_URL = 'https://fake-kaggle.trycloudflare.com/v1';
-
-    const sseLines = [
-      'data: {"choices":[{"delta":{"content":"Hola "}}]}\n\n',
-      'data: {"choices":[{"delta":{"content":"mundo. "}}]}\n\n',
-      'data: {"choices":[{"delta":{"content":"```json\\n{\\"action\\":\\"modify\\",\\"classes\\":[{\\"name\\":\\"A\\"}]}\\n```"}}]}\n\n',
-      'data: [DONE]\n\n',
-    ];
-
-    const stream = new ReadableStream({
-      start(controller) {
-        for (const line of sseLines) {
-          controller.enqueue(new TextEncoder().encode(line));
-        }
-        controller.close();
-      },
-    });
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
-      body: stream,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: 'Hola mundo. ```json\n{"action":"modify","classes":[{"name":"A"}]}\n```',
+            },
+          },
+        ],
+      }),
     } as any);
 
-    const receivedChunks: string[] = [];
     const res = await executeKaggleCognitiveTurn({
       userContent: 'crea clase A',
       senderName: 'Carlos',
       language: 'es',
       diagramId: 'diag-1',
       diagramContext: '',
-      onChunk: (chunk) => receivedChunks.push(chunk),
     });
 
-    expect(receivedChunks.join('')).toBe('Hola mundo. ');
     expect(res).not.toBeNull();
+    expect(res?.replyContent).toContain('Hola mundo.');
     expect(res?.batchDelta).not.toBeNull();
   });
 
