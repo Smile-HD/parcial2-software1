@@ -99,6 +99,7 @@ export function sanitizeAttributeNameAndType(rawName: string, rawType?: string):
     datetime: 'date',
     fecha: 'date',
     void: 'void',
+    uuid: 'uuid',
   };
 
   const knownSuffixes = [
@@ -133,7 +134,7 @@ export function sanitizeAttributeNameAndType(rawName: string, rawType?: string):
   }
 
   const rawNorm = (type || 'string').toLowerCase().replace(/\[\]$/, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
-  const normType = typeMap[rawNorm] || (['int', 'float', 'string', 'boolean', 'date'].includes(rawNorm) ? rawNorm : 'string');
+  const normType = typeMap[rawNorm] || (['int', 'float', 'string', 'boolean', 'date', 'uuid'].includes(rawNorm) ? rawNorm : (rawNorm || 'string'));
 
   return { name, type: normType };
 }

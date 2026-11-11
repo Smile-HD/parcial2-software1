@@ -189,7 +189,7 @@ export function parseFullMemberCommands(
   const isAttrIntent =
     !isMethodIntent &&
     /(?:agreg[aáeé]|a[ñn]ad[eé]|pon[eé]?|sum[aá]|add|insert[aáeé]|set|cambi[aáeé]|modific[aáeé]|pas[aáeé]|change|modify|renombr[aáeé]|rename)/i.test(normalized) &&
-    /(?:atributo|campo|field|attribute|propiedad|property|tipo\s+de|un\s+id|el\s+id|id\b|:\s*(?:int|string|date|boolean|float|integer|texto|fecha|booleano|numero))/i.test(normalized);
+    /(?:atributo|campo|field|attribute|propiedad|property|tipo\s+de|un\s+id|el\s+id|id\b|uuid\b|:\s*(?:int|string|date|boolean|float|integer|texto|fecha|booleano|numero|uuid))/i.test(normalized);
 
   if (isAttrIntent) {
     const typeMap: Record<string, string> = {
@@ -215,6 +215,8 @@ export function parseFullMemberCommands(
       float: 'float',
       double: 'float',
       real: 'float',
+      uuid: 'uuid',
+      guid: 'uuid',
     };
 
     let attrName = '';

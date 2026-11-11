@@ -164,8 +164,13 @@ export function applyClassAndMemberUpdates(ctx: DeltaExpansionContext, updates?:
         if (ec && Array.isArray(ec.attributes)) {
           const attr = ec.attributes.find((a: any) => a.name && a.name.trim().toLowerCase() === u.name.trim().toLowerCase());
           if (attr) {
-            const cleanType = u.type
-              ? (['int', 'float', 'string', 'boolean', 'date'].includes(u.type.toLowerCase()) ? u.type.toLowerCase() : (u.type === 'number' ? 'float' : 'string'))
+            const rawType = u.type?.toLowerCase().trim();
+            const cleanType = rawType
+              ? (['int', 'float', 'string', 'boolean', 'date', 'uuid'].includes(rawType)
+                  ? rawType
+                  : rawType === 'number' || rawType === 'double' || rawType === 'decimal'
+                  ? 'float'
+                  : (u.type.trim() || 'string'))
               : attr.type;
             deltas.push({
               id: crypto.randomUUID(),

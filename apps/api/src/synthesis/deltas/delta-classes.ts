@@ -148,9 +148,9 @@ export function applyClassesDeltas(ctx: DeltaExpansionContext, model: SemanticDo
       if (name.toLowerCase() === 'name' && type.toLowerCase() === 'string' && attrList.length > 3) return;
 
       const rawType = type.toLowerCase().trim().replace(/\[\]$/, '').replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
-      const cleanType = ['int', 'float', 'string', 'boolean', 'date'].includes(rawType)
+      const cleanType = ['int', 'float', 'string', 'boolean', 'date', 'uuid'].includes(rawType)
         ? rawType
-        : rawType === 'number' || rawType === 'double' || rawType === 'decimal' ? 'float' : 'string';
+        : rawType === 'number' || rawType === 'double' || rawType === 'decimal' ? 'float' : (rawType || 'string');
 
       if (existingClass && Array.isArray(existingClass.attributes)) {
         const existingAttr = existingClass.attributes.find(
