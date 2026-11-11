@@ -262,6 +262,14 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
 
       // 0. Capa 0: Puerta de Enlace Cognitiva con Qwen en Kaggle (Prioritaria)
       // En entorno de tests unitarios automáticos, no se realizan llamadas HTTP reales a menos que se fuerce KAGGLE_ENABLE_IN_TEST
+      const onChunk = isStream
+        ? (chunk: string) => {
+            try {
+              reply.raw.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+            } catch {}
+          }
+        : undefined;
+
       const isTestEnv = process.env.NODE_ENV === 'test' && process.env.KAGGLE_ENABLE_IN_TEST !== 'true';
       if (!ingressHandled && !isTestEnv && (process.env.KAGGLE_BASE_URL || process.env.KAGGLE_OPENAI_BASE_URL)) {
         try {
@@ -274,6 +282,7 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
             chatHistory,
             peerUsers: parsed.data.peerUsers,
             diagramContext: diagramSummary ?? '',
+            onChunk,
           });
 
           if (kaggleResult) {
@@ -366,14 +375,6 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
 
       // Nivel 2: Agente unificado
       if (!replyContent) {
-        const onChunk = isStream
-          ? (chunk: string) => {
-              try {
-                reply.raw.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
-              } catch {}
-            }
-          : undefined;
-
         try {
           const unified = await processUnifiedAmongusTurn(
             parsed.data.content,

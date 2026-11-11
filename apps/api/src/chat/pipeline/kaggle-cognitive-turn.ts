@@ -24,6 +24,7 @@ export interface KaggleCognitiveTurnParams {
   chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
   peerUsers?: readonly string[];
   diagramContext: string;
+  onChunk?: (chunk: string) => void;
 }
 
 export async function executeKaggleCognitiveTurn(
@@ -48,6 +49,7 @@ export async function executeKaggleCognitiveTurn(
     chatHistory,
     peerUsers,
     diagramContext,
+    onChunk,
   } = params;
 
   const isEn = language === 'en';
@@ -95,30 +97,97 @@ export async function executeKaggleCognitiveTurn(
 
   try {
     const url = baseUrl.endsWith('/v1') ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.1,
-        max_tokens: Number(process.env.KAGGLE_MAX_TOKENS) || 1800,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let raw = '';
 
-    if (!response.ok) {
-      return null;
+    if (onChunk) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: true,
+          temperature: 0.1,
+          max_tokens: Number(process.env.KAGGLE_MAX_TOKENS) || 1800,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!response.ok || !response.body) {
+        return null;
+      }
+
+      console.error(`[KaggleCognitiveGateway] Atendido por GPU: ${model} | Modo: Streaming`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let hasEnteredJson = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const jsonStr = trimmed.slice(5).trim();
+          if (jsonStr === '[DONE]') break;
+
+          try {
+            const parsedChunk = JSON.parse(jsonStr);
+            const deltaContent = parsedChunk.choices?.[0]?.delta?.content;
+            if (typeof deltaContent === 'string' && deltaContent) {
+              raw += deltaContent;
+
+              if (!hasEnteredJson) {
+                // Al detectar el inicio del bloque de código JSON, dejamos de streamear a la burbuja del chat
+                const cutMatch = raw.search(/(?:```|###\s*(?:Bloque\s*)?JSON|\n\s*\{)/i);
+                if (cutMatch !== -1) {
+                  hasEnteredJson = true;
+                } else {
+                  onChunk(deltaContent);
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    } else {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          temperature: 0.1,
+          max_tokens: Number(process.env.KAGGLE_MAX_TOKENS) || 1800,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = (await response.json()) as any;
+      console.error(
+        `[KaggleCognitiveGateway] Atendido por GPU: ${model} | Firma: ${data.system_fingerprint || 'fp_ollama'} | Tokens: ${data.usage?.total_tokens ?? 'N/A'}`
+      );
+      raw = data.choices?.[0]?.message?.content || '';
     }
 
-    const data = (await response.json()) as any;
-    console.error(
-      `[KaggleCognitiveGateway] Atendido por GPU: ${model} | Firma: ${data.system_fingerprint || 'fp_ollama'} | Tokens: ${data.usage?.total_tokens ?? 'N/A'}`
-    );
-    const raw = data.choices?.[0]?.message?.content;
     if (!raw || typeof raw !== 'string') {
       return null;
     }
