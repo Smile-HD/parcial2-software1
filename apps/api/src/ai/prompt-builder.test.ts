@@ -4,6 +4,7 @@ import {
   classifyTurnIntent,
   buildActionPrompt,
   buildConversationalPrompt,
+  buildKaggleArchitectPrompt,
   resolveSystemPrompt,
 } from './prompt-builder.js';
 
@@ -125,6 +126,43 @@ describe('prompt-builder & normalizer module', () => {
       });
       expect(prompt).toContain('/help');
       expect(prompt).not.toContain('"action": "modify"');
+    });
+  });
+
+  describe('buildKaggleArchitectPrompt', () => {
+    it('generates unified architect prompt with ambiguity guidance and slash commands (es)', () => {
+      const prompt = buildKaggleArchitectPrompt({
+        senderName: 'Erick',
+        language: 'es',
+        diagramContext: 'Clase Usuario con id',
+        activePeersSummary: 'Erick, Maria',
+      });
+
+      expect(prompt).toContain('Sos Amongus, arquitecto senior de software');
+      expect(prompt).toContain('Erick, Maria');
+      expect(prompt).toContain('RESOLUCIÓN DE AMBIGÜEDAD (MUTACIONES FLEXIBLES)');
+      expect(prompt).toContain('/model');
+      expect(prompt).toContain('/suggest');
+      expect(prompt).toContain('/audit');
+      expect(prompt).toContain('```json');
+      expect(prompt).toContain('"action": "modify"');
+      expect(prompt).toContain('Clase Usuario con id');
+    });
+
+    it('generates unified architect prompt in English (en)', () => {
+      const prompt = buildKaggleArchitectPrompt({
+        senderName: 'Alice',
+        language: 'en',
+        diagramContext: 'Class Order with total',
+        activePeersSummary: 'Alice',
+      });
+
+      expect(prompt).toContain('You are Amongus, a senior software architect');
+      expect(prompt).toContain('DIALOGUE & AMBIGUITY RESOLUTION');
+      expect(prompt).toContain('/model');
+      expect(prompt).toContain('/suggest');
+      expect(prompt).toContain('/audit');
+      expect(prompt).toContain('```json');
     });
   });
 });

@@ -465,17 +465,23 @@ describe('OpenAiLlm (wiring contract, stubbed fetch)', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ action: 'apply', delta: {
-            kind: 'batch',
-            id: 'batch-id-placeholder',
-            diagramId: diagram.id,
-            timestamp: new Date().toISOString(),
-            deltas: [
-              { kind: 'class', op: 'create', id: 'delta-1-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', name: 'Supplier', position: { x: 0, y: 0 } },
-              { kind: 'member', op: 'addAttribute', id: 'delta-2-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', memberId: 'member-1-placeholder', name: 'name', type: 'string' },
-              { kind: 'association', op: 'create', id: 'delta-3-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), associationId: 'assoc-1-placeholder', sourceClassId: 'NEW_CLASS_1', targetClassId: diagram.classes[0]!.id, sourceMultiplicity: '1', targetMultiplicity: '0..*', directed: false },
-            ],
-          } }) } }],
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                action: 'apply', delta: {
+                  kind: 'batch',
+                  id: 'batch-id-placeholder',
+                  diagramId: diagram.id,
+                  timestamp: new Date().toISOString(),
+                  deltas: [
+                    { kind: 'class', op: 'create', id: 'delta-1-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', name: 'Supplier', position: { x: 0, y: 0 } },
+                    { kind: 'member', op: 'addAttribute', id: 'delta-2-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', memberId: 'member-1-placeholder', name: 'name', type: 'string' },
+                    { kind: 'association', op: 'create', id: 'delta-3-placeholder', diagramId: diagram.id, timestamp: new Date().toISOString(), associationId: 'assoc-1-placeholder', sourceClassId: 'NEW_CLASS_1', targetClassId: diagram.classes[0]!.id, sourceMultiplicity: '1', targetMultiplicity: '0..*', directed: false },
+                  ],
+                }
+              })
+            }
+          }],
         }),
       }),
     );
@@ -878,16 +884,22 @@ describe('OpenAiLlm generalization prompt + repair (unit 11.5)', () => {
       vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ action: 'apply', delta: {
-            kind: 'batch',
-            id: crypto.randomUUID(),
-            diagramId: diagram.id,
-            timestamp: new Date().toISOString(),
-            deltas: [
-              { kind: 'class', op: 'create', id: crypto.randomUUID(), diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', name: 'Product', position: { x: 0, y: 0 } },
-              { kind: 'generalization', op: 'create', id: crypto.randomUUID(), diagramId: diagram.id, timestamp: new Date().toISOString(), generalizationId: 'gen-1-placeholder', subClassId: 'NEW_CLASS_1', superClassId: diagram.classes[0]!.id },
-            ],
-          } }) } }],
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                action: 'apply', delta: {
+                  kind: 'batch',
+                  id: crypto.randomUUID(),
+                  diagramId: diagram.id,
+                  timestamp: new Date().toISOString(),
+                  deltas: [
+                    { kind: 'class', op: 'create', id: crypto.randomUUID(), diagramId: diagram.id, timestamp: new Date().toISOString(), classId: 'NEW_CLASS_1', name: 'Product', position: { x: 0, y: 0 } },
+                    { kind: 'generalization', op: 'create', id: crypto.randomUUID(), diagramId: diagram.id, timestamp: new Date().toISOString(), generalizationId: 'gen-1-placeholder', subClassId: 'NEW_CLASS_1', superClassId: diagram.classes[0]!.id },
+                  ],
+                }
+              })
+            }
+          }],
         }),
       }),
     );

@@ -17,6 +17,7 @@ import {
 } from '../chat.js';
 import { loadDiagramFromRow } from './persistence.js';
 import { registerVoiceRoute } from './ai-voice-routes.js';
+import { executeKaggleCognitiveTurn } from '../chat/pipeline/kaggle-cognitive-turn.js';
 
 export interface AiRoutesDeps {
   pool: Pool;
@@ -250,8 +251,38 @@ export function registerAiRoutes(app: FastifyInstance, deps: AiRoutesDeps): void
       const isSuggestSlash = parsed.data.content.trim().toLowerCase() === '/suggest';
       let isSuggestIntent = isSuggestSlash;
 
+      // 0. Capa 0: Puerta de Enlace Cognitiva con Qwen 27B en Kaggle (Prioritaria)
+      // En entorno de tests unitarios automáticos, no se realizan llamadas HTTP reales a menos que se fuerce KAGGLE_ENABLE_IN_TEST
+      const isTestEnv = process.env.NODE_ENV === 'test' && process.env.KAGGLE_ENABLE_IN_TEST !== 'true';
+      if (!isTestEnv && (process.env.KAGGLE_BASE_URL || process.env.KAGGLE_OPENAI_BASE_URL)) {
+        try {
+          const kaggleResult = await executeKaggleCognitiveTurn({
+            userContent: parsed.data.content,
+            senderName: parsed.data.senderName,
+            language: (parsed.data.language ?? 'es') as 'es' | 'en',
+            diagramId: id,
+            diagram,
+            chatHistory,
+            peerUsers: parsed.data.peerUsers,
+            diagramContext: diagramSummary ?? '',
+          });
+
+          if (kaggleResult) {
+            replyContent = kaggleResult.replyContent;
+            if (kaggleResult.batchDelta) {
+              const pending = pendingDeltas.put(id, kaggleResult.batchDelta);
+              deltaId = pending.id;
+              delta = pending.delta;
+            }
+            ingressHandled = true;
+          }
+        } catch {
+          // Degradación elegante automática al pipeline legado (Groq / FakeLlm)
+        }
+      }
+
       // 1. Ingress con Groq (Online / Con API key) para clasificar y normalizar
-      if ((!isSlashCommand || isSuggestSlash) && groqApiKey && groqApiKey.startsWith('gsk_')) {
+      if (!isTestEnv && !ingressHandled && (!isSlashCommand || isSuggestSlash) && groqApiKey && groqApiKey.startsWith('gsk_')) {
         try {
           const canonicalText = await canonicalizeUtteranceWithGroq(parsed.data.content, {
             apiKey: groqApiKey,

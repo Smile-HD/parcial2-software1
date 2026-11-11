@@ -1,0 +1,152 @@
+/**
+ * @app/api — Puerta de Enlace Cognitiva con Qwen 27B en Kaggle (Capa 0).
+ *
+ * Ejecuta prioritariamente la consulta contra el modelo 27B en Kaggle:
+ * - Resuelve ambigüedades dialogando en lenguaje natural.
+ * - Atiende comandos slash (/model, /suggest, /audit).
+ * - Emite propuestas de modelado en JSON acopladas a BatchDelta inmutables.
+ * - Retorna null ante cualquier falla o timeout para que el flujo degrade
+ *   de forma transparente al pipeline legado (Groq Ingress o FakeLlm).
+ */
+import type { BatchDelta } from '@app/core';
+import { robustParseDomainJson, expandSemanticDomainToDelta } from '../../synthesis/index.js';
+import { buildKaggleArchitectPrompt } from '../../ai/prompt-builder.js';
+import { stripEmojis } from '../prompt-formatter.js';
+import type { UnifiedTurnResult } from '../chat-pipeline.js';
+
+export interface KaggleCognitiveTurnParams {
+  userContent: string;
+  senderName: string;
+  language: 'es' | 'en';
+  diagramId: string;
+  diagram?: any;
+  chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  peerUsers?: readonly string[];
+  diagramContext: string;
+}
+
+export async function executeKaggleCognitiveTurn(
+  params: KaggleCognitiveTurnParams
+): Promise<UnifiedTurnResult | null> {
+  const baseUrl = (
+    process.env.KAGGLE_BASE_URL ||
+    process.env.KAGGLE_OPENAI_BASE_URL ||
+    ''
+  ).replace(/\/+$/, '');
+
+  if (!baseUrl) {
+    return null;
+  }
+
+  const {
+    userContent,
+    senderName,
+    language,
+    diagramId,
+    diagram,
+    chatHistory,
+    peerUsers,
+    diagramContext,
+  } = params;
+
+  const isEn = language === 'en';
+  const model = process.env.KAGGLE_MODEL || process.env.OPENAI_MODEL || 'qwen3.8:27b';
+  const timeoutMs = Number(process.env.KAGGLE_TIMEOUT_MS) || 10000;
+  const apiKey = process.env.KAGGLE_API_KEY || 'kaggle';
+
+  const activePeers = peerUsers && peerUsers.length > 0
+    ? Array.from(new Set(peerUsers))
+    : [senderName];
+  if (!activePeers.includes(senderName)) activePeers.push(senderName);
+  const activePeersSummary = activePeers.join(', ');
+
+  const systemPrompt = buildKaggleArchitectPrompt({
+    senderName,
+    language,
+    diagramContext,
+    activePeersSummary,
+  });
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemPrompt },
+    ...(chatHistory ? chatHistory.slice(-4) : []),
+    { role: 'user', content: userContent },
+  ];
+
+  try {
+    const url = baseUrl.endsWith('/v1') ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.1,
+        max_tokens: 650,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as any;
+    const raw = data.choices?.[0]?.message?.content;
+    if (!raw || typeof raw !== 'string') {
+      return null;
+    }
+
+    const clean = stripEmojis(raw).trim();
+    const parsedModel = robustParseDomainJson(clean);
+
+    const hasAnyContent =
+      parsedModel &&
+      ((parsedModel.classes && parsedModel.classes.length > 0) ||
+        (parsedModel.associations && parsedModel.associations.length > 0) ||
+        (parsedModel.generalizations && parsedModel.generalizations.length > 0) ||
+        (parsedModel.realizations && parsedModel.realizations.length > 0) ||
+        (parsedModel.dependencies && parsedModel.dependencies.length > 0) ||
+        (parsedModel.renames && (
+          (parsedModel.renames.classes && parsedModel.renames.classes.length > 0) ||
+          (parsedModel.renames.attributes && parsedModel.renames.attributes.length > 0)
+        )) ||
+        (parsedModel.updates && (
+          (parsedModel.updates.classes && parsedModel.updates.classes.length > 0) ||
+          (parsedModel.updates.attributes && parsedModel.updates.attributes.length > 0) ||
+          (parsedModel.updates.associations && parsedModel.updates.associations.length > 0)
+        )) ||
+        (parsedModel.deletions && (
+          (parsedModel.deletions.classes && parsedModel.deletions.classes.length > 0) ||
+          (parsedModel.deletions.associations && parsedModel.deletions.associations.length > 0)
+        )));
+
+    if (hasAnyContent) {
+      const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram, userContent);
+      if (batchDelta && batchDelta.deltas.length > 0) {
+        const textWithoutJson = clean.replace(/```(?:json)?[\s\S]*?```/gi, '').trim();
+        const defaultReply = isEn
+          ? 'I have prepared the proposal for this change. You can preview the ghost elements on the canvas and confirm to apply them.'
+          : 'Preparé la propuesta para este cambio. Podés previsualizar los elementos en el lienzo y confirmarla para que se construyan en vivo.';
+
+        return {
+          replyContent: textWithoutJson.length > 10 ? textWithoutJson : defaultReply,
+          batchDelta,
+        };
+      }
+    }
+
+    // Respuesta conversacional, pedagógica o de resolución de ambigüedad
+    return {
+      replyContent: clean,
+      batchDelta: null,
+    };
+  } catch {
+    // Tolerancia a fallos: cualquier error de conexión o timeout cae al fallback legado
+    return null;
+  }
+}
+

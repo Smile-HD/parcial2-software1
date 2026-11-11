@@ -59,9 +59,9 @@ export function tryAssociationMutations(ctx: FakeLlmContext): LlmResult | null {
         const pos =
           srcClass?.position && tgtClass?.position
             ? {
-                x: Math.round((srcClass.position.x + tgtClass.position.x) / 2),
-                y: Math.round((srcClass.position.y + tgtClass.position.y) / 2) + 60,
-              }
+              x: Math.round((srcClass.position.x + tgtClass.position.x) / 2),
+              y: Math.round((srcClass.position.y + tgtClass.position.y) / 2) + 60,
+            }
             : nextPosition(currentIr);
         createClassDelta = {
           kind: 'class',
