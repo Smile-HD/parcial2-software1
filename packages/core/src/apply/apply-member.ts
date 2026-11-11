@@ -15,16 +15,17 @@ export function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyRes
 
   switch (delta.op) {
     case 'addAttribute': {
-      if (!delta.name || !delta.type) {
-        return err({ kind: 'InvalidOperationError', reason: 'Add attribute requires name and type' });
+      if (!delta.name) {
+        return err({ kind: 'InvalidOperationError', reason: 'Add attribute requires name' });
       }
+      const attrType = delta.type || 'String';
       if (isDuplicateMemberName(classObj, delta.name)) {
         return err({ kind: 'DuplicateMemberError', memberName: delta.name, classId: delta.classId });
       }
       const newAttribute = AttributeSchema.parse({
         id: delta.memberId,
         name: delta.name,
-        type: delta.type,
+        type: attrType,
         ...(delta.visibility !== undefined ? { visibility: delta.visibility } : {}),
         ...(delta.isStatic !== undefined ? { isStatic: delta.isStatic } : {}),
         ...(delta.isDerived !== undefined ? { isDerived: delta.isDerived } : {}),
@@ -79,17 +80,19 @@ export function applyMemberDelta(diagram: Diagram, delta: MemberDelta): ApplyRes
     }
 
     case 'addMethod': {
-      if (!delta.name || !delta.returnType || delta.parameters === undefined) {
-        return err({ kind: 'InvalidOperationError', reason: 'Add method requires name, returnType, and parameters' });
+      if (!delta.name) {
+        return err({ kind: 'InvalidOperationError', reason: 'Add method requires name' });
       }
+      const returnType = delta.returnType || 'void';
+      const parameters = delta.parameters ?? [];
       if (isDuplicateMemberName(classObj, delta.name)) {
         return err({ kind: 'DuplicateMemberError', memberName: delta.name, classId: delta.classId });
       }
       const newMethod = MethodSchema.parse({
         id: delta.memberId,
         name: delta.name,
-        returnType: delta.returnType,
-        parameters: delta.parameters,
+        returnType,
+        parameters,
         ...(delta.visibility !== undefined ? { visibility: delta.visibility } : {}),
         ...(delta.isStatic !== undefined ? { isStatic: delta.isStatic } : {}),
       });

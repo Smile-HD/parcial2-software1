@@ -366,9 +366,7 @@ export function normalizeBatchPayload(raw: unknown): unknown {
               });
             }
           }
-          if (cleanParams.length > 0) {
-            cleanMember.parameters = cleanParams;
-          }
+          cleanMember.parameters = cleanParams;
         } else {
           const type =
             typeof d.type === 'string' && d.type.trim() && d.type.trim().toLowerCase() !== 'attribute'

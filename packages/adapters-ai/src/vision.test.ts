@@ -8,7 +8,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 
 import { FakeVision, VisionExtractionError, OpenAiVision, normalizeBatchPayload } from './vision.js';
-import { BatchDeltaSchema, type BatchDelta } from '@app/core';
+import { BatchDeltaSchema, type BatchDelta, applyDelta, type Diagram } from '@app/core';
 
 // No static fixture — FakeVision generates valid UUIDs at construction time.
 
@@ -863,6 +863,54 @@ describe('OpenAiVision', () => {
     if (parsed.success) {
       expect(parsed.data.deltas).toHaveLength(1);
       expect(parsed.data.deltas[0]?.kind).toBe('class');
+    }
+  });
+
+  it('supplies safe defaults for bare methods and attributes from informal OCR diagrams and applies cleanly', () => {
+    const rawBareOcr = {
+      kind: 'batch',
+      deltas: [
+        { kind: 'class', op: 'create', classId: 'cls-1', name: 'Usuario' },
+        // Bare attribute with no type (e.g. written as "- username" on a whiteboard)
+        { kind: 'member', op: 'addAttribute', classId: 'cls-1', name: 'username' },
+        // Bare method with no returnType and no parameters (e.g. written as "+ login" or "login()")
+        { kind: 'member', op: 'addMethod', classId: 'cls-1', name: 'login' },
+      ],
+    };
+
+    const normalized = normalizeBatchPayload(rawBareOcr) as BatchDelta;
+    const parsed = BatchDeltaSchema.safeParse(normalized);
+    expect(parsed.success).toBe(true);
+
+    if (parsed.success) {
+      const method = parsed.data.deltas.find((d) => d.kind === 'member' && d.op === 'addMethod') as any;
+      expect(method.parameters).toEqual([]);
+      expect(method.returnType).toBe('void');
+
+      const attr = parsed.data.deltas.find((d) => d.kind === 'member' && d.op === 'addAttribute') as any;
+      expect(attr.type).toBe('String');
+
+      // Crucial: apply to an empty diagram with matching diagramId via core applyDelta
+      const initialDiagram: Diagram = {
+        id: parsed.data.diagramId,
+        name: 'Test',
+        classes: [],
+        associations: [],
+        generalizations: [],
+        realizations: [],
+        dependencies: [],
+      };
+      const applyResult = applyDelta(initialDiagram, parsed.data);
+      expect(applyResult.ok).toBe(true);
+      if (applyResult.ok) {
+        const userClass = applyResult.value.classes[0];
+        expect(userClass.name).toBe('Usuario');
+        expect(userClass.attributes[0].name).toBe('username');
+        expect(userClass.attributes[0].type).toBe('String');
+        expect(userClass.methods[0].name).toBe('login');
+        expect(userClass.methods[0].returnType).toBe('void');
+        expect(userClass.methods[0].parameters).toEqual([]);
+      }
     }
   });
 });
