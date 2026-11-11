@@ -84,8 +84,8 @@ services:
       VISION_MODEL: ${VISION_MODEL:-gpt-4o}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-180000}
       KAGGLE_BASE_URL: ${KAGGLE_BASE_URL:-}
-      KAGGLE_MODEL: ${KAGGLE_MODEL:-qwen3.8:27b}
-      KAGGLE_TIMEOUT_MS: ${KAGGLE_TIMEOUT_MS:-10000}
+      KAGGLE_MODEL: ${KAGGLE_MODEL:-qwen2.5-coder:14b}
+      KAGGLE_TIMEOUT_MS: ${KAGGLE_TIMEOUT_MS:-35000}
     depends_on:
       postgres:
         condition: service_healthy
