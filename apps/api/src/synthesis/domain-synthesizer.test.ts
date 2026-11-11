@@ -1867,6 +1867,50 @@ describe('AI Domain Synthesizer & Dynamic Generation', () => {
       expect((assocDeltas[0] as any).targetClassId).toBe('c_vta');
       expect((assocDeltas[0] as any).associationClassId).toBe((createClass as any).classId);
     });
+
+    // 27. Fusión de múltiples bloques ```json
+    it('27. robustParseDomainJson fusiona múltiples bloques json en un único modelo semántico', () => {
+      const raw = `Aquí está el diseño:
+\`\`\`json
+{
+  "action": "modify",
+  "class": "CuentasPorCobrar",
+  "attributes": [{ "name": "total", "type": "double" }]
+}
+\`\`\`
+
+\`\`\`json
+{
+  "action": "modify",
+  "class": "Cuota",
+  "attributes": [{ "name": "monto", "type": "double" }]
+}
+\`\`\`
+`;
+      const parsed = robustParseDomainJson(raw);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.classes.length).toBe(2);
+      expect(parsed!.classes[0].name).toBe('CuentasPorCobrar');
+      expect(parsed!.classes[1].name).toBe('Cuota');
+    });
+
+    // 28. Soporte de clase singular con class: "Nombre"
+    it('28. robustParseDomainJson soporta objeto de clase individual con clave class singular', () => {
+      const raw = `
+\`\`\`json
+{
+  "action": "modify",
+  "class": "Factura",
+  "attributes": [{ "name": "numero", "type": "int" }]
+}
+\`\`\`
+`;
+      const parsed = robustParseDomainJson(raw);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.classes.length).toBe(1);
+      expect(parsed!.classes[0].name).toBe('Factura');
+      expect(parsed!.classes[0].attributes[0].name).toBe('numero');
+    });
   });
 });
 

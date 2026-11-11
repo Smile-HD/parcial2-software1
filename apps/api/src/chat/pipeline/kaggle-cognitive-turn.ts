@@ -169,6 +169,66 @@ export async function executeKaggleCognitiveTurn(
       }
     }
 
+    // Solución 2: Reintento Automático de Rescate en caliente
+    // Si el modelo cortó el mensaje anunciando el JSON pero no lo emitió, o si el usuario pidió modelar:
+    const appearsTruncatedOrMissingJson =
+      /(?:aquí está|a continuación|diseño actualizado|json actualizado|siguiente modificación|bloque json|aquí tienes|modificación:?)\s*:?\s*$/i.test(clean) ||
+      /(?:crea|agrega|cambia|modifica|renombra|borra|elimina|asocia|relaciona|compone|cuota|clase|atributo|uuid|tabla)/i.test(userContent);
+
+    if (appearsTruncatedOrMissingJson) {
+      try {
+        const rescueMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+          ...messages,
+          { role: 'assistant', content: clean },
+          {
+            role: 'user',
+            content: isEn
+              ? 'Output ONLY the JSON object with the UML domain modifications for the canvas, adhering strictly to: { "action": "modify", "classes": [...], "associations": [...] } with NO conversational text.'
+              : 'Generá ÚNICAMENTE el bloque JSON cercado con las modificaciones del modelo UML para el lienzo, respetando estrictamente la estructura: { "action": "modify", "classes": [...], "associations": [...] } sin ningún texto conversacional adicional.',
+          },
+        ];
+
+        const rescueResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: rescueMessages,
+            temperature: 0.1,
+            max_tokens: 1500,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (rescueResponse.ok) {
+          const rescueData = (await rescueResponse.json()) as any;
+          console.error(`[KaggleCognitiveGateway] Rescate hot-turn completado. Tokens: ${rescueData.usage?.total_tokens ?? 'N/A'}`);
+          const rescueRaw = rescueData.choices?.[0]?.message?.content;
+          if (rescueRaw && typeof rescueRaw === 'string') {
+            const rescueParsed = robustParseDomainJson(stripEmojis(rescueRaw).trim());
+            if (rescueParsed) {
+              const rescueDelta = expandSemanticDomainToDelta(rescueParsed, diagramId, diagram, userContent);
+              if (rescueDelta && rescueDelta.deltas.length > 0) {
+                let textWithoutJson = clean
+                  .replace(/(?:###\s*)?(?:Aquí está el |He aquí el |A continuación el )?bloque JSON[^:\n]*:?/gi, '')
+                  .replace(/(?:Aquí está|A continuación el|Aquí tienes el)\s+(?:diseño|JSON|modelo|código)[^:\n]*:?/gi, '')
+                  .trim();
+                return {
+                  replyContent: textWithoutJson.length > 10 ? textWithoutJson : (isEn ? 'I have prepared the proposal for this change.' : 'Preparé la propuesta para este cambio.'),
+                  batchDelta: rescueDelta,
+                };
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error('[KaggleCognitiveGateway] Error en turno de rescate:', err?.message || err);
+      }
+    }
+
     // Respuesta conversacional, pedagógica o de resolución de ambigüedad
     return {
       replyContent: clean,

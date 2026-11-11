@@ -104,17 +104,47 @@ export function canonicalToSemantic(canonical: any): SemanticDomainModel {
 export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
   const isDummyName = (str?: string) => !str || /^(NombreClase|ClassName|ClaseA|ClaseB|Origen|Destino|Hijo|Padre)$/i.test(str.trim());
 
-  // 1. Intento de parseo JSON estándar o reparación de JSON truncado
-  const match = raw.match(/\{[\s\S]*\}/);
-  let parsed: any = null;
-  if (match) {
+  // 1. Detectar si existen múltiples bloques cercados ```json ... ``` y fusionarlos
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  const blocks: any[] = [];
+  let bMatch: RegExpExecArray | null;
+  while ((bMatch = codeBlockRegex.exec(raw)) !== null) {
     try {
-      parsed = JSON.parse(match[0]);
+      const p = JSON.parse(bMatch[1]);
+      if (p && typeof p === 'object') blocks.push(p);
     } catch {
+      const repaired = tryRepairTruncatedJson(bMatch[1]);
+      if (repaired && typeof repaired === 'object') blocks.push(repaired);
+    }
+  }
+
+  let parsed: any = null;
+  if (blocks.length > 1) {
+    const merged: any = { action: 'modify', classes: [], associations: [], updates: { classes: [], associations: [] } };
+    for (const b of blocks) {
+      if (Array.isArray(b.classes)) merged.classes.push(...b.classes);
+      else if (b.class || b.name) merged.classes.push({ name: b.class || b.name, attributes: b.attributes, methods: b.methods });
+      if (Array.isArray(b.associations)) merged.associations.push(...b.associations);
+      if (b.updates) {
+        if (Array.isArray(b.updates.classes)) merged.updates.classes.push(...b.updates.classes);
+        if (Array.isArray(b.updates.associations)) merged.updates.associations.push(...b.updates.associations);
+      }
+    }
+    parsed = merged;
+  } else if (blocks.length === 1) {
+    parsed = blocks[0];
+  } else {
+    // Intento de parseo JSON estándar o reparación de JSON truncado
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        parsed = tryRepairTruncatedJson(raw);
+      }
+    } else {
       parsed = tryRepairTruncatedJson(raw);
     }
-  } else {
-    parsed = tryRepairTruncatedJson(raw);
   }
 
   if (parsed) {
@@ -174,6 +204,19 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
           attributes: parseAttrs(classData?.attributes ?? classData?.atributos ?? classData?.properties ?? classData?.fields ?? classData?.campos),
           methods: classData?.methods ?? classData?.metodos,
         }));
+      }
+
+      if (rawClasses.length === 0 && (parsed.class || parsed.className || (parsed.name && !parsed.classes))) {
+        const singleName = parsed.class || parsed.className || parsed.name;
+        if (typeof singleName === 'string' && !isDummyName(singleName)) {
+          rawClasses.push({
+            name: singleName,
+            isInterface: parsed.isInterface ?? false,
+            isAbstract: parsed.isAbstract ?? false,
+            attributes: parseAttrs(parsed.attributes ?? parsed.atributos ?? parsed.properties ?? parsed.fields ?? parsed.campos),
+            methods: parsed.methods ?? parsed.metodos ?? parsed.operaciones,
+          });
+        }
       }
 
       const rawAssocs = Array.isArray(parsed.associations)
