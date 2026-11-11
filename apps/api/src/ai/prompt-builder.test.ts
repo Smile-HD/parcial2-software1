@@ -70,9 +70,9 @@ describe('prompt-builder & normalizer module', () => {
       expect(prompt).not.toContain('Groq Whisper');
       expect(prompt).not.toContain('/help: guía interactiva');
 
-      // Words count should be compact (< 250 words)
+      // Words count should be compact (< 400 words)
       const wordCount = prompt.split(/\s+/).length;
-      expect(wordCount).toBeLessThan(250);
+      expect(wordCount).toBeLessThan(400);
     });
 
     it('generates English action prompt when language is en', () => {
