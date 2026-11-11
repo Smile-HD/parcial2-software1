@@ -5,6 +5,7 @@ import { ProposalCard } from './ProposalCard.js';
 import { pickUserColor } from '../presence/palette.js';
 import { presenceInitials } from '../canvas/PresenceBar.js';
 import { renderFormattedContent } from './chatFormatters.js';
+import type { ProposalVoteState, VoteDecision } from './voting/votingEngine.js';
 
 export interface ChatMessageItemProps {
   msg: {
@@ -27,6 +28,10 @@ export interface ChatMessageItemProps {
   buildingDeltaId?: string | null;
   existingClasses?: Array<{ id: string; name: string }>;
   currentPreviewProposal?: { deltaId: string; delta: Delta } | null;
+  // Soporte de votación colaborativa
+  votingStates?: Record<string, ProposalVoteState>;
+  onVote?: (deltaId: string, decision: VoteDecision) => void;
+  peerUsersCount?: number;
 }
 
 export function ChatMessageItem({
@@ -42,6 +47,9 @@ export function ChatMessageItem({
   buildingDeltaId,
   existingClasses,
   currentPreviewProposal,
+  votingStates,
+  onVote,
+  peerUsersCount,
 }: ChatMessageItemProps) {
   const isBot = msg.senderType === 'bot';
   const isSelf = !isBot && msg.senderName === userName;
@@ -149,6 +157,10 @@ export function ChatMessageItem({
                 Boolean(currentPreviewProposal) &&
                 currentPreviewProposal?.deltaId !== msg.deltaId
               }
+              votingState={msg.deltaId && votingStates ? votingStates[msg.deltaId] : undefined}
+              onVote={onVote}
+              currentUserId={userName}
+              peerUsersCount={peerUsersCount}
             />
           )}
         </div>

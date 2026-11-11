@@ -247,7 +247,7 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
         >
           <path d="M 0 9 L 9 0 L 18 9 L 9 18 Z" fill="#ffffff" stroke="#1a1a2e" strokeWidth="2" />
         </marker>
-        {/* Flecha triangular rellena para asociaciones dirigidas */}
+        {/* Punta de flecha abierta en V para asociación dirigida (UML 2.5.1 Sección 11.5.4) */}
         <marker
           id={arrowId}
           markerWidth="12"
@@ -257,7 +257,7 @@ export function AssociationEdge(props: EdgeProps<AssociationEdgeData>) {
           orient="auto"
           markerUnits="userSpaceOnUse"
         >
-          <path d="M 0 0 L 12 6 L 0 12 Z" fill="#1a1a2e" />
+          <path d="M 0 0 L 11 6 L 0 12" fill="none" stroke="#1a1a2e" strokeWidth="1.5" />
         </marker>
       </defs>
 

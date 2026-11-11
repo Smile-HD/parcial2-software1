@@ -7,6 +7,7 @@ import { AmongusAvatar } from '../AmongusAvatar';
 import { ProposalCard } from '../ProposalCard';
 import { ChatMessageItem } from '../ChatMessageItem';
 import { renderStreamingContent } from '../chatFormatters';
+import type { ProposalVoteState, VoteDecision } from '../voting/votingEngine';
 
 export interface ChatMessagesListProps {
   safeMessages: any[];
@@ -34,6 +35,10 @@ export interface ChatMessagesListProps {
   streamingBotMessage: string | null;
   messagesContainerRef: React.RefObject<HTMLDivElement | null>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  // Soporte de votación colaborativa
+  votingStates?: Record<string, ProposalVoteState>;
+  onVote?: (deltaId: string, decision: VoteDecision) => void;
+  peerUsersCount?: number;
 }
 
 export function ChatMessagesList({
@@ -62,6 +67,9 @@ export function ChatMessagesList({
   streamingBotMessage,
   messagesContainerRef,
   messagesEndRef,
+  votingStates,
+  onVote,
+  peerUsersCount,
 }: ChatMessagesListProps) {
   return (
     <div className="chat-panel__messages" ref={messagesContainerRef} data-testid="chat-messages-container">
@@ -94,6 +102,9 @@ export function ChatMessagesList({
           buildingDeltaId={buildingDeltaId}
           existingClasses={existingClasses}
           currentPreviewProposal={currentPreviewProposal}
+          votingStates={votingStates}
+          onVote={onVote}
+          peerUsersCount={peerUsersCount}
         />
       ))}
 
@@ -121,6 +132,10 @@ export function ChatMessagesList({
                 isRejected={rejectedDeltaIds.has(activeProposal.deltaId)}
                 isBuilding={buildingDeltaId === activeProposal.deltaId}
                 existingClasses={existingClasses}
+                votingState={votingStates && activeProposal.deltaId ? votingStates[activeProposal.deltaId] : undefined}
+                onVote={onVote}
+                currentUserId={userName}
+                peerUsersCount={peerUsersCount}
               />
             </div>
           </div>

@@ -14,12 +14,13 @@
 }
 
 /**
- * Minimal UML class box styling for the custom React Flow node.
+ * Estilo de caja de clase UML conforme a UML 2.5.1 y Enterprise Architect:
+ * esquinas ortogonales estrictas en ángulo recto (border-radius: 0).
  */
 .uml-class {
   background: #fff;
   border: 2px solid #1a1a2e;
-  border-radius: 4px;
+  border-radius: 0;
   font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: 12px;
   min-width: 160px;

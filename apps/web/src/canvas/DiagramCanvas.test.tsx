@@ -746,6 +746,15 @@ describe('aggregation/composition render (unit 10.3)', () => {
     const base = baseEdgePath(svg);
     const markers = `${base.getAttribute('marker-start') ?? ''} ${base.getAttribute('marker-end') ?? ''}`;
     expect(markers).toContain('arrow');
+
+    // Conformidad estricta UML 2.5.1 (Sección 11.5.4):
+    // La navegabilidad en una asociación dirigida se representa con una flecha abierta (open stick arrowhead).
+    // NO debe ser un polígono relleno ni un triángulo sólido.
+    const marker = svg.querySelector('marker[id*="arrow"]')!;
+    expect(marker).not.toBeNull();
+    const markerPath = marker.querySelector('path')!;
+    expect(markerPath.getAttribute('fill'), 'UML 2.5.1: la flecha de asociación dirigida debe ser abierta (fill="none")').toBe('none');
+    expect(markerPath.getAttribute('stroke')).toBe('#1a1a2e');
   });
 
   it('plain association (aggregation none, undirected) renders no diamond marker', async () => {

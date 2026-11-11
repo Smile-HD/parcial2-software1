@@ -482,7 +482,8 @@ export function normalizeBatchPayload(raw: unknown): unknown {
             : crypto.randomUUID(),
           sourceClassId: src,
           targetClassId: tgt,
-          directed: typeof d.directed === 'boolean' ? d.directed : true,
+          // En UML 2.5.1, una asociación por defecto es no dirigida (línea simple sin flechas)
+          directed: typeof d.directed === 'boolean' ? d.directed : false,
           aggregation: aggKind,
         };
 

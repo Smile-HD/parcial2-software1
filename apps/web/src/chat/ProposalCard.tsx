@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Delta, BatchDelta } from '@app/core';
 import { describeDelta } from '../interpreter/DeltaPreviewModal';
 import { AmongusAvatar } from './AmongusAvatar';
 import { useT } from '../i18n';
+import type { ProposalVoteState, VoteDecision } from './voting/votingEngine';
 
 export interface ProposalCardProps {
   deltaId: string;
@@ -14,6 +15,11 @@ export interface ProposalCardProps {
   isBuilding?: boolean;
   isSuperseded?: boolean;
   existingClasses?: Array<{ id: string; name: string }>;
+  // Extensiones para el sistema de votación colaborativa y quórum inteligente
+  votingState?: ProposalVoteState;
+  onVote?: (deltaId: string, decision: VoteDecision) => void;
+  currentUserId?: string;
+  peerUsersCount?: number;
 }
 
 export function ProposalCard({
@@ -26,9 +32,32 @@ export function ProposalCard({
   isBuilding = false,
   isSuperseded = false,
   existingClasses = [],
+  votingState,
+  onVote,
+  currentUserId,
+  peerUsersCount,
 }: ProposalCardProps) {
   const { lang } = useT();
   const isEn = lang === 'en';
+
+  // Temporizador regresivo en vivo para la votación activa
+  const [secondsLeft, setSecondsLeft] = useState<number>(() => {
+    if (!votingState) return 0;
+    return Math.max(0, Math.ceil((votingState.expiresAt - Date.now()) / 1000));
+  });
+
+  useEffect(() => {
+    if (!votingState || votingState.status === 'approved' || votingState.status === 'rejected' || votingState.status === 'expired_rejected') {
+      return;
+    }
+    const updateTimer = () => {
+      const remaining = Math.max(0, Math.ceil((votingState.expiresAt - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [votingState]);
 
   const classNameMap = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -45,6 +74,19 @@ export function ProposalCard({
   const items: string[] = delta.kind === 'batch'
     ? delta.deltas.map((d) => describeDelta(d, isEn, classNameMap))
     : [summary];
+
+  // Cálculo de votos acumulados si hay estado de votación activo
+  const approveCount = votingState
+    ? Object.values(votingState.votes).filter((v) => v === 'approve').length
+    : 0;
+  const rejectCount = votingState
+    ? Object.values(votingState.votes).filter((v) => v === 'reject').length
+    : 0;
+  const myVote = currentUserId && votingState ? votingState.votes[currentUserId] : undefined;
+
+  const isExpiredRejected = votingState?.status === 'expired_rejected';
+  const effectiveRejected = isRejected || votingState?.status === 'rejected';
+  const effectiveApplied = isApplied || votingState?.status === 'approved';
 
   return (
     <div
@@ -176,7 +218,7 @@ export function ProposalCard({
         )}
       </div>
 
-      {!isApplied && !isRejected && !isSuperseded && (
+      {!votingState && !effectiveApplied && !effectiveRejected && !isExpiredRejected && !isSuperseded && (
         <div className="proposal-card__actions">
           <button
             type="button"
@@ -205,7 +247,50 @@ export function ProposalCard({
         </div>
       )}
 
-      {isApplied && (
+      {votingState && !effectiveApplied && !effectiveRejected && !isExpiredRejected && !isSuperseded && (
+        <div className="proposal-card__voting" data-testid="proposal-voting-section">
+          <div className="proposal-card__voting-header">
+            <span className="proposal-card__timer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }}>
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              {votingState.isOvertime
+                ? (isEn ? `Overtime: ${Math.floor(secondsLeft / 60)}:${(secondsLeft % 60).toString().padStart(2, '0')}` : `Prórroga: ${Math.floor(secondsLeft / 60)}:${(secondsLeft % 60).toString().padStart(2, '0')}`)
+                : (isEn ? `Time: ${Math.floor(secondsLeft / 60)}:${(secondsLeft % 60).toString().padStart(2, '0')}` : `Tiempo: ${Math.floor(secondsLeft / 60)}:${(secondsLeft % 60).toString().padStart(2, '0')}`)}
+            </span>
+            {peerUsersCount !== undefined && (
+              <span className="proposal-card__quorum">
+                {isEn ? `Quorum: ${peerUsersCount}` : `Quórum: ${peerUsersCount}`}
+              </span>
+            )}
+          </div>
+          <div className="proposal-card__voting-actions">
+            <button
+              type="button"
+              className={`proposal-card__vote-btn proposal-card__vote-btn--reject ${myVote === 'reject' ? 'proposal-card__vote-btn--active' : ''}`}
+              onClick={() => onVote?.(deltaId, 'reject')}
+              data-testid="vote-reject-btn"
+              aria-label={isEn ? 'Vote Reject' : 'Votar Rechazar'}
+            >
+              <span>{isEn ? 'Reject' : 'Rechazar'}</span>
+              <span className="proposal-card__vote-badge" data-testid="vote-reject-count">{rejectCount}</span>
+            </button>
+            <button
+              type="button"
+              className={`proposal-card__vote-btn proposal-card__vote-btn--approve ${myVote === 'approve' ? 'proposal-card__vote-btn--active' : ''}`}
+              onClick={() => onVote?.(deltaId, 'approve')}
+              data-testid="vote-approve-btn"
+              aria-label={isEn ? 'Vote Approve' : 'Votar Aprobar'}
+            >
+              <span>{isEn ? 'Approve' : 'Aprobar'}</span>
+              <span className="proposal-card__vote-badge" data-testid="vote-approve-count">{approveCount}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {effectiveApplied && (
         <div className="proposal-card__status-applied">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
@@ -214,9 +299,15 @@ export function ProposalCard({
         </div>
       )}
 
-      {isRejected && (
+      {effectiveRejected && !isExpiredRejected && (
         <div className="proposal-card__status-rejected">
           <span>{isEn ? 'Proposal discarded' : 'Propuesta descartada'}</span>
+        </div>
+      )}
+
+      {isExpiredRejected && (
+        <div className="proposal-card__status-rejected" data-testid="proposal-status-expired">
+          <span>{isEn ? 'Rejected due to inactivity (timeout)' : 'Rechazada por inactividad (tiempo agotado)'}</span>
         </div>
       )}
     </div>

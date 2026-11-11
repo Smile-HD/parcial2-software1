@@ -9,6 +9,7 @@ import {
 } from './commands';
 import { useAudioRecorder } from './useAudioRecorder';
 import { useSlashCommands } from './useSlashCommands';
+import { useProposalVoting } from './voting/useProposalVoting';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatMessagesList } from './components/ChatMessagesList';
 import { ChatInputBar } from './components/ChatInputBar';
@@ -189,6 +190,43 @@ export function ChatPanel({
       return new Set();
     }
   });
+
+  // Lista estabilizada de nombres de usuarios conectados para el sistema de votación
+  const peerUserNames = useMemo(() => {
+    const list = peerUsers ? peerUsers.map((u) => u.name).filter(Boolean) : [];
+    if (userName && !list.includes(userName)) {
+      list.push(userName);
+    }
+    return list;
+  }, [peerUsers, userName]);
+
+  // Hook colaborativo de votación inteligente en tiempo real vía Y.Doc
+  const { votingStates, castVote, initProposalVote } = useProposalVoting({
+    doc,
+    currentUserId: userName,
+    peerUserIds: peerUserNames,
+    onAutoApply: (deltaId) => {
+      // Buscar la propuesta en activeProposal o safeMessages
+      if (activeProposal && activeProposal.deltaId === deltaId) {
+        void handleConfirm(deltaId, activeProposal.delta);
+        return;
+      }
+      const msg = safeMessages.find((m) => m.deltaId === deltaId);
+      if (msg && msg.delta) {
+        void handleConfirm(deltaId, msg.delta);
+      }
+    },
+    onAutoReject: (deltaId) => {
+      void handleReject(deltaId);
+    },
+  });
+
+  // Auto-iniciar votación si surge una propuesta activa en el canal grupal
+  useEffect(() => {
+    if (activeProposal?.deltaId && activeChannel === 'team') {
+      initProposalVote(activeProposal.deltaId);
+    }
+  }, [activeProposal?.deltaId, activeChannel, initProposalVote]);
 
   // Sincronización en tiempo real de propuestas aplicadas/rechazadas vía Y.Doc colaborativo
   useEffect(() => {
@@ -683,6 +721,9 @@ export function ChatPanel({
         streamingBotMessage={streamingBotMessage}
         messagesContainerRef={messagesContainerRef}
         messagesEndRef={messagesEndRef}
+        votingStates={votingStates}
+        onVote={castVote}
+        peerUsersCount={peerUserNames.length}
       />
 
       {(error || voiceError) && (

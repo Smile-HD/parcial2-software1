@@ -52,7 +52,7 @@ export const SYSTEM_PROMPT = [
   '    // For every method:',
   '    { "kind": "member", "op": "addMethod", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "classId": "<classId>", "memberId": "<uuid>", "name": "methodName", "returnType": "void", "parameters": [{ "name": "param1", "type": "String" }], "visibility": "+" },',
   '    // For standard associations (optionally with associationClassId if an association class is attached):',
-  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": true, "aggregation": "none" [, "associationClassId": "<assocClassId>"] },',
+  '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<classId>", "targetClassId": "<classId>", "name": "relationName", "sourceRole": "srcRole", "targetRole": "tgtRole", "sourceMultiplicity": "1", "targetMultiplicity": "*", "directed": false, "aggregation": "none" [, "associationClassId": "<assocClassId>"] },',
   '    // For aggregation (hollow diamond at container):',
   '    { "kind": "association", "op": "create", "id": "<uuid>", "diagramId": "<uuid>", "timestamp": "<RFC3339>", "associationId": "<uuid>", "sourceClassId": "<containerClassId>", "targetClassId": "<partClassId>", "aggregation": "shared", "aggregationEnd": "source", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" },',
   '    // For composition (solid diamond at container):',

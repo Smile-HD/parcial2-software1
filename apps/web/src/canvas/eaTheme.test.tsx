@@ -107,6 +107,31 @@ describe('unit 13e — EA-style class box (structural)', () => {
   });
 });
 
+describe('UML 2.5 — geometría de clasificadores con esquinas rectangulares a 90°', () => {
+  it('la caja de clase NO DEBE contener border-radius redondeado en el CSS (UML 2.5.1)', () => {
+    // Verificación estructural: el CSS de `.uml-class` no debe declarar border-radius
+    // distinto de 0. jsdom no aplica hojas de estilo externas, por lo que leemos
+    // directamente el archivo CSS para asegurar la regla de geometría ortogonal.
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const cssPath = path.resolve(__dirname, 'canvas.css');
+    const css = fs.readFileSync(cssPath, 'utf-8') as string;
+
+    // Extraer el bloque del selector .uml-class { ... } (primera ocurrencia)
+    const umlClassMatch = css.match(/\.uml-class\s*\{([^}]+)\}/);
+    expect(umlClassMatch).not.toBeNull();
+    const block = umlClassMatch![1]!;
+
+    // Verificar que border-radius sea 0 o no exista
+    const radiusMatch = block.match(/border-radius\s*:\s*([^;]+)/);
+    if (radiusMatch) {
+      const value = radiusMatch[1]!.trim();
+      expect(value, 'UML 2.5.1: los clasificadores deben ser rectángulos con esquinas a 90°').toBe('0');
+    }
+    // Si no hay border-radius declarado, es 0 por defecto (correcto)
+  });
+});
+
 describe('unit 13e — docked toolbox + canvas background (structural)', () => {
   it('the palette is a docked toolbox with a header', () => {
     const doc = buildYDocFromDiagram(themedFixture());

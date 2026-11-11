@@ -213,9 +213,67 @@ describe('OpenAiVision', () => {
     expect(assoc).toBeDefined();
     expect(assoc.sourceClassId).toBe(userClass.classId);
     expect(assoc.targetClassId).toBe(orderClass.classId);
+    expect(assoc.directed).toBe(true);
     // Positions defaulted if missing
     expect(userClass.position).toBeDefined();
     expect(orderClass.position).toBeDefined();
+  });
+
+  it('normaliza asociaciones con directed omitido a directed: false por defecto (UML 2.5)', async () => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const rawAiOutput = {
+      kind: 'batch',
+      id: 'batch-temp-id',
+      diagramId: 'diag-temp-id',
+      timestamp: 'not-a-timestamp',
+      deltas: [
+        {
+          kind: 'class',
+          op: 'create',
+          id: 'c1',
+          diagramId: 'diag-temp-id',
+          timestamp: 'invalid',
+          classId: 'Persona',
+          name: 'Persona',
+        },
+        {
+          kind: 'class',
+          op: 'create',
+          id: 'c2',
+          diagramId: 'diag-temp-id',
+          timestamp: 'invalid',
+          classId: 'Auto',
+          name: 'Auto',
+        },
+        {
+          kind: 'association',
+          op: 'create',
+          id: 'assoc-undirected',
+          diagramId: 'diag-temp-id',
+          timestamp: 'invalid',
+          associationId: 'rel-undirected',
+          sourceClassId: 'Persona',
+          targetClassId: 'Auto',
+          // directed omitido intencionalmente
+        },
+      ],
+    };
+
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(rawAiOutput) } }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const vision = OpenAiVision.fromEnv()!;
+    const result = await vision.extract(new Uint8Array([0x89]), 'image/png');
+
+    expect(result.kind).toBe('batch');
+    const parsed = BatchDeltaSchema.parse(result);
+    const assoc = parsed.deltas.find((d) => d.kind === 'association') as any;
+
+    expect(assoc).toBeDefined();
+    // En UML 2.5, una asociación estándar es no dirigida por defecto (línea simple sin flechas)
+    expect(assoc.directed, 'UML 2.5: si directed no está especificado en la foto, debe ser false').toBe(false);
   });
 
   it('extracts full UML diagram with members and relationships', async () => {
