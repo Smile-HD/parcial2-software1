@@ -96,6 +96,47 @@ describe('executeKaggleCognitiveTurn', () => {
     expect(res?.batchDelta?.deltas.length).toBeGreaterThan(0);
   });
 
+  it('strips single-backtick or truncated JSON from replyContent cleanly', async () => {
+    process.env.KAGGLE_BASE_URL = 'https://fake-kaggle.trycloudflare.com/v1';
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: [
+                'Aquí está la propuesta corregida:',
+                '`json',
+                '{',
+                '  "action": "modify",',
+                '  "classes": [{ "name": "Producto", "attributes": [{ "name": "idProducto", "type": "int" }] }]',
+                '}',
+                '`',
+                '### Criterio Arquitectónico:',
+                '- Producto: Representa los productos disponibles.',
+              ].join('\n'),
+            },
+          },
+        ],
+      }),
+    } as any);
+
+    const res = await executeKaggleCognitiveTurn({
+      userContent: 'corrige producto',
+      senderName: 'Carlos',
+      language: 'es',
+      diagramId: 'diag-1',
+      diagramContext: '',
+    });
+
+    expect(res).not.toBeNull();
+    expect(res?.replyContent).not.toContain('`json');
+    expect(res?.replyContent).not.toContain('"action": "modify"');
+    expect(res?.replyContent).toContain('- Producto: Representa los productos disponibles.');
+    expect(res?.batchDelta).not.toBeNull();
+  });
+
   it('returns null gracefully when fetch throws or times out', async () => {
     process.env.KAGGLE_BASE_URL = 'https://fake-kaggle.trycloudflare.com';
 

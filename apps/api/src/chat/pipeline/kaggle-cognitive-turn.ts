@@ -105,7 +105,7 @@ export async function executeKaggleCognitiveTurn(
         model,
         messages,
         temperature: 0.1,
-        max_tokens: 900,
+        max_tokens: Number(process.env.KAGGLE_MAX_TOKENS) || 1800,
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -150,8 +150,10 @@ export async function executeKaggleCognitiveTurn(
     if (hasAnyContent) {
       const batchDelta = expandSemanticDomainToDelta(parsedModel, diagramId, diagram, userContent);
       if (batchDelta && batchDelta.deltas.length > 0) {
-        const textWithoutJson = clean
-          .replace(/```(?:json)?[\s\S]*?```/gi, '')
+        let textWithoutJson = clean
+          .replace(/```(?:json)?[\s\S]*?(?:```|$)/gi, '')
+          .replace(/`+json[\s\S]*?(?:`+|$)/gi, '')
+          .replace(/\{[\s\S]*?(?:\}(?:\s*```)?|$)/gi, '')
           .replace(/(?:###\s*)?(?:Aquí está el |He aquí el |A continuación el )?bloque JSON[^:\n]*:?/gi, '')
           .replace(/###\s*Acci[oó]n:?/gi, '')
           .replace(/###\s*Criterio [aA]rquitect[oó]nico:?/gi, '')
