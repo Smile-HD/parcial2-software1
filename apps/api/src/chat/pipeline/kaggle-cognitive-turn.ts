@@ -127,7 +127,8 @@ export async function executeKaggleCognitiveTurn(
       let buffer = '';
       let hasEnteredJson = false;
 
-      while (true) {
+      let isDone = false;
+      while (!isDone) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -139,7 +140,10 @@ export async function executeKaggleCognitiveTurn(
           const trimmed = line.trim();
           if (!trimmed.startsWith('data:')) continue;
           const jsonStr = trimmed.slice(5).trim();
-          if (jsonStr === '[DONE]') break;
+          if (jsonStr === '[DONE]') {
+            isDone = true;
+            break;
+          }
 
           try {
             const parsedChunk = JSON.parse(jsonStr);
