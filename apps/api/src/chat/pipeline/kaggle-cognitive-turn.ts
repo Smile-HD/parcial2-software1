@@ -11,6 +11,7 @@
 import type { BatchDelta } from '@app/core';
 import { robustParseDomainJson, expandSemanticDomainToDelta } from '../../synthesis/index.js';
 import { buildKaggleArchitectPrompt } from '../../ai/prompt-builder.js';
+import { matchCanonicalDomain, formatDomainGroundingPrompt } from '../../synthesis/domain-catalog/router.js';
 import { stripEmojis } from '../prompt-formatter.js';
 import type { UnifiedTurnResult } from '../chat-pipeline.js';
 
@@ -60,11 +61,17 @@ export async function executeKaggleCognitiveTurn(
   if (!activePeers.includes(senderName)) activePeers.push(senderName);
   const activePeersSummary = activePeers.join(', ');
 
+  const domainMatch = matchCanonicalDomain(userContent);
+  const canonicalGrounding = domainMatch
+    ? formatDomainGroundingPrompt(domainMatch.domain, isEn)
+    : undefined;
+
   const systemPrompt = buildKaggleArchitectPrompt({
     senderName,
     language,
     diagramContext,
     activePeersSummary,
+    canonicalGrounding,
   });
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
