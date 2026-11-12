@@ -16,21 +16,19 @@ export function parseCreateClassCommand(
   const isSpecialClassIntent =
     /(?:clase\s+de\s+asociaci[oó]n|association\s+class|n-ari[ao]|ternari[ao]|nary|ternary)/i.test(normalized);
 
+  const createClassRegex = /^\s*(?:(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé]|hac[eé]|haz|arm[aáeé]|gener[aáeé]|defin[eíi]|model[aáeé]|dise[ñn][aáeé])(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|add|new|make)\s+(?:la|el|una|un|nueva|nuevo)?\s*(?:(abstracta|abstract)\s+)?(?:(clase|calse|clse|class|tabla|entidad|interfaz|interface)\s+)?(?:(abstracta|abstract)\s+)?["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i;
+
   const createClassIntent = !isSpecialClassIntent
-    ? /^\s*(?:(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé]|hac[eé]|haz|arm[aáeé]|gener[aáeé]|defin[eíi]|model[aáeé]|dise[ñn][aáeé])(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|add|new|make)\s+(?:la|el|una|un|nueva|nuevo)?\s*(?:clase|calse|clse|class|tabla|entidad)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i.exec(
-        cleanedText
-      ) ||
-      (!isSpecialClassIntent
-        ? /^\s*(?:(?:cre[aáeé]|crear|create|a[ñn]ad[eé]|agreg[aáeé]|insert[aáeé]|hac[eé]|haz|arm[aáeé]|gener[aáeé]|defin[eíi]|model[aáeé]|dise[ñn][aáeé])(?:me|te|le|les|nos)?(?:l[oas]{1,2})?|add|new|make)\s+(?:la|el|una|un|nueva|nuevo)?\s*(?:clase|calse|clse|class|tabla|entidad)\s+["']?([A-Za-z_ñÑáéíóúÁÉÍÓÚ][\wñÑáéíóúÁÉÍÓÚ]*)["']?(.*)$/i.exec(
-            text.replace(/^@\w+\s*/, '')
-          )
-        : null)
+    ? createClassRegex.exec(cleanedText) ||
+      createClassRegex.exec(text.replace(/^@\w+\s*/, ''))
     : null;
 
-  if (createClassIntent && !/(?:abstract|interfa)/i.test(createClassIntent[2] || '')) {
-    const rawClassName = createClassIntent[1]!.trim();
+  if (createClassIntent) {
+    const isAbstract = !!(createClassIntent[1] || createClassIntent[3]);
+    const isInterface = /(?:interfaz|interface)/i.test(createClassIntent[2] || '');
+    const rawClassName = createClassIntent[4]!.trim();
     const className = cleanClassName(rawClassName);
-    const remainder = createClassIntent[2]?.trim() || '';
+    const remainder = createClassIntent[5]?.trim() || '';
 
     let attrsText = remainder;
     let targetAssocClass: string | undefined;
@@ -51,6 +49,8 @@ export function parseCreateClassCommand(
         name: className,
         attributes: attributes.length > 0 ? attributes : undefined,
         methods: [],
+        ...(isAbstract ? { isAbstract: true } : {}),
+        ...(isInterface ? { isInterface: true, classKind: 'interface' as const } : {}),
       },
     ];
 

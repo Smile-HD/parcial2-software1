@@ -27,6 +27,10 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   const classes: Array<{ id: string; name: string }> = currentDiagram.classes || [];
   const associations: Array<any> = currentDiagram.associations || [];
 
+  // 0a. Mutación de clase existente a abstracta o interfaz (prioridad sobre creación)
+  const classMod = parseClassKindOrAbstractCommand(text, normalized, classes);
+  if (classMod) return classMod;
+
   // 0. Creación de nueva clase con atributos/asociación
   const createdClass = parseCreateClassCommand(cleanedText, text, normalized);
   if (createdClass) return createdClass;
@@ -42,10 +46,6 @@ export function extractExplicitModelMutations(text: string, currentDiagram?: any
   // 2. Renombrado de clase
   const renameClass = parseClassRenameCommand(text, classes);
   if (renameClass) return renameClass;
-
-  // 3. Mutación de clase a abstracta o interfaz
-  const classMod = parseClassKindOrAbstractCommand(text, normalized, classes);
-  if (classMod) return classMod;
 
   // 3a y 3b. Modificación o agregado completo de métodos y atributos
   const fullMember = parseFullMemberCommands(text, normalized, currentDiagram, classes);

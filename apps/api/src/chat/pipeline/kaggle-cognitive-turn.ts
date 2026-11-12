@@ -63,7 +63,14 @@ export async function executeKaggleCognitiveTurn(
   if (!activePeers.includes(senderName)) activePeers.push(senderName);
   const activePeersSummary = activePeers.join(', ');
 
-  const domainMatch = matchCanonicalDomain(userContent);
+  const isSpecificClassCreation = /\b(?:clase|calse|clse|class|tabla)\s+[A-Za-z_ñÑáéíóúÁÉÍÓÚ]/i.test(userContent);
+  const isDiagramExplanationQuery = /(?:explic|contexto|qu[eé]\s+(?:es|hace|significa|modela|representa)|de\s+qu[eé]\s+trata|describe|explain|what\s+does|meaning\s+of)/i.test(userContent) && /(?:diagrama|modelo|lienzo|canvas|actual)/i.test(userContent);
+  const isFullDomainSynthesisRequest =
+    !isSpecificClassCreation &&
+    !isDiagramExplanationQuery &&
+    /(?:model|dise[ñn]|cre[aá]|arm[aá]|gener[aá]|constru[yí]|design|model|build)\s+(?:un|una|el|la|a|an)?\s*(?:sistema|modelo|dominio|plataforma|system|management)\b/i.test(userContent);
+
+  const domainMatch = isFullDomainSynthesisRequest ? matchCanonicalDomain(userContent) : null;
   const canonicalGrounding = domainMatch
     ? formatDomainGroundingPrompt(domainMatch.domain, isEn)
     : undefined;
