@@ -357,7 +357,20 @@ export function robustParseDomainJson(raw: string): SemanticDomainModel | null {
 
       const renames = parsed.renames ?? parsed.renombrar;
       const updates = parsed.updates ?? parsed.modificaciones;
-      const deletions = parsed.deletions ?? parsed.eliminaciones ?? parsed.borrados;
+      let deletions = parsed.deletions ?? parsed.eliminaciones ?? parsed.borrados;
+
+      // Si el LLM emitió {"action": "delete", "classes": ["Recibo"]} con nombres como strings planos
+      if (!deletions && (parsed.action === 'delete' || parsed.action === 'eliminar')) {
+        if (Array.isArray(parsed.classes) && parsed.classes.some((c: any) => typeof c === 'string')) {
+          deletions = {
+            classes: parsed.classes.map((c: any) => (typeof c === 'string' ? c : c?.name)).filter(Boolean),
+          };
+        } else if (Array.isArray(parsed.clases) && parsed.clases.some((c: any) => typeof c === 'string')) {
+          deletions = {
+            classes: parsed.clases.map((c: any) => (typeof c === 'string' ? c : c?.name)).filter(Boolean),
+          };
+        }
+      }
 
       if (
         classes.length > 0 ||
